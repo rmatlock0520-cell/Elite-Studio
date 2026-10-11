@@ -24,7 +24,19 @@ sealed record Offer(
     public static async ValueTask<IReadOnlyList<Offer>> ReadList(Stream body, CancellationToken stop)
     {
         using JsonDocument answer = await JsonDocument.ParseAsync(body, default, stop).ConfigureAwait(false);
-        return [.. MarketData.Rows(answer.RootElement).Select(Parse)];
+        // A listing whose position cannot be its own system's is left out here, before any search sees it: every distance
+        // and every "within so many light years" would be worked out from the false position (SystemAddress says how).
+        var offers = new List<Offer>();
+        var misplaced = new List<string>();
+        foreach (JsonElement row in MarketData.Rows(answer.RootElement))
+        {
+            Offer offer = Parse(row);
+            if (SystemAddress.Holds(row.Whole("systemAddress"), offer.X, offer.Y, offer.Z)) offers.Add(offer);
+            else misplaced.Add($"{offer.Station} in {offer.StarSystem}");
+        }
+        if (misplaced.Count > 0)
+            App.Log.Info($"Left out {misplaced.Count} listings whose position is not their system's: {string.Join("; ", misplaced.Distinct().Take(5))}");
+        return offers;
     }
 
     static Offer Parse(JsonElement e) => new(
