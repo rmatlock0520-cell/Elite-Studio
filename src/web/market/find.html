@@ -46,10 +46,31 @@
 #rows .btn{height:24px}   /* keeps a row as low as its text */
 #places tr.picked td{background:var(--accent-soft)}
 /* A station found by name: the stations on top, the price list of the one picked under them with the room to spare. */
-.found.two #rows{flex:0 1 auto;max-height:34%}
-#prices{flex:1;min-height:150px;display:flex;flex-direction:column;gap:8px}
-#prices-box{flex:1;min-height:0}
+/* The price list is what the page is for then (the owner, 11 October 2026: it showed "a very few entrys"): the stations
+   shrink to the one picked, the Nearest buttons and the credit line make room, and a window too low for all of it
+   scrolls as a whole rather than leave the list a slit. */
+.found.two{overflow-y:auto;gap:8px}
+.found.two #rows{flex:none;max-height:190px}
+.found.two .credit,.found.two #note,.found.two #about{display:none}
+#prices{flex:1 0 auto;min-height:380px;display:flex;flex-direction:column;gap:8px}
+#prices .head{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline}
+#prices .tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+#prices .tools .field{flex:0 1 280px}
+#others{margin-left:auto}
+/* What the station sells beside what it buys: twice the lines in the same height, and each is one question
+   ("what can I buy there", "what can I sell there"). A narrow window puts one under the other. */
+#prices-box{flex:1 1 0;min-height:300px;display:flex;flex-wrap:wrap;gap:12px}
+#prices-box .half{flex:1 1 440px;min-width:0;min-height:300px;display:flex;flex-direction:column;gap:6px}
+#prices-box h3{margin:0;font-size:13px;font-weight:600}
+#prices-box h3 span{color:var(--muted);font-weight:400}
+#prices-box .tablebox{flex:1 1 0;min-height:0}
+#prices-box td,#prices-box th{padding:4px 10px}
+#prices-box tbody tr:nth-child(even) td{background:rgba(255,255,255,.025)}
+#prices-box tbody tr:hover td{background:var(--accent-soft)}
+#prices-box td:first-child{font-weight:600}
+#prices-box td.best{color:var(--accent);font-weight:600}
 #prices-box th:first-child{width:99%}
+#prices-box .none{padding:14px 10px;color:var(--muted);font-weight:400}
 .found .credit{margin-top:auto}   /* at the foot of the page, whatever is above it */
 </style>
 </head>
@@ -120,14 +141,25 @@
     </table>
   </div>
   <section id="prices" hidden>
-    <h2 id="prices-what"></h2>
-    <p class="muted small" id="prices-about"></p>
+    <div class="head"><h2 id="prices-what"></h2><p class="muted small" id="prices-about"></p></div>
     <p class="card bad" id="prices-problem" hidden></p>
-    <div class="tablebox" id="prices-box">
-      <table>
-        <thead><tr id="prices-heads"></tr></thead>
-        <tbody id="prices-rows"></tbody>
-      </table>
+    <div class="tools" id="prices-tools">
+      <div class="field"><input id="prices-filter" type="search" autocomplete="off" spellcheck="false" placeholder="Type to narrow both lists: gold, tea&hellip;" aria-label="Narrow both lists by commodity name"></div>
+      <div class="seg" id="prices-side" role="group" aria-label="Which commodities to list">
+        <button type="button" data-show="all">Everything</button>
+        <button type="button" data-show="pays" title="Only what makes money carried between this station and the one you are docked at">Only what pays</button>
+      </div>
+      <button type="button" class="btn small" id="others" hidden></button>
+    </div>
+    <div id="prices-box">
+      <div class="half">
+        <h3 id="sells-what"></h3>
+        <div class="tablebox"><table><thead><tr id="sells-heads"></tr></thead><tbody id="sells-rows"></tbody></table></div>
+      </div>
+      <div class="half">
+        <h3 id="buys-what"></h3>
+        <div class="tablebox"><table><thead><tr id="buys-heads"></tr></thead><tbody id="buys-rows"></tbody></table></div>
+      </div>
     </div>
   </section>
   <p id="pager" hidden><button type="button" class="btn small" id="prev">◄ The 5 before</button> <span class="muted small" id="pager-text"></span> <button type="button" class="btn small" id="next">The next 5 ►</button></p>
@@ -150,7 +182,9 @@ let shown = null;           // the search on screen: { kind, side, body, answer 
 let sort = { key: 'ly', down: false };   // key null: as the service sent them (stations by name, its best match first)
 let prices = null;          // the price list on show, of a station found by name
 let pricesProblem = '';
-let priceSort = { key: 'name', down: false };
+const priceSort = { sells: { key: 'name', down: false }, buys: { key: 'name', down: false } };   // each of its two lists is sorted by itself
+let priceShow = 'all', priceText = '';   // which of its lines are listed: all | pays, and the letters typed to narrow them
+let allStations = false;    // false: once a price list is on show, only its station is listed above it
 
 // ============================================================ what to find
 function setKind(k) {
@@ -161,6 +195,7 @@ function setKind(k) {
   $('#sides').hidden = $('#age-label').hidden = $('#volume-label').hidden = k !== 'commodity';
   $('#sniff').hidden = k !== 'commodity' || Studio.boxed;   // the overlay's box has no tabs to come back by
   $('#grades').hidden = k !== 'module';
+  $('.quick').hidden = k === 'station';     // the Nearest buttons are another search: their row is the price list's while a station is looked up
   $('.filters').hidden = k === 'station';   // a station asked for by name is listed whatever its pad and wherever it is
   $('#name').placeholder = k === 'station' ? 'A station\u2019s name, or a part of it' : 'Type a few letters, then pick from the list';
   loadNames(k);
@@ -253,6 +288,7 @@ async function send(search) {
   busy = false;
   prices = null;
   pricesProblem = '';
+  allStations = false;
   render();
   // A station found by name: the price list of the best match is shown at once.
   const first = shown && shown.kind === 'station' && shown.answer.rows.find(r => r.marketId);
@@ -268,8 +304,11 @@ async function showPrices(id, fresh) {
     prices = list;
     pricesProblem = '';
     if (fresh) {
-      const pays = key => list.rows.some(r => r[key] != null);
-      priceSort = pays('takeThere') ? { key: 'takeThere', down: true } : pays('bringBack') ? { key: 'bringBack', down: true } : { key: 'name', down: false };
+      priceShow = 'all';
+      $('#prices-filter').value = priceText = '';
+      allStations = false;
+      for (const [side, list2] of Object.entries(priceSides))
+        priceSort[side] = list.rows.some(r => list2.has(r) && r[list2.profit] != null) ? { key: 'profit', down: true } : { key: 'name', down: false };
     }
   } catch (e) {
     if (!fresh) return;   // the list on show stands
@@ -280,14 +319,15 @@ async function showPrices(id, fresh) {
 }
 
 const amount = n => n ? whole(n) : '';
-const priceColumns = {
-  name: { title: 'Commodity', value: r => r.name },
-  buy: { title: 'You buy at (cr)', num: true, value: r => r.buy || null, text: r => amount(r.buy), hint: 'What a ton costs you there. Empty: the station does not sell it' },
-  supply: { title: 'Supply (t)', num: true, value: r => r.supply || null, text: r => amount(r.supply) },
-  sell: { title: 'You sell at (cr)', num: true, value: r => r.sell || null, text: r => amount(r.sell), hint: 'What the station pays you for a ton' },
-  demand: { title: 'Demand (t)', num: true, value: r => r.demand || null, text: r => amount(r.demand) },
-  takeThere: { title: 'Take there (cr/t)', num: true, value: r => r.takeThere, text: r => amount(r.takeThere) },
-  bringBack: { title: 'Bring back (cr/t)', num: true, value: r => r.bringBack, text: r => amount(r.bringBack) },
+// The price list as two lists side by side. A commodity the station has in stock is one it sells (it would
+// buy it back too, for less: the game's own screen shows it the same way); every other one it buys.
+// profit: what a ton makes with the station the player is docked at as the other end of the trip.
+const sells = r => r.buy > 0 && r.supply > 0;
+const priceSides = {
+  sells: { has: sells, price: 'buy', tons: 'supply', profit: 'bringBack', title: 'This station sells', priceTitle: 'You pay (cr)', tonsTitle: 'Supply (t)',
+    with: here => 'profit a ton when you sell it at ' + here, none: 'Nothing on its list is for sale.' },
+  buys: { has: r => !sells(r) && r.sell > 0, price: 'sell', tons: 'demand', profit: 'takeThere', title: 'This station buys', priceTitle: 'It pays (cr)', tonsTitle: 'Demand (t)',
+    with: here => 'profit a ton when you buy it at ' + here, none: 'It buys nothing on its list.' },
 };
 
 function renderPrices() {
@@ -297,27 +337,44 @@ function renderPrices() {
   if (!on) return;
   $('#prices-problem').hidden = !pricesProblem;
   $('#prices-problem').textContent = pricesProblem;
-  $('#prices-what').hidden = $('#prices-about').hidden = $('#prices-box').hidden = !prices;
+  $('#prices-what').hidden = $('#prices-about').hidden = $('#prices-box').hidden = $('#prices-tools').hidden = !prices;
   if (!prices) return;
   $('#prices-what').textContent = 'Prices at ' + prices.station + ', ' + prices.system;
-  $('#prices-about').textContent = (prices.mine ? 'The prices you saw there yourself' : 'Prices from Spansh, reported') + (prices.updated ? ' ' + ago(prices.updated) : '') + '. '
-    + (prices.here ? 'The last two columns say what a ton makes carried between there and ' + prices.here + ', where you are docked.'
-      : 'Dock somewhere and open its commodities market, and Studio shows here what a ton makes carried between the two.');
-  priceColumns.takeThere.hint = 'Profit a ton: bought at ' + prices.here + ', sold at ' + prices.station;
-  priceColumns.bringBack.hint = 'Profit a ton: bought at ' + prices.station + ', sold at ' + prices.here;
-  const keys = Object.keys(priceColumns).filter(key => prices.here || (key !== 'takeThere' && key !== 'bringBack'));
-  $('#prices-heads').replaceChildren(...keys.map(key => h('th', {
-      class: 'sort' + (priceColumns[key].num ? ' r' : '') + (priceSort.key === key ? priceSort.down ? ' down' : ' up' : ''), title: priceColumns[key].hint,
-      onclick: () => { priceSort = { key, down: priceSort.key === key ? !priceSort.down : !!priceColumns[key].num }; render(); },   // a number starts at its largest
-    }, priceColumns[key].title)));
-  const by = priceColumns[priceSort.key].value;
-  const rows = [...prices.rows].sort((x, y) => {
-    const p = by(x), q = by(y);
-    if (p == null || q == null) return (p == null) - (q == null) || x.name.localeCompare(y.name);   // what is not there comes last
-    return (typeof p === 'string' ? p.localeCompare(q) : p - q) * (priceSort.down ? -1 : 1);
-  });
-  $('#prices-rows').replaceChildren(...rows.map(r => h('tr', null,
-    keys.map(key => h('td', { class: priceColumns[key].num && 'r' }, priceColumns[key].text ? priceColumns[key].text(r) : priceColumns[key].value(r))))));
+  $('#prices-about').textContent = (prices.mine ? 'The prices you saw there yourself' : 'Prices from Spansh, reported') + (prices.updated ? ' ' + ago(prices.updated) : '') + '.'
+    + (prices.here ? '' : ' Dock somewhere and open its commodities market, and Studio adds what a ton makes carried between the two.');
+  if (!prices.here) priceShow = 'all';
+  $('#prices-side').hidden = !prices.here;
+  for (const b of document.querySelectorAll('#prices-side button')) b.classList.toggle('active', b.dataset.show === priceShow);
+  const letters = priceText.trim().toLowerCase();
+  for (const [side, list] of Object.entries(priceSides)) {
+    const columns = {
+      name: { title: 'Commodity', value: r => r.name },
+      price: { title: list.priceTitle, num: true, value: r => r[list.price] || null },
+      tons: { title: list.tonsTitle, num: true, value: r => r[list.tons] || null },
+      profit: { title: 'Profit (cr/t)', num: true, value: r => r[list.profit], hint: prices.here && 'The ' + list.with(prices.here) },
+    };
+    const keys = Object.keys(columns).filter(key => prices.here || key !== 'profit');
+    const all = prices.rows.filter(list.has);
+    const wanted = all.filter(r => (!letters || r.name.toLowerCase().includes(letters)) && (priceShow === 'all' || r[list.profit] != null));
+    const sort = priceSort[side], by = columns[sort.key].value;
+    wanted.sort((x, y) => {
+      const p = by(x), q = by(y);
+      if (p == null || q == null) return (p == null) - (q == null) || x.name.localeCompare(y.name);   // what is not there comes last
+      return (typeof p === 'string' ? p.localeCompare(q) : p - q) * (sort.down ? -1 : 1);
+    });
+    $('#' + side + '-what').replaceChildren(list.title + ' ', h('span', null, '(' + (wanted.length === all.length ? all.length : wanted.length + ' of ' + all.length) + ')'
+      + (prices.here ? wideDot + list.with(prices.here) : '')));
+    $('#' + side + '-heads').replaceChildren(...keys.map(key => h('th', {
+        class: 'sort' + (columns[key].num ? ' r' : '') + (sort.key === key ? sort.down ? ' down' : ' up' : ''), title: columns[key].hint,
+        onclick: () => { priceSort[side] = { key, down: sort.key === key ? !sort.down : !!columns[key].num }; renderPrices(); },   // a number starts at its largest
+      }, columns[key].title)));
+    // The best profit of each list stands out, so "what do I carry" is read at a glance.
+    const best = Math.max(0, ...all.map(r => r[list.profit] || 0));
+    $('#' + side + '-rows').replaceChildren(...(wanted.length ? wanted.map(r => h('tr', null,
+      keys.map(key => h('td', { class: (columns[key].num ? 'r' : '') + (key === 'profit' && best && r[list.profit] === best ? ' best' : '') },
+        columns[key].num ? amount(columns[key].value(r)) : columns[key].value(r)))))
+      : [h('tr', null, h('td', { class: 'none', colspan: keys.length }, all.length ? 'Nothing here fits what you typed or picked above.' : list.none))]));
+  }
 }
 
 // ============================================================ drawing the answer
@@ -382,6 +439,12 @@ function render() {
   // In the overlay's box there is room for five places at a time; two buttons leaf through the rest.
   if (paged !== a) [paged, pageAt] = [a, 0];   // a new answer starts at its nearest places
   pageAt = Math.max(0, Math.min(pageAt, Math.floor((rows.length - 1) / pageRows) * pageRows));
+  // Under a price list only its own station stays, with a button for the others: the list needs the room.
+  const picked = prices && rows.filter(r => r.marketId === prices.marketId);
+  const folded = !!picked && picked.length > 0 && rows.length > picked.length;
+  $('#others').hidden = !folded;
+  if (folded) $('#others').textContent = allStations ? '\u25B2 Show only ' + prices.station : '\u25BC Show the other ' + count(rows.length - picked.length, 'station') + ' with a name like it';
+  if (folded && !allStations) rows.splice(0, rows.length, ...picked);
   const onShow = Studio.boxed ? rows.slice(pageAt, pageAt + pageRows) : rows;
   $('#pager').hidden = !Studio.boxed || rows.length <= pageRows;
   $('#pager-text').textContent = 'Places ' + (pageAt + 1) + ' to ' + (pageAt + onShow.length) + ' of ' + rows.length;
@@ -417,6 +480,9 @@ for (const box of Object.keys(filters)) $('#' + box).addEventListener('input', (
 $('#mine').addEventListener('click', () => { touched.clear(); showFilters(); });
 $('#form').addEventListener('submit', e => { e.preventDefault(); find(kind, $('#name').value); });
 $('#more').addEventListener('click', findMore);
+$('#others').addEventListener('click', () => { allStations = !allStations; render(); });
+$('#prices-filter').addEventListener('input', e => { priceText = e.target.value; renderPrices(); });
+for (const b of document.querySelectorAll('#prices-side button')) b.addEventListener('click', () => { priceShow = b.dataset.show; renderPrices(); });
 // "Save to Sniffer": the form as it stands goes to the Sniffer page in the address, where the price is added and it is saved.
 $('#sniff').addEventListener('click', () => {
   const hand = new URLSearchParams({ name: $('#name').value.trim(), side, tons: filterValue('volume') });
