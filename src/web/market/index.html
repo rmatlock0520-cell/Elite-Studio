@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="studio-token" content="__STUDIO_TOKEN__">
+<title>Studio Market - Elite Studio</title>
+<link rel="icon" href="../studio.svg">
+<link rel="stylesheet" href="../studio.css">
+<!--
+  STUDIO MARKET, TRADES: the trade list and the settings behind it. It takes the place of the Elite Haul
+  Overlay's "settings and trade list" window, with that window's sections, labels, hints and wording.
+  Left: the settings, in sections that close to a one-line summary. Right: the buttons, the list message
+  and the trade list (or the places to sell, while a "where can I sell" lookup is open).
+  The page keeps no hauling state of its own. GET /api/market/hauling and every "market" event carry the
+  whole picture; every click is a small POST under /api/market/ that answers with the picture again, plus
+  "said": the line the old window showed after that click. The overlay's own settings (keys, position,
+  size) come from /api/overlay/settings and every "overlay" event, and the game (system, ship) from
+  "state" events.
+  What the page does remember, in this browser only: which sections are open. Shown inside the shell
+  (..\index.html) and also works opened on its own.
+-->
+<style>
+/* Only what is this page's own; the shared look (buttons, boxes, fields, the list table...) is in ../studio.css. */
+.top{flex:none;padding:10px 16px 0}
+.top p{margin:0 0 8px}
+#status,#list-msg{white-space:pre-wrap}
+.top .card{padding:8px 12px;font-size:13px}
+.top .card .btn{margin-left:8px}
+.layout{--side:350px;border-top:1px solid var(--line)}
+
+.settings{border-right:1px solid var(--line);padding:12px 12px 12px 16px;overflow:auto}
+.sec{padding:0;margin-bottom:10px}   /* a .card whose summary line and body bring their own padding */
+.sec summary{display:grid;grid-template-columns:auto minmax(0,1fr);gap:1px 10px;padding:10px 12px;cursor:pointer;list-style:none}
+.sec summary::-webkit-details-marker{display:none}
+.sec summary::before{content:"\25B8";grid-row:span 2;color:var(--muted)}
+.sec[open] summary::before{content:"\25BE"}
+.sec summary b{font-family:var(--hud);font-weight:600;letter-spacing:.08em;font-size:13.5px}
+.sec summary span{grid-column:2;color:var(--muted);font-size:12.5px}
+.sec .body{display:grid;gap:9px;padding:2px 12px 12px}
+.sec .body p{margin:0}
+.cap{display:block;margin-bottom:4px;font-size:12.5px;color:var(--muted)}
+.sec .field .btn{padding:0 11px}
+.check{display:flex;align-items:center;gap:8px;font-size:13.5px}
+.check input,.slide input{accent-color:var(--accent)}
+.slide{display:block;font-size:12.5px;color:var(--muted)}
+.slide output{float:right;color:var(--text);font-variant-numeric:tabular-nums}
+.slide input{display:block;width:100%;margin:6px 0 0}
+.keys input{cursor:pointer;font-family:var(--mono);font-size:13px}
+.keys input:focus,.keys .hearing{border-color:var(--accent);background:var(--accent-soft)}   /* .hearing: a controller box that waits for a button */
+.keys [data-pad]{flex:1.6;font-family:var(--font);text-overflow:ellipsis}   /* beside a key box it gets more of the row: a controller button is a few words */
+.credit{margin:14px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
+
+.trades{display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0;padding:12px 16px}
+.trades p{margin:0}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;flex:none}
+.bar .field{width:240px}
+#next{margin-left:6px}
+.line{display:flex;align-items:center;gap:10px;min-height:20px;font-size:13px;flex:none}
+#list{flex:1;min-height:0}
+#rows tr{cursor:pointer}
+#rows tr:hover td{background:rgba(255,255,255,.03)}
+#rows tr.picked td{background:var(--panel2)}
+#rows tr.shown td{background:var(--accent-soft)}
+#rows tr.shown td:first-child{box-shadow:inset 3px 0 var(--accent)}
+#rows tr.accepted td{font-weight:600}
+td.profit{color:var(--good);font-weight:600}
+td.dest{color:var(--muted)}
+.tick{text-align:center}
+.tick input{width:16px;height:16px;margin:0;vertical-align:middle;cursor:pointer;accent-color:var(--good)}
+</style>
+</head>
+<body>
+
+<nav class="subtabs"><a class="active" href="./">Trades</a><a href="find.html">Find by name</a><a href="sniffer.html">Sniffer</a></nav>
+
+<header class="top">
+  <p class="muted small" id="status"><span id="status-text"></span><b class="good" id="status-accepted"></b></p>
+  <p class="card bad" id="fullscreen" hidden>Elite is set to Fullscreen, and no overlay can show over that. Set the game to Borderless (Options › Graphics › Display › Window mode) and the overlay will show.</p>
+  <p class="card" id="swapped" hidden><b class="warn">Jump ranges the wrong way round.</b> A full hold never jumps farther than an empty one, so Studio takes the smaller of your two numbers as the full-hold range. Swap them under BASIC to end this note.</p>
+  <p class="card" id="old-tool" hidden><span id="old-tool-text"></span><button class="btn small" id="old-tool-ok">OK</button></p>
+</header>
+
+<div class="layout">
+  <aside class="settings">
+    <details class="sec card" data-sec="basic">
+      <summary><b>BASIC</b><span id="sum-basic"></span></summary>
+      <div class="body">
+        <div class="field"><label>Where trades can start<select data-set="startMode"><option value="near">Near me (within the distance below)</option><option value="anywhere">Anywhere: the best in the galaxy</option></select></label></div>
+        <div class="field"><label title="0 = only the system you are in">Buy within this distance of me (ly)<input data-set="buyLy" data-kind="whole" inputmode="numeric" autocomplete="off"></label></div>
+        <div class="field"><label>Max. route distance, buy to sell (ly)<input data-set="maxLy" data-kind="whole" inputmode="numeric" autocomplete="off"></label></div>
+        <div class="field"><label>Cargo capacity (tons, 0 = read from my ship)<input data-set="cargoOverride" data-kind="whole" inputmode="numeric" autocomplete="off"></label></div>
+        <div>
+          <span class="cap">Jump range in ly (0 = work out from my ship)</span>
+          <div class="field">
+            <label title="How far you jump with no cargo">Empty<input data-set="jumpEmpty" data-kind="decimal" inputmode="decimal" autocomplete="off"></label>
+            <label title="How far you jump with a full cargo hold">Full<input data-set="jumpRange" data-kind="decimal" inputmode="decimal" autocomplete="off"></label>
+          </div>
+        </div>
+        <p class="small muted" id="jump-now"></p>
+        <div class="field"><label>Max. price age (how old the prices may be)<select data-set="maxAgeHours" data-kind="whole"></select></label></div>
+        <div class="field"><label title="One way: just a pick up and a drop off. Round trip: also finds a load to bring back, and counts the flight back in the time.">Trip<select data-set="returns" data-kind="bool"><option value="true">Round trip (bring a load back)</option><option value="false">One way (pick up and drop off)</option></select></label></div>
+        <div class="field"><label>Rank trades by<select data-set="rankBy"><option value="hour"></option><option value="trip"></option></select></label></div>
+      </div>
+    </details>
+
+    <details class="sec card" data-sec="station">
+      <summary><b>STATION DETAILS</b><span id="sum-station"></span></summary>
+      <div class="body">
+        <div class="field"><label>Min. landing pad<select data-set="pad"><option value="auto">Auto (from the ship I'm flying)</option><option value="S">Small</option><option value="M">Medium</option><option value="L">Large</option></select></label></div>
+        <div class="field"><label>Max. station distance from the star<select data-set="maxStarLs" data-kind="whole"><option value="0">Any</option><option value="500">500 ls</option><option value="1000">1,000 ls</option><option value="2000">2,000 ls</option><option value="5000">5,000 ls</option><option value="10000">10,000 ls</option><option value="25000">25,000 ls</option><option value="50000">50,000 ls</option></select></label></div>
+        <div class="field"><label>Use surface stations<select data-set="surface"><option value="odyssey">Yes (with Odyssey settlements)</option><option value="horizons">Yes (without Odyssey settlements)</option><option value="none">No (space stations only)</option></select></label></div>
+        <div class="field"><label>Min. supply<select data-set="minSupply" data-kind="whole"></select></label></div>
+        <p class="small muted">Supply is how many tons the station you buy from has for sale. A higher number skips stations that can't fill your hold.</p>
+        <div class="field"><label>Min. demand<select data-set="minDemand" data-kind="whole"></select></label></div>
+        <p class="small muted">Demand is how many tons the station you sell to still wants. When demand is low the price drops as you sell.</p>
+        <label class="check"><input type="checkbox" data-set="carriers">Include fleet carriers (prices can be unusual)</label>
+      </div>
+    </details>
+
+    <details class="sec card" data-sec="presets">
+      <summary><b>PRESETS</b><span id="sum-presets"></span></summary>
+      <div class="body">
+        <p class="small muted">A preset is a named copy of your search settings (trip, distances, price age, station details, Powerplay). Switch between them here or from the overlay menu, without leaving the game.</p>
+        <div>
+          <span class="cap">Use a preset</span>
+          <div class="field"><select id="preset-pick" aria-label="Use a preset"></select><button class="btn" id="preset-use">Use</button><button class="btn" id="preset-del">Delete</button></div>
+        </div>
+        <p class="small muted" id="preset-text"></p>
+        <div>
+          <span class="cap">Save the settings as they are now, under this name</span>
+          <div class="field"><input id="preset-name" aria-label="Name for the preset" maxlength="28" autocomplete="off" spellcheck="false"><button class="btn" id="preset-save">Save</button></div>
+        </div>
+        <p class="small" id="preset-msg"></p>
+      </div>
+    </details>
+
+    <details class="sec card" data-sec="power">
+      <summary><b>POWERPLAY</b><span id="sum-power"></span></summary>
+      <div class="body">
+        <div class="field"><label>Buy station's Power<select data-set="srcPower" data-list="power"></select></label></div>
+        <div class="field"><label>Sell station's Power<select data-set="dstPower" data-list="power"></select></label></div>
+        <div class="field"><label>Buy system's Powerplay state<select data-set="srcState" data-list="state"></select></label></div>
+        <div class="field"><label>Sell system's Powerplay state<select data-set="dstState" data-list="state"></select></label></div>
+        <p class="small muted" id="pp-note">Leave all four on Any to ignore Powerplay. Powerplay data comes from Spansh and is used for "Near me" searches.</p>
+      </div>
+    </details>
+
+    <details class="sec card" data-sec="overlay">
+      <summary><b>OVERLAYS AND KEYS</b><span id="sum-overlay"></span></summary>
+      <div class="body keys">
+        <p class="small muted">Four overlays, each with its own key. In the game, the key shows that overlay and gives you the mouse on it; press it again to hide it, and the game has the mouse back once none is showing. On the overlay itself: hold its top strip to move it, and use "smaller" and "bigger" for its size.</p>
+        <div title="Shows the trade to fly, with its buttons: next trade, copy system, accept, sell my cargo, trades and settings.">
+          <span class="cap">Hauling overlay: its key  (click, then press the keys)</span>
+          <div class="field"><input readonly data-key="hotHaul" aria-label="Hauling overlay key"><input readonly data-pad="padHaul" aria-label="Hauling overlay controller button" placeholder="controller: none"></div>
+          <label class="check"><input type="checkbox" data-ov="haulOn">Show the Hauling overlay</label>
+          <label class="slide">Size<output></output><input type="range" data-ov="haulScale" data-kind="decimal" min="0.7" max="2" step="0.01" aria-label="Hauling overlay size"></label>
+          <label class="slide">Left to right<output></output><input type="range" data-ov="haulX" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Hauling overlay, left to right"></label>
+          <label class="slide">Top to bottom<output></output><input type="range" data-ov="haulY" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Hauling overlay, top to bottom"></label>
+        </div>
+        <div title="Shows the nearest places of your last Find by name search.">
+          <span class="cap">Find by name overlay: its key  (click, then press the keys)</span>
+          <div class="field"><input readonly data-key="hotMarket" aria-label="Find by name overlay key"><input readonly data-pad="padMarket" aria-label="Find by name overlay controller button" placeholder="controller: none"></div>
+          <label class="check"><input type="checkbox" data-ov="marketOn">Show the Find by name overlay</label>
+          <label class="slide">Size<output></output><input type="range" data-ov="marketScale" data-kind="decimal" min="0.7" max="2" step="0.01" aria-label="Find by name overlay size"></label>
+          <label class="slide">Left to right<output></output><input type="range" data-ov="marketX" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Find by name overlay, left to right"></label>
+          <label class="slide">Top to bottom<output></output><input type="range" data-ov="marketY" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Find by name overlay, top to bottom"></label>
+        </div>
+        <div title="Shows the next stop of your Studio Nav route, or your exploring trip.">
+          <span class="cap">Route overlay: its key  (click, then press the keys)</span>
+          <div class="field"><input readonly data-key="hotNav" aria-label="Route overlay key"><input readonly data-pad="padNav" aria-label="Route overlay controller button" placeholder="controller: none"></div>
+          <label class="check"><input type="checkbox" data-ov="navOn">Show the Route overlay</label>
+          <label class="slide">Size<output></output><input type="range" data-ov="navScale" data-kind="decimal" min="0.7" max="2" step="0.01" aria-label="Route overlay size"></label>
+          <label class="slide">Left to right<output></output><input type="range" data-ov="navX" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Route overlay, left to right"></label>
+          <label class="slide">Top to bottom<output></output><input type="range" data-ov="navY" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Route overlay, top to bottom"></label>
+        </div>
+        <div title="Shows the ship you are flying; more comes later.">
+          <span class="cap">Loadouts overlay: its key  (click, then press the keys)</span>
+          <div class="field"><input readonly data-key="hotLoadouts" aria-label="Loadouts overlay key"><input readonly data-pad="padLoadouts" aria-label="Loadouts overlay controller button" placeholder="controller: none"></div>
+          <label class="check"><input type="checkbox" data-ov="loadoutsOn">Show the Loadouts overlay</label>
+          <label class="slide">Size<output></output><input type="range" data-ov="loadoutsScale" data-kind="decimal" min="0.7" max="2" step="0.01" aria-label="Loadouts overlay size"></label>
+          <label class="slide">Left to right<output></output><input type="range" data-ov="loadoutsX" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Loadouts overlay, left to right"></label>
+          <label class="slide">Top to bottom<output></output><input type="range" data-ov="loadoutsY" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Loadouts overlay, top to bottom"></label>
+        </div>
+        <p class="small warn" id="key-said" hidden></p>
+        <p class="small warn" id="key-warn" hidden></p>
+        <p class="small muted">The "controller" boxes are for a stick, HOTAS or gamepad. Click one, then press a button on the controller, or hold one button and press another: a pair like that leaves every single button to the game. Click the box again to clear it. Studio only listens, so the game still sees these buttons too.</p>
+        <p class="small muted">Keys and controller buttons work while Elite is the active window, so they never block other programs.</p>
+        <label class="check"><input type="checkbox" data-ov="onlyWhenElite">Only while Elite is the active window</label>
+        <label class="slide">Background opacity<output></output><input type="range" data-ov="opacity" data-kind="decimal" min="0.2" max="1" step="0.01"></label>
+        <div class="field"><label title="The order of the short trade list on the Hauling overlay. In the game the list's own Order line changes it too.">Order of the Hauling overlay's trade list<select data-set="listSort"></select></label></div>
+        <p class="small muted">Elite must be in Borderless (Options › Graphics › Display › Window mode) for an overlay to show over the game.</p>
+      </div>
+    </details>
+
+    <p class="small muted credit">Prices come from <a href="https://ardent-insight.com" target="_blank" rel="noopener">Ardent Insight</a> by Iain Collins, built on what players share through <a href="https://eddn.edcd.io" target="_blank" rel="noopener">EDDN</a>. It is community data and can be out of date or missing in quiet areas: the Updated column says how old each price is. Powerplay information comes from <a href="https://spansh.co.uk" target="_blank" rel="noopener">Spansh</a> and is only asked for when you set a Powerplay filter.</p>
+    <p class="small muted">Studio sends those services only what a search needs: the name of the system you are in, your distances and filters, and a commodity you look up. Where you are, your ship and your cargo come from Elite's own journal files, which Studio only reads.</p>
+  </aside>
+
+  <main class="trades">
+    <div class="bar">
+      <button class="btn" id="search">Search again</button>
+      <button class="btn" id="accept" title="Accepts the trade you clicked in the list (or the one in the overlay). The overlay stays on it until you finish it or drop it.">✔ Accept trade</button>
+      <button class="btn" id="drop" title="Takes the check mark off and searches again from where you are" hidden>Drop accepted trade</button>
+      <button class="btn" id="copy" title="Copies the star system to fly to next for the trade shown in the overlay">Copy next stop</button>
+      <span class="small muted" id="next"></span>
+    </div>
+    <div class="bar">
+      <span class="muted">Where can I sell:</span>
+      <button class="btn" id="cargo" title="Finds the nearest stations that will take what is in your hold for more than you paid">My cargo</button>
+      <span class="field"><select id="pick" aria-label="Commodity" title="Pick a commodity. What the station you are docked at sells is listed first, with its price there."></select></span>
+      <button class="btn" id="where" title="Finds where the picked commodity sells for the most, within your route distance and price age">This commodity</button>
+      <button class="btn" id="back" hidden>Back to trades</button>
+    </div>
+    <p class="line"><span class="spin" id="busy" hidden></span><span class="muted" id="list-msg"></span><span id="said"></span></p>
+    <div class="tablebox" id="list"><table><thead><tr id="heads"></tr></thead><tbody id="rows"></tbody></table></div>
+    <p class="small muted">Click a row to show that trade in the overlay. Tick its box (or click "Accept this trade" on the overlay in the game) to accept it: the overlay then stays on that trade until you finish it or drop it. Click a column title to sort.</p>
+  </main>
+</div>
+
+<script src="../studio.js"></script>
+<script>
+(() => {
+'use strict';
+const { $, h, options, toast, whole, count, dot, wideDot } = Studio;
+const all = selector => [...document.querySelectorAll(selector)];
+
+let view = null;    // the app's whole picture of hauling: the newest answer or "market" event
+let ov = null;      // the overlay's settings, its keys, the game's display mode and its first-run note: the newest answer or "overlay" event
+let game = {};      // the newest game snapshot
+
+// ============================================================ numbers and words, as the old window wrote them
+// (Studio.whole writes 1,234; Studio.count writes "3 jumps".)
+const n1 = n => (Number(n) || 0).toLocaleString('en-US', { maximumFractionDigits: 1, useGrouping: false });   // 1234.6, and 12 for 12.0
+const plain = n => String(Math.round(Number(n) || 0));                                      // 1234
+const hours = n => count(n, 'hour') + (n % 24 ? '' : ' (' + count(n / 24, 'day') + ')');
+const tons = n => n > 0 ? whole(n) + ' tons or more' : 'Any';
+const powers = ['Aisling Duval', 'Archon Delaine', 'A. Lavigny-Duval', 'Denton Patreus', 'Edmund Mahon', 'Felicia Winters', 'Jerome Archer',
+  'Li Yong-Rui', 'Nakato Kaine', 'Pranav Antal', 'Yuri Grom', 'Zemina Torval'];   // spelled as the Powerplay data (Spansh) spells them
+const powerName = tag => tag === 'A. Lavigny-Duval' ? 'Arissa Lavigny-Duval' : tag;
+const states = ['Stronghold', 'Fortified', 'Exploited', 'Unoccupied'];
+const isSet = filter => !!filter && filter.toLowerCase() !== 'any';
+
+// What a player typed, as a number. A decimal comma counts as a point ("14,5" is 14.5); null when it is no number.
+function decimal(text) {
+  const t = text.trim().replace(',', '.');
+  return t !== '' && isFinite(Number(t)) ? Number(t) : null;
+}
+// What a player typed, as a whole number: "1,000", "1.000" and "1 000" are a thousand; anything else is rounded ("12,5" is 13).
+function typedWhole(text) {
+  const t = text.replace(/\s/g, '');
+  if (/^\d{1,3}([.,]\d{3})+$/.test(t)) return Number(t.replace(/[.,]/g, ''));
+  const n = decimal(t);
+  return n === null ? null : Math.round(n);
+}
+
+// What this browser remembers for the page; a browser that keeps nothing still shows the page right.
+function recall(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+function remember(key, value) { try { localStorage.setItem(key, value); } catch (e) {} }
+
+// ============================================================ small drawing helpers
+// Text is written only when it differs, so text the player has selected stays selected between two events.
+function write(el, text) { if (el.textContent !== text) el.textContent = text; }
+
+// Shows the app's value in a control. A box or slider the player is busy with is left alone until they are done.
+function put(el, value) {
+  if (el.type === 'checkbox') { el.checked = !!value; return; }
+  if (el.dataset.busy) return;
+  const text = String(value);
+  // A value no choice stands for (a settings file edited by hand) is shown as it is, not as the first choice.
+  if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === text)) el.append(h('option', { value: text }, text));
+  if (el.value !== text) el.value = text;
+}
+
+// What a control holds, in the kind the app wants; null for a box whose text is no number.
+function valueOf(el) {
+  if (el.type === 'checkbox') return el.checked;
+  const kind = el.dataset.kind;
+  return kind === 'bool' ? el.value === 'true' : kind === 'whole' ? typedWhole(el.value) : kind === 'decimal' ? decimal(el.value) : el.value;
+}
+
+// ============================================================ the trade list
+// The old window's columns in its order. text: how a number is written (the old grid put a thousands comma in
+// credits, tons and light seconds, and none in a place in the list, jumps, minutes and light years);
+// look: 'profit' is green, 'dest' grey; sort: what the column sorts by when that is not what it shows;
+// hide: 'look' = not in a lookup, 'back' = nor in a one-way list (there is no way back), 'power' = only
+// when a trade has a Power to show.
+const columns = [
+  { head: '#', key: 'rank', text: plain },
+  { head: 'Commodity', key: 'commodity' },
+  { head: 'Per hour', key: 'perHour', text: whole, look: 'profit', hide: 'look' },
+  { head: 'Profit /t', key: 'profitPerTon', text: whole, look: 'profit' },
+  { head: 'Buy at', key: 'buyStation', hide: 'look' },
+  { head: 'Buy system', key: 'buySystem', hide: 'look' },
+  { head: 'From you ly', key: 'buyDistanceLy', text: n1, hide: 'look' },
+  { head: 'Jumps empty', key: 'jumpsToBuy', text: plain, hide: 'look' },
+  { head: 'Buy cr', key: 'buyPrice', text: whole, hide: 'look' },
+  { head: 'Supply', key: 'stock', text: whole, hide: 'look' },
+  { head: 'Sell at', key: 'sellStation', look: 'dest' },
+  { head: 'Sell system', key: 'sellSystem', look: 'dest' },
+  { head: 'Pad', key: 'sellPad', look: 'dest' },
+  { head: 'Star ls', key: 'sellStarLs', text: whole, look: 'dest' },
+  { head: 'Sell cr', key: 'sellPrice', text: whole },
+  { head: 'Demand', key: 'demand', text: whole },
+  { head: 'Trip ly', key: 'distanceLy', text: n1 },
+  { head: 'Jumps full', key: 'jumpsOut', text: plain },
+  { head: 'Jumps back', key: 'jumpsBack', text: plain, hide: 'back' },
+  { head: 'Profit /trip', key: 'profitPerTrip', text: whole, look: 'profit' },
+  { head: 'Bring back', key: 'return', hide: 'back' },
+  { head: 'Back /t', key: 'returnProfitPerTon', text: whole, look: 'profit', hide: 'back' },
+  { head: 'Round trip', key: 'roundTripProfit', text: whole, look: 'profit', hide: 'back' },
+  { head: 'Minutes', key: 'minutes', text: plain, hide: 'look' },
+  { head: 'Updated', key: 'updated', sort: 'ageHours' },
+  { head: 'Buy Power', key: 'buyPower', hide: 'power' },
+  { head: 'Sell Power', key: 'sellPower', hide: 'power' },
+];
+const tickTip = 'Tick to accept this trade. Untick to drop it and search again.';
+
+let sort = null;      // { key, down }: the column title clicked; null is the search's own order
+let picked = null;    // the row last clicked, as the old list's selection: what "Accept trade" accepts
+let drawn = '';       // what the list was last drawn from
+
+// Two rows are the same trade when the commodity and both markets match; these three values are also what goes back to the app.
+const naming = row => ({ commodityId: row.commodityId, buyMarketId: row.buyMarketId, sellMarketId: row.sellMarketId });
+const same = (a, b) => !!a && !!b && a.buyMarketId === b.buyMarketId && a.sellMarketId === b.sellMarketId && a.commodityId.toLowerCase() === b.commodityId.toLowerCase();
+
+function shows(column) {
+  if (column.hide === 'power') return !view.lookup && view.rows.some(row => row.buyPower || row.sellPower);
+  if (column.hide && view.lookup) return false;   // a lookup has nothing to say about buying or bringing a load back
+  return column.hide !== 'back' || !view.listOneWay;
+}
+
+function sorted(rows) {
+  if (!sort) return rows;
+  const key = sort.key, way = sort.down ? -1 : 1;
+  return [...rows].sort((a, b) => way * (typeof a[key] === 'number' ? a[key] - b[key] : String(a[key]).localeCompare(String(b[key]), 'en', { sensitivity: 'base' })));
+}
+
+// Click a title: smallest first, again: biggest first, a third time: back to the search's own order.
+function sortBy(key) {
+  sort = !sort || sort.key !== key ? { key, down: false } : sort.down ? null : { key, down: true };
+  drawList();
+}
+
+function drawList() {
+  const cols = columns.filter(shows), onOverlay = view.rows[view.shown];
+  // Drawn again only when something in it changed: a row replaced under the mouse would swallow the click.
+  const mark = JSON.stringify([view.rows, cols.length, view.accepted && naming(view.accepted), view.shown, !!view.lookup, sort, picked]);
+  if (mark === drawn) return;
+  drawn = mark;
+  $('#heads').replaceChildren(...(view.lookup ? [] : [h('th', { class: 'tick', title: tickTip }, '✔')]), ...cols.map(c => {
+    const key = c.sort || c.key, by = sort && sort.key === key;
+    return h('th', { class: (c.text ? 'r ' : '') + 'sort' + (by ? (sort.down ? ' down' : ' up') : ''), onclick: () => sortBy(key) }, c.head);
+  }));
+  $('#rows').replaceChildren(...sorted(view.rows).map(row => {
+    const accepted = !view.lookup && same(row, view.accepted);
+    return h('tr', { class: [row === onOverlay && 'shown', accepted && 'accepted', same(row, picked) && 'picked'].filter(Boolean).join(' '), onclick: e => clickRow(row, e) },
+      !view.lookup && h('td', { class: 'tick', title: tickTip }, h('input', { type: 'checkbox', checked: accepted, 'aria-label': 'Accept ' + row.commodity + ' to ' + row.sellStation })),
+      cols.map(c => h('td', { class: [c.text && 'r', c.look].filter(Boolean).join(' ') || null }, c.text ? c.text(row[c.key]) : row[c.key])));
+  }));
+}
+
+function clickRow(row, e) {
+  if (e.target.closest('.tick')) {
+    e.preventDefault();   // the box shows what the app says, never what the click alone would make of it
+    if (same(row, view.accepted)) act('drop'); else act('accept', naming(row));
+    return;
+  }
+  picked = naming(row);
+  drawList();
+  act('show', picked);
+}
+
+// ============================================================ the buttons and the lines above the list
+let lineMark = '';
+function drawBar() {
+  const stop = view.nextStop, look = view.lookup;
+  const busy = view.searching || (!!look && look.status === 'searching');
+  // Before the first search there is no list message yet; then the line says what the overlay says: what is waited for.
+  const line = view.listMessage || (view.rows.length ? '' : view.message);
+  // As in the old window, a new list message takes the place of what was said about the last click.
+  if (lineMark !== line + busy) { lineMark = line + busy; write($('#said'), ''); }
+  write($('#list-msg'), line);
+  $('#busy').hidden = !busy;
+  $('#drop').hidden = !view.accepted;
+  $('#back').hidden = !look;
+  const jumps = stop && stop.jumps ? (stop.plotted ? count(stop.jumps, 'jump') + ' on your plotted route' : '~' + count(stop.jumps, 'jump') + ' with ' + (stop.load === 'full' ? 'a full' : 'an empty') + ' hold') : '';
+  write($('#next'), stop ? 'Next stop: ' + [stop.system, stop.verb + ' ' + stop.station, stop.here ? 'you are in this system' : stop.ly ? n1(stop.ly) + ' ly' : '', !stop.here && jumps].filter(Boolean).join(dot) : '');
+  options($('#pick'), [['', view.commodities.length ? 'Pick a commodity' : 'No commodities known yet'],
+    ...view.commodities.map(c => [c.id, c.name + (c.priceHere > 0 ? ' (' + whole(c.priceHere) + ' cr here)' : '')])]);
+}
+
+function say(text, where) { write($(where || '#said'), text); }
+
+// ============================================================ the status line, the notes under it, the section summaries
+function summaries() {
+  const s = view.settings, u = view.inUse;
+  const volume = v => v > 0 ? whole(v) + '+' : 'any';
+  const side = (who, power, state) => {
+    const set = [isSet(power) && powerName(power), isSet(state) && state].filter(Boolean);
+    return set.length ? who + ': ' + set.join(', ') : '';
+  };
+  const active = view.presets.find(p => p.active);
+  return {
+    basic: [s.startMode === 'anywhere' ? 'Buy anywhere' : 'Buy within ' + s.buyLy + ' ly', 'routes to ' + s.maxLy + ' ly', u.cargoTons + ' t',
+      'prices under ' + s.maxAgeHours + ' h', s.returns ? 'round trips' : 'one way'].join(dot),
+    station: ['Pad ' + u.pad, s.maxStarLs > 0 ? whole(s.maxStarLs) + ' ls' : 'any distance', { none: 'space only', horizons: 'no settlements' }[s.surface] || 'surface too',
+      'supply ' + volume(s.minSupply), 'demand ' + volume(s.minDemand)].join(dot),
+    power: [side('Buy', s.srcPower, s.srcState), side('Sell', s.dstPower, s.dstState)].filter(Boolean).join(dot) || 'Any (not used)',
+    presets: (view.presets.length ? view.presets.length + ' saved' : 'None yet') + (active ? dot + 'using "' + active.name + '"' : ''),
+  };
+}
+
+function drawStatus() {
+  const s = view.settings, u = view.inUse, sums = summaries();
+  const where = game.starSystem ? game.starSystem + (game.docked && game.station ? ' (docked at ' + game.station + ')' : '') : 'unknown (start Elite)';
+  write($('#status-text'), [
+    'System: ' + where, 'Ship: ' + (game.shipType || 'unknown ship'), 'Cargo: ' + u.cargoTons + ' t', 'Pad: ' + u.pad,
+    'Jump: ' + u.jumpEmpty + ' ly empty, ' + u.jumpFull + ' ly full', s.startMode === 'anywhere' ? 'Anywhere' : 'Within ' + s.buyLy + ' ly',
+    view.lastSearch ? 'last search ' + view.lastSearch : 'not searched yet',
+  ].join(wideDot));
+  write($('#status-accepted'), view.accepted ? wideDot + '✔ ACCEPTED: ' + view.accepted.commodity + ' to ' + view.accepted.sellStation : '');
+  for (const name of Object.keys(sums)) write($('#sum-' + name), sums[name]);
+  $('#swapped').hidden = !u.jumpRangesSwapped;
+  drawJumpNote();
+
+  // Studio copies the old tool's settings the first time it starts: hauling its search settings, the overlay its colour
+  // and its look. Each says so (and from which file) until the player presses OK here, which each of them is then told.
+  const from = view.copiedFrom, keysFrom = ov && ov.copiedFrom;
+  $('#old-tool').hidden = !from && !keysFrom;
+  const only = file => ' (' + file + ', which Studio only reads)';
+  write($('#old-tool-text'),
+    (from ? 'Your search settings and presets were just copied from the Elite Haul Overlay' + only(from) + '. ' + sums.basic + '. ' + sums.station + '. Powerplay: ' + sums.power + '.' : '')
+    + (!keysFrom ? '' : from ? ' The overlay\'s colour and opacity were copied too; its keys, place and size are Studio\'s own.'
+      : 'The overlay\'s colour and opacity were just copied from the Elite Haul Overlay' + only(keysFrom) + '.'));
+}
+
+// The line under the two jump boxes: which numbers are in use and where they come from.
+function drawJumpNote() {
+  const s = view.settings, u = view.inUse, ship = game.shipType || 'ship';
+  let note, warn = false;
+  if (!(u.jumpFull > 0)) note = 'Not known yet: start Elite so Studio can read your ship, or type your own numbers.';
+  else if (!(s.jumpRange > 0 || s.jumpEmpty > 0)) note = 'Using ' + u.jumpEmpty + ' ly empty and ' + u.jumpFull + ' ly full (worked out from your ' + ship + ' and ' + u.cargoTons + ' t of cargo).';
+  else {
+    note = 'Using ' + u.jumpEmpty + ' ly empty and ' + u.jumpFull + ' ly full (your numbers).';
+    warn = u.jumpRangesSwapped;
+    if (warn) note += ' A full hold never jumps farther than an empty one, so your two numbers were swapped.';
+    // What the ship itself works out to, with the cargo capacity in use (the ship's own, or the one typed above).
+    if (u.shipFull > 0) {
+      // Typed numbers that say the ship jumps much farther than it can make every jump count too low.
+      warn = warn || u.jumpFull > u.shipFull * 1.15 || u.jumpEmpty > u.shipEmpty * 1.15;
+      note += ' Your ' + ship + ' works out to ' + u.shipEmpty + ' ly empty and ' + u.shipFull + ' ly full with ' + u.cargoTons + ' t of cargo. Set both boxes to 0 to use that.';
+    }
+  }
+  write($('#jump-now'), note);
+  $('#jump-now').className = 'small ' + (warn ? 'warn' : 'muted');
+}
+
+// ============================================================ the settings sections
+function drawSettings() {
+  const s = view.settings, line = key => view.settingLines.find(l => l.key === key);
+  // These three lists hold the steps the overlay menu moves through, in the old window's words; the fourth, the orders of its short trade list.
+  options($('[data-set=maxAgeHours]'), line('maxAgeHours').choices.map(c => [c.value, hours(c.value)]));
+  for (const key of ['minSupply', 'minDemand']) options($('[data-set=' + key + ']'), line(key).choices.map(c => [c.value, tons(c.value)]));
+  options($('[data-set=listSort]'), view.listSorts.map(order => [order.key, order.name]));
+  for (const el of all('[data-set]')) put(el, s[el.dataset.set]);
+  $('[data-set=buyLy]').disabled = !line('buyLy').usable;   // "anywhere" has no distance from the player
+  // The ranking choices are worded for the kind of trip.
+  const rank = $('[data-set=rankBy]').options;
+  write(rank[0], s.returns ? 'Profit per hour (round trip)' : 'Profit per hour (one way)');
+  write(rank[1], s.returns ? 'Profit per round trip' : 'Profit per trip');
+  const filtered = [s.srcPower, s.dstPower, s.srcState, s.dstState].some(isSet);
+  $('#pp-note').className = 'small ' + (filtered && s.startMode === 'anywhere' ? 'warn' : 'muted');
+  drawPresets();
+}
+
+let presetWanted = '';   // the preset to select as soon as the list has it: the one just saved
+function drawPresets() {
+  const pick = $('#preset-pick'), named = name => view.presets.find(p => p.name.toLowerCase() === name.toLowerCase());
+  const saved = presetWanted && named(presetWanted);
+  if (saved) presetWanted = '';
+  // As the old window did: the one just saved, else the one picked, else the first one in use.
+  const chosen = saved || named(pick.value) || view.presets.find(p => p.active);
+  options(pick, [['', ''], ...view.presets.map(p => [p.name, (p.active ? '✔ ' : '') + p.name])]);
+  pick.value = chosen ? chosen.name : '';
+  write($('#preset-text'), chosen ? chosen.text + (chosen.active ? dot + 'in use' : '') : view.presets.length ? '✔ marks a preset whose settings are in use.' : '');
+}
+
+function changeSetting(el) {
+  const value = valueOf(el);
+  if (value === null) { drawSettings(); return; }   // no number: the box goes back to the value in use, as the old window kept it
+  act('settings', { [el.dataset.set]: value });
+}
+
+// ============================================================ the overlay box and its keys
+const keyActions = { haul: 'Hauling overlay', market: 'Find by name overlay', nav: 'Route overlay', loadouts: 'Loadouts overlay' };
+// Keys by the name Windows has for them, which is how the hotkey settings spell a key. Punctuation keys are
+// left out: which of them a key is depends on the keyboard's country, and a page cannot see that.
+const namedKeys = { ' ': 'Space', Enter: 'Return', Backspace: 'Back', Escape: 'Escape', Insert: 'Insert', Delete: 'Delete', Home: 'Home', End: 'End',
+  PageUp: 'PageUp', PageDown: 'PageDown', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Pause: 'Pause' };
+const padKeys = { NumpadAdd: 'Add', NumpadSubtract: 'Subtract', NumpadMultiply: 'Multiply', NumpadDivide: 'Divide', NumpadDecimal: 'Decimal' };
+
+function keyName(e) {
+  let digit;
+  if (/^F([1-9]|1\d|2[0-4])$/.test(e.key)) return e.key;
+  if (/^[a-z]$/i.test(e.key)) return e.key.toUpperCase();
+  if ((digit = /^Digit(\d)$/.exec(e.code))) return 'D' + digit[1];
+  if ((digit = /^Numpad(\d)$/.exec(e.code)) && e.key === digit[1]) return 'NumPad' + digit[1];
+  return namedKeys[e.key] || padKeys[e.code] || null;
+}
+
+// The old window's rule for a key box: Ctrl, Alt, Shift and Win in that order, then the key, joined with "+".
+// A key on its own must be a function key. F11 is never taken: it is the game's own "reload the HUD colours".
+function captureKey(e) {
+  if (['Control', 'Shift', 'Alt', 'AltGraph', 'Meta', 'OS', 'Tab'].includes(e.key)) return;   // not a key yet; and Tab still moves from box to box
+  e.preventDefault();
+  const name = keyName(e), held = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Win'].filter(Boolean);
+  const refused = name === null ? 'Studio cannot use that key here. Pick a function key, a letter, a digit or a navigation key.'
+    : name === 'F11' ? 'F11 reloads the HUD colours in the game, and Studio presses it there after every theme save. Pick another key.'
+    : !held.length && !/^F\d+$/.test(name) ? "Use a function key (F1-F24) or add Ctrl, Alt or Shift, so the key doesn't clash with the game."
+    : '';
+  keySaid(refused);
+  if (!refused) setOverlay({ [e.target.dataset.key]: [...held, name].join('+') });
+}
+
+// The line under the key boxes: why a key was not taken, or what a controller box is waiting for.
+function keySaid(text) {
+  write($('#key-said'), text);
+  $('#key-said').hidden = !text;
+}
+
+// A controller box. A page cannot see a controller's buttons itself (a browser shows them only to the page in front,
+// and only after a first press there), so the app listens: one call that waits until the player has pressed a button,
+// or held one and pressed another, and then answers with the overlay's picture, the button in it.
+let hearing = null;   // the box that waits
+let waits = 0;        // counts the clicks on these boxes, so an answer to an earlier click is told from the newest
+
+// Click a box: the app waits for a button and keeps it. Click the box again while it waits: no button for that action.
+// (That, like every change to the overlay's settings, ends the app's wait.)
+async function hear(el) {
+  if (!ov) return;   // the app has not answered yet
+  const again = hearing === el, mine = ++waits;
+  hearing = again ? null : el;
+  keySaid(again ? '' : 'Now press a button on your stick or gamepad, or hold one button and press another. Click the box again for no button.');
+  drawOverlay();
+  if (again) { setOverlay({ [el.dataset.pad]: '' }); return; }
+  let said = '';
+  try { await overlay('POST', '/api/overlay/listen', { setting: el.dataset.pad }); }
+  catch (e) { said = e.message; }   // no button came in time, or there is no controller: the app's words say which
+  if (waits !== mine) return;       // another box was clicked meanwhile, or this one again
+  hearing = null;
+  keySaid(said);
+  el.blur();
+  drawOverlay();
+}
+
+function keyWarnings() {
+  const named = k => keyActions[k.action] + ' (' + k.key + ')', lines = [];
+  const unknown = ov.keys.filter(k => !k.valid);
+  if (unknown.length) lines.push('Not a key Studio can use: ' + unknown.map(named).join(', ') + '. Click the box and press the keys again.');
+  // The same key on two actions: the one further up this list gets it, as in the old tool.
+  const twice = ov.keys.filter((k, at) => k.valid && ov.keys.findIndex(other => other.key.toLowerCase() === k.key.toLowerCase()) < at);
+  if (twice.length) lines.push('Already on another of these keys: ' + twice.map(named).join(', ') + '. Pick different keys.');
+  const taken = ov.keys.filter(k => k.valid && k.registered === false && !twice.includes(k));
+  if (taken.length) lines.push('Another program already uses: ' + taken.map(named).join(', ') + '. Pick different keys.');
+  const twicePad = ov.keys.filter((k, at) => k.pad && ov.keys.findIndex(other => other.pad === k.pad) < at);
+  if (twicePad.length) lines.push('Already on another of these controller buttons: ' + twicePad.map(k => keyActions[k.action] + ' (' + k.pad + ')').join(', ') + '. Pick different buttons.');
+  // The game reads the keyboard itself, so it sees the key go down whatever is held with it.
+  for (const k of ov.keys) if (k.gameActions.length) lines.push('The game itself uses ' + k.key.split('+').pop() + ' (' + k.gameActions.join(', ') + '): ' + named(k) + ' would set that off as well.');
+  return lines.join(' ');
+}
+
+function readouts() {
+  for (const slide of all('.slide')) {
+    const el = slide.querySelector('input');
+    // A box's place is already a share of the screen, 0 to 100; its size and the opacity are 1 for 100%.
+    write(slide.querySelector('output'), Math.round(el.value * (/[XY]$/.test(el.dataset.ov) ? 1 : 100)) + '%');
+  }
+}
+
+function drawOverlay() {
+  const s = ov.settings;
+  for (const el of all('[data-ov]')) put(el, s[el.dataset.ov]);
+  for (const el of all('[data-key]')) put(el, s[el.dataset.key]);
+  for (const el of all('[data-pad]')) {
+    const pad = ov.keys.find(k => k.padSetting === el.dataset.pad).pad;   // in words: "Button 7 on <controller>", or '' for none
+    put(el, el === hearing ? 'Press a button…' : pad);
+    el.classList.toggle('hearing', el === hearing);
+    // The whole of it for the mouse, as the box is narrow. (With no button the box has no title of its own, so the action's shows.)
+    if (pad) el.title = pad; else el.removeAttribute('title');
+  }
+  readouts();
+  const pads = ov.keys.filter(k => k.pad).length;
+  // Each box with its key, and whether it is showing: "Hauling F2 (on) · Find by name F3 · …".
+  write($('#sum-overlay'), ov.keys.map(k => keyActions[k.action].replace(' overlay', '') + ' ' + k.key + (s[k.action + 'On'] ? ' (on)' : '')).join(dot)
+    + (pads ? dot + count(pads, 'controller button') : ''));
+  const warnings = keyWarnings();
+  write($('#key-warn'), warnings);
+  $('#key-warn').hidden = !warnings;
+  $('#fullscreen').hidden = ov.displayMode !== 'fullscreen';
+}
+
+// ============================================================ talking to the app
+function draw() {
+  if (ov) drawOverlay();
+  if (!view) return;
+  drawStatus();
+  drawBar();
+  drawList();
+  drawSettings();
+}
+
+function show(v) {
+  view = v;
+  draw();
+}
+
+// One click's request. The answer is the app's whole picture again; "said" is the line the old window showed
+// after that click. An answer overtaken by a live "market" event is older than what is shown, so only its line counts.
+async function act(path, body, where) {
+  try {
+    const v = await market('POST', '/api/market/' + path, body || {});
+    if (v.said) say(v.said, where);
+  } catch (e) {
+    toast(e.message, true);
+    if (view) draw();   // a control the app would not follow goes back to what the app holds
+  }
+}
+
+// The overlay's routes all answer with its whole picture, as its "overlay" event does.
+function showOverlay(o) {
+  ov = o;
+  draw();
+}
+
+async function setOverlay(changes) {
+  try { await overlay('POST', '/api/overlay/settings', changes); }
+  catch (e) {
+    toast(e.message, true);
+    overlay('GET', '/api/overlay/settings').catch(() => {});   // back to what the app holds
+  }
+}
+
+// The OK button of the note about the copied settings: hauling and the overlay each forget their part of it.
+function oldToolRead() {
+  if (view && view.copiedFrom) act('old-tool-read');
+  if (ov && ov.copiedFrom) overlay('POST', '/api/overlay/old-tool-read', {}).catch(e => toast(e.message, true));
+}
+
+async function copyNextStop() {
+  const name = view && view.nextStop && view.nextStop.system;
+  if (!name) { say('No trade to copy yet.'); return; }
+  if (!await Studio.copy(name)) { say('Could not copy. The next stop is ' + name + '.'); return; }
+  await act('copied', { text: name });   // so the overlay says it too
+  say('Copied ' + name + '. Paste it into the galaxy map search with Ctrl+V.');
+}
+
+function savePreset() {
+  presetWanted = $('#preset-name').value.trim();
+  act('preset/save', { name: presetWanted }, '#preset-msg');
+}
+
+// ============================================================ start-up
+if (!Studio.served) return;
+for (const el of all('[data-list]')) options(el, el.dataset.list === 'power'
+  ? [['any', 'Any'], ...powers.map(tag => [tag, powerName(tag)])]
+  : [['any', 'Any'], ...states.map(tag => [tag, tag === 'Unoccupied' ? 'Unoccupied (in range of the Power, not controlled)' : tag])]);
+
+// Sections open and close, and come back the way they were left; the first time, only BASIC is open.
+const open = (recall('studio.market.open') ?? 'basic').split(',');
+for (const section of all('.sec')) {
+  section.open = open.includes(section.dataset.sec);
+  section.addEventListener('toggle', () => remember('studio.market.open', all('.sec').filter(sec => sec.open).map(sec => sec.dataset.sec).join(',')));
+}
+
+// A text box being changed keeps what the player put in it until they are done with it.
+for (const el of all('input[data-set]')) {
+  el.addEventListener('input', () => { el.dataset.busy = '1'; });
+  for (const done of ['change', 'blur']) el.addEventListener(done, () => { delete el.dataset.busy; });
+}
+for (const el of all('[data-set]')) el.addEventListener('change', () => changeSetting(el));
+for (const el of all('[data-ov]:not([type=range])')) el.addEventListener('change', () => setOverlay({ [el.dataset.ov]: valueOf(el) }));
+// The overlay follows a slider while it moves (it shows while Studio is in front), without a save for every step.
+// What is sent is where the slider stood when it last moved, and the slider stays the player's until the app has
+// answered that: a redraw in between (every "market" event is one) would put the older value back into it.
+for (const el of all('input[type=range]')) {
+  let sending = 0;
+  el.addEventListener('input', () => {
+    readouts();
+    el.dataset.busy = '1';
+    const change = { [el.dataset.ov]: valueOf(el) };
+    clearTimeout(sending);
+    const mine = setTimeout(async () => {
+      await setOverlay(change);
+      if (sending !== mine) return;   // moved again meanwhile: still the player's
+      delete el.dataset.busy;
+      draw();   // now it shows what the app holds, also when the app would not take the value
+    }, 100);
+    sending = mine;
+  });
+}
+for (const el of all('[data-key]')) el.addEventListener('keydown', captureKey);
+for (const el of all('[data-pad]')) {
+  el.addEventListener('click', () => hear(el));
+  el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); hear(el); } });   // for a player without a mouse
+}
+
+$('#search').addEventListener('click', () => act('search'));
+$('#accept').addEventListener('click', () => act('accept', picked && view && view.rows.some(row => same(row, picked)) ? picked : {}));
+$('#drop').addEventListener('click', () => act('drop'));
+$('#copy').addEventListener('click', copyNextStop);
+$('#cargo').addEventListener('click', () => act('sell-cargo'));
+$('#where').addEventListener('click', () => act('where-to-sell', { commodity: $('#pick').value }));
+$('#back').addEventListener('click', () => act('back'));
+
+$('#preset-pick').addEventListener('change', () => { $('#preset-name').value = $('#preset-pick').value; drawPresets(); });
+$('#preset-use').addEventListener('click', () => act('preset/use', { name: $('#preset-pick').value }, '#preset-msg'));
+$('#preset-del').addEventListener('click', async () => {
+  const name = $('#preset-pick').value;
+  await act('preset/remove', { name }, '#preset-msg');
+  if (name) $('#preset-name').value = '';
+});
+$('#preset-save').addEventListener('click', savePreset);
+$('#preset-name').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.repeat) savePreset(); });
+$('#old-tool-ok').addEventListener('click', oldToolRead);
+
+// The app's three pictures, kept up to date. market() and overlay() are for this page's own requests, which answer with the same pictures.
+const market = Studio.follow('market', '/api/market/hauling', show);
+// The overlay says so itself when its picture changes: hidden or shown with its key in the game, a key Windows refused.
+const overlay = Studio.follow('overlay', '/api/overlay/settings', showOverlay);
+Studio.follow('state', '/api/state', g => { game = g; if (view) drawStatus(); });
+})();
+</script>
+</body>
+</html>

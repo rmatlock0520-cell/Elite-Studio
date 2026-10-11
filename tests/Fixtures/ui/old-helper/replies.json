@@ -1,0 +1,1065 @@
+[
+  {
+    "label": "status",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "app": "hud-studio",
+      "appVersion": "1.0",
+      "testMode": true,
+      "running": false,
+      "game": {
+        "path": "<GAME>",
+        "store": "Custom",
+        "version": "2026.09.03.332841"
+      },
+      "games": [],
+      "edhm": {
+        "installed": true,
+        "version": "22.03",
+        "date": "23 September 2026",
+        "forGame": "4.4.1.1",
+        "iniDir": "<GAME>\\EDHM-ini",
+        "linkTarget": null,
+        "files": {
+          "Startup-Profile": true,
+          "Advanced": true,
+          "SuitHud": true,
+          "XML-Profile": true
+        }
+      },
+      "xml": {
+        "path": "<XML>",
+        "exists": true,
+        "isDefault": true,
+        "matrix": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "themesDir": null,
+      "backupsDir": "<BACKUPS>",
+      "root": "<ROOT>",
+      "gameConfirmed": false
+    }
+  },
+  {
+    "label": "colour files as they are",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "files": {
+        "Startup-Profile": "[Constants]\n;================================= EDHM v22.03 ========================================================\n;  ** Shield Colour Mode **\n; 100 = Custom Multi-Color shield (see Advanced.ini)\n; 101 = Custom single Color (see Advanced.ini)\n; 199 = XML\n; 200 = Elite default\nz105 = 100\n;  ** Chat Panel Lines **\nx137 = 199\n;  ** Radar Brightness **\n; Default = 1.0\nw142 = 1.25\n;  ** Text Colour **\n; Red\nx115 = 0.8\n; Green\ny115 = 0.3663\n; Blue\nz115 = 1\n",
+        "Advanced": "; A line that looks like a setting before the section starts is not one.\nx1 = 0.111\n  [constants]   ; the header may be indented, in any case, with text after it\n;================ comments, blank lines and spacing all stay as they are ================\n\n; Red\nx232 = 0.5\n; Green, with odd spacing and a comment after the number\n   y232   =    0.25   ; trailing comment stays\n; Blue, with no spaces at all\nz232=1\n; Brightness, written without a leading zero\nw232 = .75\n; A number in exponent form\nx77 = 1.5e-3\n; A negative number\ny77 = -0.21\n; Tabs instead of spaces\nz77\t=\t0.3\n; Settings that are commented out do not exist\n;x90 = 0.9\n; x91 = 0.9\n; The same key twice: only the first one changes\nx50 = 0.1\nx50 = 0.2\n; A short key must not match a longer one that starts the same way\nx10 = 0.3\nx23 = 0.4\nx2 = 0.6\n; Not a number, or nothing at all\nx60 = abc\nx61 =\n; Text straight after the number is kept\nx62 = 0.5abc\n; Keys are case-sensitive\nX70 = 0.7\n; A plus sign is not part of a number\nx71 = +0.5\n; Values sent as numbers rather than text\ny40 = 0.5\nz40 = 1\n[Other]\n; Another section: nothing in here may change\nx232 = 9.9\nx80 = 8.8\n[Constants]\n; Only the first [Constants] section counts\ny232 = 7.7\n",
+        "SuitHud": "[Constants]\r\n;======== EDHM v22.03 - Suit HUD (this file has Windows line endings and a byte-order mark) ========\r\n; Panel mode\r\nx30 = 199\r\n; Panel colour: red, green, blue, brightness\r\nx31 = 1\r\ny31 = 0\r\nz31 = 1\r\nw31 = 1\r\n",
+        "XML-Profile": "[Constants]\n;=============== EDHM v22.03 ================\n;       --== XML Color Matrix ==--\n;       *** <MatrixRed> TOP Row ***\n; Top Left\nx150 = 0.6\n; Top Centre\ny150 = 0.21\n; Top Right\nz150 = 0.83\n;   *** <MatrixGreen> MIDDLE Row ***\nx151 = 0.86\ny151 = 0.42\nz151 = -0.65\n;    *** <MatrixBlue> BOTTOM Row ***\nx152 = -0.46\ny152 = 0.39\n; Bottom Right (the file ends straight after this number, with no line break)\nz152 = 0.83"
+      }
+    }
+  },
+  {
+    "label": "themes already in the folder",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "dir": null,
+      "edhmui": [],
+      "mine": [
+        {
+          "id": "Single colour",
+          "name": "Single colour",
+          "author": "me",
+          "created": "<TIME>",
+          "colors": [
+            "ff0000"
+          ]
+        },
+        {
+          "id": "Pretty",
+          "name": "Pretty Printed",
+          "author": "",
+          "created": "<TIME>",
+          "colors": [
+            "3d8bff",
+            "45d3ff"
+          ]
+        },
+        {
+          "id": "Odd",
+          "name": "5",
+          "author": "",
+          "created": "",
+          "colors": [
+            "1",
+            "a",
+            "True"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "label": "backups already in the folder",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "dir": "<BACKUPS>",
+      "items": [
+        {
+          "name": "<TIME> Before save",
+          "time": "<TIME>",
+          "reason": "Before save",
+          "kind": "colors",
+          "edhm": "22.03",
+          "to": null
+        },
+        {
+          "name": "<TIME> Odd info",
+          "time": 12,
+          "reason": null,
+          "kind": "colors",
+          "edhm": null,
+          "to": 0
+        },
+        {
+          "name": "<TIME> Unreadable info",
+          "time": "<TIME>",
+          "reason": "Incomplete backup",
+          "kind": "incomplete",
+          "edhm": null,
+          "to": null
+        },
+        {
+          "name": "<TIME> Interrupted",
+          "time": "<TIME>",
+          "reason": "Incomplete backup",
+          "kind": "incomplete",
+          "edhm": null,
+          "to": null
+        },
+        {
+          "name": "<TIME> Before mod update",
+          "time": "<TIME>",
+          "reason": "Before mod update",
+          "kind": "edhm",
+          "edhm": "20.03",
+          "to": "22.03"
+        }
+      ]
+    }
+  },
+  {
+    "label": "save nothing",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "written": 0,
+      "missing": [],
+      "backup": null
+    }
+  },
+  {
+    "label": "save with no body",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "written": 0,
+      "missing": [],
+      "backup": null
+    }
+  },
+  {
+    "label": "save a file with no keys",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "written": 0,
+      "missing": [],
+      "backup": null
+    }
+  },
+  {
+    "label": "save refused: value is not a number",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Bad value for x232: abc"
+    }
+  },
+  {
+    "label": "save refused: value in exponent form",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Bad value for x232: 1.5e-3"
+    }
+  },
+  {
+    "label": "save refused: too many decimals",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Bad value for x232: 0.1234567"
+    }
+  },
+  {
+    "label": "save refused: too many digits",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Bad value for x232: 12345"
+    }
+  },
+  {
+    "label": "save refused: no leading digit",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Bad value for x232: .5"
+    }
+  },
+  {
+    "label": "save refused: plus sign",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Bad value for x232: +1"
+    }
+  },
+  {
+    "label": "save refused: true is not a value",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Bad value for x232: True"
+    }
+  },
+  {
+    "label": "save refused: null is not a value",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Bad value for x232: "
+    }
+  },
+  {
+    "label": "save refused: unknown file",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Unknown settings file: Other"
+    }
+  },
+  {
+    "label": "save refused: file name in another case",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Unknown settings file: advanced"
+    }
+  },
+  {
+    "label": "save refused: key with a bad letter",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Bad setting name: q232"
+    }
+  },
+  {
+    "label": "save refused: key in upper case",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Bad setting name: X232"
+    }
+  },
+  {
+    "label": "save refused: key with four digits",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Bad setting name: x2320"
+    }
+  },
+  {
+    "label": "save refused: one bad entry refuses the lot",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Bad value for x232: oops"
+    }
+  },
+  {
+    "label": "colour files untouched by the refused saves",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "files": {
+        "Startup-Profile": "[Constants]\n;================================= EDHM v22.03 ========================================================\n;  ** Shield Colour Mode **\n; 100 = Custom Multi-Color shield (see Advanced.ini)\n; 101 = Custom single Color (see Advanced.ini)\n; 199 = XML\n; 200 = Elite default\nz105 = 100\n;  ** Chat Panel Lines **\nx137 = 199\n;  ** Radar Brightness **\n; Default = 1.0\nw142 = 1.25\n;  ** Text Colour **\n; Red\nx115 = 0.8\n; Green\ny115 = 0.3663\n; Blue\nz115 = 1\n",
+        "Advanced": "; A line that looks like a setting before the section starts is not one.\nx1 = 0.111\n  [constants]   ; the header may be indented, in any case, with text after it\n;================ comments, blank lines and spacing all stay as they are ================\n\n; Red\nx232 = 0.5\n; Green, with odd spacing and a comment after the number\n   y232   =    0.25   ; trailing comment stays\n; Blue, with no spaces at all\nz232=1\n; Brightness, written without a leading zero\nw232 = .75\n; A number in exponent form\nx77 = 1.5e-3\n; A negative number\ny77 = -0.21\n; Tabs instead of spaces\nz77\t=\t0.3\n; Settings that are commented out do not exist\n;x90 = 0.9\n; x91 = 0.9\n; The same key twice: only the first one changes\nx50 = 0.1\nx50 = 0.2\n; A short key must not match a longer one that starts the same way\nx10 = 0.3\nx23 = 0.4\nx2 = 0.6\n; Not a number, or nothing at all\nx60 = abc\nx61 =\n; Text straight after the number is kept\nx62 = 0.5abc\n; Keys are case-sensitive\nX70 = 0.7\n; A plus sign is not part of a number\nx71 = +0.5\n; Values sent as numbers rather than text\ny40 = 0.5\nz40 = 1\n[Other]\n; Another section: nothing in here may change\nx232 = 9.9\nx80 = 8.8\n[Constants]\n; Only the first [Constants] section counts\ny232 = 7.7\n",
+        "SuitHud": "[Constants]\r\n;======== EDHM v22.03 - Suit HUD (this file has Windows line endings and a byte-order mark) ========\r\n; Panel mode\r\nx30 = 199\r\n; Panel colour: red, green, blue, brightness\r\nx31 = 1\r\ny31 = 0\r\nz31 = 1\r\nw31 = 1\r\n",
+        "XML-Profile": "[Constants]\n;=============== EDHM v22.03 ================\n;       --== XML Color Matrix ==--\n;       *** <MatrixRed> TOP Row ***\n; Top Left\nx150 = 0.6\n; Top Centre\ny150 = 0.21\n; Top Right\nz150 = 0.83\n;   *** <MatrixGreen> MIDDLE Row ***\nx151 = 0.86\ny151 = 0.42\nz151 = -0.65\n;    *** <MatrixBlue> BOTTOM Row ***\nx152 = -0.46\ny152 = 0.39\n; Bottom Right (the file ends straight after this number, with no line break)\nz152 = 0.83"
+      }
+    }
+  },
+  {
+    "label": "no backup was made by the refused saves",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "dir": "<BACKUPS>",
+      "items": [
+        {
+          "name": "<TIME> Before save",
+          "time": "<TIME>",
+          "reason": "Before save",
+          "kind": "colors",
+          "edhm": "22.03",
+          "to": null
+        },
+        {
+          "name": "<TIME> Odd info",
+          "time": 12,
+          "reason": null,
+          "kind": "colors",
+          "edhm": null,
+          "to": 0
+        },
+        {
+          "name": "<TIME> Unreadable info",
+          "time": "<TIME>",
+          "reason": "Incomplete backup",
+          "kind": "incomplete",
+          "edhm": null,
+          "to": null
+        },
+        {
+          "name": "<TIME> Interrupted",
+          "time": "<TIME>",
+          "reason": "Incomplete backup",
+          "kind": "incomplete",
+          "edhm": null,
+          "to": null
+        },
+        {
+          "name": "<TIME> Before mod update",
+          "time": "<TIME>",
+          "reason": "Before mod update",
+          "kind": "edhm",
+          "edhm": "20.03",
+          "to": "22.03"
+        }
+      ]
+    }
+  },
+  {
+    "label": "save across all four files",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "written": 23,
+      "missing": [
+        "Startup-Profile:w999",
+        "Advanced:x90",
+        "Advanced:x91",
+        "Advanced:x60",
+        "Advanced:x61",
+        "Advanced:x70",
+        "Advanced:x71",
+        "Advanced:x80",
+        "Advanced:x1"
+      ],
+      "backup": "<TIME> Before save",
+      "running": false,
+      "reload": {
+        "attempted": false,
+        "sent": false,
+        "error": null
+      }
+    }
+  },
+  {
+    "label": "colour files after the save",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "files": {
+        "Startup-Profile": "[Constants]\n;================================= EDHM v22.03 ========================================================\n;  ** Shield Colour Mode **\n; 100 = Custom Multi-Color shield (see Advanced.ini)\n; 101 = Custom single Color (see Advanced.ini)\n; 199 = XML\n; 200 = Elite default\nz105 = 101\n;  ** Chat Panel Lines **\nx137 = 100\n;  ** Radar Brightness **\n; Default = 1.0\nw142 = 0.9\n;  ** Text Colour **\n; Red\nx115 = 0.8\n; Green\ny115 = 0.1248\n; Blue\nz115 = 1\n",
+        "Advanced": "; A line that looks like a setting before the section starts is not one.\nx1 = 0.111\n  [constants]   ; the header may be indented, in any case, with text after it\n;================ comments, blank lines and spacing all stay as they are ================\n\n; Red\nx232 = 0.3278\n; Green, with odd spacing and a comment after the number\n   y232   =    0.0595   ; trailing comment stays\n; Blue, with no spaces at all\nz232=0\n; Brightness, written without a leading zero\nw232 = 1\n; A number in exponent form\nx77 = 0.002\n; A negative number\ny77 = -0.15\n; Tabs instead of spaces\nz77\t=\t1.3\n; Settings that are commented out do not exist\n;x90 = 0.9\n; x91 = 0.9\n; The same key twice: only the first one changes\nx50 = 0.9\nx50 = 0.2\n; A short key must not match a longer one that starts the same way\nx10 = 0.3\nx23 = 0.44\nx2 = 0.66\n; Not a number, or nothing at all\nx60 = abc\nx61 =\n; Text straight after the number is kept\nx62 = 0.25abc\n; Keys are case-sensitive\nX70 = 0.7\n; A plus sign is not part of a number\nx71 = +0.5\n; Values sent as numbers rather than text\ny40 = 0.125\nz40 = 3\n[Other]\n; Another section: nothing in here may change\nx232 = 9.9\nx80 = 8.8\n[Constants]\n; Only the first [Constants] section counts\ny232 = 7.7\n",
+        "SuitHud": "[Constants]\r\n;======== EDHM v22.03 - Suit HUD (this file has Windows line endings and a byte-order mark) ========\r\n; Panel mode\r\nx30 = 100\r\n; Panel colour: red, green, blue, brightness\r\nx31 = 1\r\ny31 = 0.2582\r\nz31 = 1\r\nw31 = 0.5\r\n",
+        "XML-Profile": "[Constants]\n;=============== EDHM v22.03 ================\n;       --== XML Color Matrix ==--\n;       *** <MatrixRed> TOP Row ***\n; Top Left\nx150 = -0.36\n; Top Centre\ny150 = 0.21\n; Top Right\nz150 = 0.83\n;   *** <MatrixGreen> MIDDLE Row ***\nx151 = 0.86\ny151 = 1.69\nz151 = -0.65\n;    *** <MatrixBlue> BOTTOM Row ***\nx152 = -0.46\ny152 = 0.39\n; Bottom Right (the file ends straight after this number, with no line break)\nz152 = -0.41"
+      }
+    }
+  },
+  {
+    "label": "second save makes no second backup",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "written": 3,
+      "missing": [],
+      "backup": null,
+      "running": false,
+      "reload": {
+        "attempted": false,
+        "sent": false,
+        "error": null
+      }
+    }
+  },
+  {
+    "label": "save only keys that do not exist",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "written": 0,
+      "missing": [
+        "SuitHud:x999",
+        "SuitHud:y999"
+      ],
+      "backup": null,
+      "running": false,
+      "reload": {
+        "attempted": false,
+        "sent": false,
+        "error": null
+      }
+    }
+  },
+  {
+    "label": "backup with the default reason",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "name": "<TIME> Manual backup"
+    }
+  },
+  {
+    "label": "backup with a reason that needs cleaning",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "name": "<TIME> My test backup"
+    }
+  },
+  {
+    "label": "backups newest first",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "dir": "<BACKUPS>",
+      "items": [
+        {
+          "name": "<TIME> My test backup",
+          "time": "<TIME>",
+          "reason": "My test backup",
+          "kind": "colors",
+          "edhm": "22.03",
+          "to": null
+        },
+        {
+          "name": "<TIME> Manual backup",
+          "time": "<TIME>",
+          "reason": "Manual backup",
+          "kind": "colors",
+          "edhm": "22.03",
+          "to": null
+        },
+        {
+          "name": "<TIME> Before save",
+          "time": "<TIME>",
+          "reason": "Before save",
+          "kind": "colors",
+          "edhm": "22.03",
+          "to": null
+        },
+        {
+          "name": "<TIME> Before save",
+          "time": "<TIME>",
+          "reason": "Before save",
+          "kind": "colors",
+          "edhm": "22.03",
+          "to": null
+        },
+        {
+          "name": "<TIME> Odd info",
+          "time": 12,
+          "reason": null,
+          "kind": "colors",
+          "edhm": null,
+          "to": 0
+        },
+        {
+          "name": "<TIME> Unreadable info",
+          "time": "<TIME>",
+          "reason": "Incomplete backup",
+          "kind": "incomplete",
+          "edhm": null,
+          "to": null
+        },
+        {
+          "name": "<TIME> Interrupted",
+          "time": "<TIME>",
+          "reason": "Incomplete backup",
+          "kind": "incomplete",
+          "edhm": null,
+          "to": null
+        },
+        {
+          "name": "<TIME> Before mod update",
+          "time": "<TIME>",
+          "reason": "Before mod update",
+          "kind": "edhm",
+          "edhm": "20.03",
+          "to": "22.03"
+        }
+      ]
+    }
+  },
+  {
+    "label": "read the newest backup",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "name": "<TIME> My test backup",
+      "files": {
+        "Startup-Profile": "[Constants]\n;================================= EDHM v22.03 ========================================================\n;  ** Shield Colour Mode **\n; 100 = Custom Multi-Color shield (see Advanced.ini)\n; 101 = Custom single Color (see Advanced.ini)\n; 199 = XML\n; 200 = Elite default\nz105 = 101\n;  ** Chat Panel Lines **\nx137 = 100\n;  ** Radar Brightness **\n; Default = 1.0\nw142 = 0.9\n;  ** Text Colour **\n; Red\nx115 = 0.8\n; Green\ny115 = 0.1248\n; Blue\nz115 = 1\n",
+        "Advanced": "; A line that looks like a setting before the section starts is not one.\nx1 = 0.111\n  [constants]   ; the header may be indented, in any case, with text after it\n;================ comments, blank lines and spacing all stay as they are ================\n\n; Red\nx232 = 0.5\n; Green, with odd spacing and a comment after the number\n   y232   =    0.0595   ; trailing comment stays\n; Blue, with no spaces at all\nz232=0\n; Brightness, written without a leading zero\nw232 = 1\n; A number in exponent form\nx77 = 0.002\n; A negative number\ny77 = -0.15\n; Tabs instead of spaces\nz77\t=\t1.3\n; Settings that are commented out do not exist\n;x90 = 0.9\n; x91 = 0.9\n; The same key twice: only the first one changes\nx50 = 0.9\nx50 = 0.2\n; A short key must not match a longer one that starts the same way\nx10 = -12.345678\nx23 = 0.44\nx2 = 0.66\n; Not a number, or nothing at all\nx60 = abc\nx61 =\n; Text straight after the number is kept\nx62 = 0.25abc\n; Keys are case-sensitive\nX70 = 0.7\n; A plus sign is not part of a number\nx71 = +0.5\n; Values sent as numbers rather than text\ny40 = 0.125\nz40 = 3\n[Other]\n; Another section: nothing in here may change\nx232 = 9.9\nx80 = 8.8\n[Constants]\n; Only the first [Constants] section counts\ny232 = 7.7\n",
+        "SuitHud": "[Constants]\r\n;======== EDHM v22.03 - Suit HUD (this file has Windows line endings and a byte-order mark) ========\r\n; Panel mode\r\nx30 = 100\r\n; Panel colour: red, green, blue, brightness\r\nx31 = 1\r\ny31 = 0.2582\r\nz31 = 1\r\nw31 = 0.5\r\n",
+        "XML-Profile": "[Constants]\n;=============== EDHM v22.03 ================\n;       --== XML Color Matrix ==--\n;       *** <MatrixRed> TOP Row ***\n; Top Left\nx150 = -0.36\n; Top Centre\ny150 = 0.21\n; Top Right\nz150 = 0.83\n;   *** <MatrixGreen> MIDDLE Row ***\nx151 = 0.86\ny151 = 1.69\nz151 = -0.65\n;    *** <MatrixBlue> BOTTOM Row ***\nx152 = -0.46\ny152 = 0.39\n; Bottom Right (the file ends straight after this number, with no line break)\nz152 = 1234.5"
+      }
+    }
+  },
+  {
+    "label": "read the old mod-update backup",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "name": "<TIME> Before mod update",
+      "files": {
+        "Advanced": "[Constants]\n; EDHM v20.03\nx232 = 0.9\ny232 = 0.8\n"
+      }
+    }
+  },
+  {
+    "label": "read the interrupted backup",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "name": "<TIME> Interrupted",
+      "files": {
+        "Startup-Profile": "[Constants]\nz105 = 200\n"
+      }
+    }
+  },
+  {
+    "label": "read a backup that is not there",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Backup not found."
+    }
+  },
+  {
+    "label": "read a backup outside the folder",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Backup not found."
+    }
+  },
+  {
+    "label": "read a backup by a file's name",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Backup not found."
+    }
+  },
+  {
+    "label": "read a backup with no name",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Backup not found."
+    }
+  },
+  {
+    "label": "save a theme",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "id": "Helper Test- one"
+    }
+  },
+  {
+    "label": "themes newest first",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "dir": null,
+      "edhmui": [],
+      "mine": [
+        {
+          "id": "Helper Test- one",
+          "name": "Helper Test: one",
+          "author": "me",
+          "created": "<TIME>",
+          "colors": [
+            "ff0000",
+            "00ff00"
+          ]
+        },
+        {
+          "id": "Single colour",
+          "name": "Single colour",
+          "author": "me",
+          "created": "<TIME>",
+          "colors": [
+            "ff0000"
+          ]
+        },
+        {
+          "id": "Pretty",
+          "name": "Pretty Printed",
+          "author": "",
+          "created": "<TIME>",
+          "colors": [
+            "3d8bff",
+            "45d3ff"
+          ]
+        },
+        {
+          "id": "Odd",
+          "name": "5",
+          "author": "",
+          "created": "",
+          "colors": [
+            "1",
+            "a",
+            "True"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "label": "read the theme just saved",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "id": "Helper Test- one",
+      "name": "Helper Test: one",
+      "author": "me",
+      "values": {
+        "Advanced": {
+          "x77": "0.5",
+          "y77": "0.25"
+        },
+        "XML-Profile": {
+          "x150": "1"
+        }
+      }
+    }
+  },
+  {
+    "label": "read a theme written by the PowerShell edition",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "id": "Pretty",
+      "name": "Pretty Printed",
+      "author": "",
+      "values": {
+        "Startup-Profile": {
+          "z105": "101",
+          "x137": "100"
+        },
+        "Advanced": {
+          "x232": "0.0595",
+          "y232": "0.6514",
+          "z232": "1"
+        },
+        "SuitHud": {
+          "x30": "100"
+        },
+        "XML-Profile": {
+          "x150": "-0.36",
+          "y150": "0.33",
+          "z150": "0.79"
+        }
+      }
+    }
+  },
+  {
+    "label": "read a theme with odd contents",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "id": "Odd",
+      "name": "5",
+      "author": "",
+      "values": "none"
+    }
+  },
+  {
+    "label": "read a theme that is not JSON",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "That theme file could not be read."
+    }
+  },
+  {
+    "label": "read a theme that is a list",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "That theme file could not be read."
+    }
+  },
+  {
+    "label": "read a theme that is not there",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Theme not found."
+    }
+  },
+  {
+    "label": "read a theme from another source",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Theme not found."
+    }
+  },
+  {
+    "label": "read a theme outside the folder",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Theme not found."
+    }
+  },
+  {
+    "label": "read a theme with no id",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Theme not found."
+    }
+  },
+  {
+    "label": "save a theme whose name needs care",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "id": "Café & Jameson's -best- + -more-"
+    }
+  },
+  {
+    "label": "theme refused: no name",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Please give the theme a name (up to 80 characters)."
+    }
+  },
+  {
+    "label": "theme refused: name over 80 characters",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Please give the theme a name (up to 80 characters)."
+    }
+  },
+  {
+    "label": "theme refused: name of dots",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "That name cannot be used as a file name."
+    }
+  },
+  {
+    "label": "theme refused: no values",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "The theme has no values."
+    }
+  },
+  {
+    "label": "theme refused: bad value",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Bad value for x77: 1e5"
+    }
+  },
+  {
+    "label": "theme refused: unknown file",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Unknown settings file: Other"
+    }
+  },
+  {
+    "label": "delete a theme",
+    "status": 200,
+    "reply": {
+      "ok": true
+    }
+  },
+  {
+    "label": "delete it again",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Theme not found."
+    }
+  },
+  {
+    "label": "delete outside the folder",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Theme not found."
+    }
+  },
+  {
+    "label": "delete with no id",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "Theme not found."
+    }
+  },
+  {
+    "label": "choose a folder without the game",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "That folder does not contain EliteDangerous64.exe."
+    }
+  },
+  {
+    "label": "choose no folder",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "That folder does not contain EliteDangerous64.exe."
+    }
+  },
+  {
+    "label": "status before confirming",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "app": "hud-studio",
+      "appVersion": "1.0",
+      "testMode": true,
+      "running": false,
+      "game": {
+        "path": "<GAME>",
+        "store": "Custom",
+        "version": "2026.09.03.332841"
+      },
+      "games": [],
+      "edhm": {
+        "installed": true,
+        "version": "22.03",
+        "date": "23 September 2026",
+        "forGame": "4.4.1.1",
+        "iniDir": "<GAME>\\EDHM-ini",
+        "linkTarget": null,
+        "files": {
+          "Startup-Profile": true,
+          "Advanced": true,
+          "SuitHud": true,
+          "XML-Profile": true
+        }
+      },
+      "xml": {
+        "path": "<XML>",
+        "exists": true,
+        "isDefault": true,
+        "matrix": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "themesDir": null,
+      "backupsDir": "<BACKUPS>",
+      "root": "<ROOT>",
+      "gameConfirmed": false
+    }
+  },
+  {
+    "label": "confirm the game folder",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "app": "hud-studio",
+      "appVersion": "1.0",
+      "testMode": true,
+      "running": false,
+      "game": {
+        "path": "<GAME>",
+        "store": "Custom",
+        "version": "2026.09.03.332841"
+      },
+      "games": [],
+      "edhm": {
+        "installed": true,
+        "version": "22.03",
+        "date": "23 September 2026",
+        "forGame": "4.4.1.1",
+        "iniDir": "<GAME>\\EDHM-ini",
+        "linkTarget": null,
+        "files": {
+          "Startup-Profile": true,
+          "Advanced": true,
+          "SuitHud": true,
+          "XML-Profile": true
+        }
+      },
+      "xml": {
+        "path": "<XML>",
+        "exists": true,
+        "isDefault": true,
+        "matrix": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "themesDir": null,
+      "backupsDir": "<BACKUPS>",
+      "root": "<ROOT>",
+      "gameConfirmed": true
+    }
+  },
+  {
+    "label": "choose this same game folder",
+    "status": 200,
+    "reply": {
+      "ok": true,
+      "app": "hud-studio",
+      "appVersion": "1.0",
+      "testMode": true,
+      "running": false,
+      "game": {
+        "path": "<GAME>",
+        "store": "Custom",
+        "version": "2026.09.03.332841"
+      },
+      "games": [],
+      "edhm": {
+        "installed": true,
+        "version": "22.03",
+        "date": "23 September 2026",
+        "forGame": "4.4.1.1",
+        "iniDir": "<GAME>\\EDHM-ini",
+        "linkTarget": null,
+        "files": {
+          "Startup-Profile": true,
+          "Advanced": true,
+          "SuitHud": true,
+          "XML-Profile": true
+        }
+      },
+      "xml": {
+        "path": "<XML>",
+        "exists": true,
+        "isDefault": true,
+        "matrix": [
+          [
+            1,
+            0,
+            0
+          ],
+          [
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            1
+          ]
+        ]
+      },
+      "themesDir": null,
+      "backupsDir": "<BACKUPS>",
+      "root": "<ROOT>",
+      "gameConfirmed": true
+    }
+  },
+  {
+    "label": "open something unknown",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "That folder was not found."
+    }
+  },
+  {
+    "label": "open nothing",
+    "status": 500,
+    "reply": {
+      "ok": false,
+      "error": "That folder was not found."
+    }
+  },
+  {
+    "label": "reload while Elite is closed",
+    "status": 200,
+    "reply": {
+      "attempted": false,
+      "sent": false,
+      "error": null
+    }
+  }
+]

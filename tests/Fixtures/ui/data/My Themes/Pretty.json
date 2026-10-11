@@ -1,0 +1,30 @@
+{
+    "app":  "hud-studio",
+    "version":  1,
+    "name":  "Pretty Printed",
+    "author":  "",
+    "created":  "2026-09-30T23:10:57",
+    "colors":  [
+                   "3d8bff",
+                   "45d3ff"
+               ],
+    "values":  {
+                   "Startup-Profile":  {
+                                           "z105":  "101",
+                                           "x137":  "100"
+                                       },
+                   "Advanced":  {
+                                    "x232":  "0.0595",
+                                    "y232":  "0.6514",
+                                    "z232":  "1"
+                                },
+                   "SuitHud":  {
+                                   "x30":  "100"
+                               },
+                   "XML-Profile":  {
+                                       "x150":  "-0.36",
+                                       "y150":  "0.33",
+                                       "z150":  "0.79"
+                                   }
+               }
+}

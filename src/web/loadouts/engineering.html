@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="studio-token" content="__STUDIO_TOKEN__">
+<title>Engineering - Studio Loadouts</title>
+<link rel="icon" href="../studio.svg">
+<link rel="stylesheet" href="../studio.css">
+<!--
+  ENGINEERING PLANNER: pin the blueprints you mean to have done, and see what they take.
+  Left: choose a kind of module, a blueprint, the grade to reach and perhaps an experimental effect, and pin it;
+  below that, how many rolls to plan for each grade. Right: what is still missing over all the pins (with the
+  swap at a material trader that would fill a gap), each pin with its materials and the engineers who offer
+  its grade, and every material the pins take against what the commander holds.
+  The page only draws what the app says: GET /api/loadouts/engineering/plan and every "engineering" event
+  carry the whole picture, so materials picked up, an engineer unlocked or a jump show by themselves.
+  Its links hand a name to another studio (Studio.open): the kind of trader for what is missing to Find by
+  name in Studio Market, an engineer's system to Studio Nav's Routes.
+-->
+<style>
+/* Only what is this page's own; the shared look (buttons, links to other studios, boxes, badges, fields, the list table...) is in ../studio.css. */
+.side{border-right:1px solid var(--line);background:var(--bg2);padding:16px;overflow:auto}
+.side form{display:grid;gap:12px;margin-bottom:22px}
+.side p{margin:10px 0 0}
+#rolls label{text-align:center}
+#rolls input{padding:0 4px;text-align:center}
+.credit{padding-top:12px;border-top:1px solid var(--line)}
+
+main{min-width:0;overflow:auto;padding:16px 20px 24px}
+main>h2{margin-top:18px}
+main>h2:first-child{margin-top:0}
+#empty{max-width:560px}
+.tablebox{margin-bottom:12px}
+td.name{width:99%}
+tr.group td{background:var(--panel2);color:var(--muted);font-family:var(--hud);letter-spacing:.05em;font-size:12.5px}
+tr.group b{color:var(--text);font-weight:600}
+.g{color:var(--faint);margin-left:6px;font-size:12px}
+
+/* a pin: its title and Remove button, then the materials beside the engineers */
+.pin{padding:0;overflow:hidden}
+.pin header{display:flex;align-items:center;gap:12px;padding:9px 12px 9px 14px;background:var(--panel2);border-bottom:1px solid var(--line)}
+.pin header b{flex:1;min-width:0;font-family:var(--hud);font-weight:600;letter-spacing:.04em;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pin .body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 24px;padding:10px 14px 12px}
+@media (max-width:1099px){.pin .body{grid-template-columns:minmax(0,1fr)}}
+.mats{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:2px 18px;align-content:start;font-size:13.5px}
+.head{color:var(--muted);font-size:12px}
+.who{display:grid;gap:7px;align-content:start;font-size:13.5px}
+.who .badge{margin-left:6px}
+</style>
+</head>
+<body>
+
+<nav class="subtabs"><a href="./">My ship</a><a href="designer.html">Designer</a><a class="active" href="engineering.html">Engineering</a><a href="guardian.html">Guardian</a></nav>
+
+<div class="layout">
+  <aside class="side">
+    <h2>Pin a blueprint</h2>
+    <form id="form">
+      <div class="field"><label>Module<select id="module"></select></label></div>
+      <div class="field"><label>Blueprint<select id="blueprint"></select></label></div>
+      <div class="field">
+        <label title="Every grade on the way up is counted: grade 1, then 2, and so on to this one">Up to grade<select id="grade"></select></label>
+        <label title="Put on once, on top of the blueprint. Leave at None if you do not want one.">Experimental effect<select id="effect"></select></label>
+      </div>
+      <button class="btn primary" id="pin" disabled>Pin it</button>
+    </form>
+
+    <h2>Rolls per grade</h2>
+    <div class="field" id="rolls"></div>
+    <p class="muted small">How many times you expect to roll each grade before it is full. This is an estimate: the game decides by the
+      engineer's rank with you and by luck. 1, 2, 3, 4 and 5 is what the community's planners count on at an engineer who already works
+      to grade 5 for you; plan more for one you have just unlocked.</p>
+    <p class="muted small credit">Blueprints, their costs and who offers them come from
+      <a href="https://github.com/EDCD/coriolis-data" target="_blank" rel="noopener">coriolis-data</a>, kept up by the EDCD community.
+      Where the engineers work was checked against <a href="https://spansh.co.uk/" target="_blank" rel="noopener">Spansh</a>. Thank you to both.</p>
+  </aside>
+
+  <main>
+    <div class="card" id="empty" hidden>
+      <h2>Nothing pinned yet</h2>
+      <p class="muted" style="margin:0">Choose a module, a blueprint and the grade you want on the left, and pin it. Studio adds up the materials
+        for everything you pin, compares them with what you hold, and shows which engineers can do the work and where they are.</p>
+    </div>
+    <p class="card bad" id="unknown" hidden>Studio has not seen your materials yet, so everything counts as missing. Start Elite Dangerous once: the game lists them every time it starts.</p>
+    <div id="plan" hidden>
+      <h2 id="missing-title"></h2>
+      <p class="card good" id="nothing-missing" hidden>You hold everything these blueprints take.</p>
+      <div class="tablebox" id="missing-box"><table>
+        <thead><tr><th>Material</th><th class="r">Missing</th><th class="r">Need</th><th class="r">Have</th>
+          <th title="A trade that fills the gap from one other material of the same row at the trader, using only what your pins do not need themselves. Six of a grade buy one of the next grade up; one buys three of the next grade down.">A swap that would fill it</th></tr></thead>
+        <tbody id="missing"></tbody>
+      </table></div>
+
+      <h2>Pinned blueprints</h2>
+      <div id="pins"></div>
+
+      <h2>Every material these pins take</h2>
+      <div class="tablebox"><table>
+        <thead><tr><th>Material</th><th class="r">Need</th><th class="r">Have</th><th class="r">Missing</th></tr></thead>
+        <tbody id="totals"></tbody>
+      </table></div>
+    </div>
+  </main>
+</div>
+
+<script src="../studio.js"></script>
+<script>
+(() => {
+'use strict';
+const { $, h, toast, whole, count, ly, dot, go } = Studio;
+if (!Studio.served) return;
+
+let kinds = [];     // what can be pinned, as /api/loadouts/engineering/blueprints lists it
+let plan = null;    // the app's whole picture: { rolls, pins, totals, materialsKnown }
+
+// ============================================================ little helpers
+const number = n => h('td', { class: 'r' }, whole(n));
+const named = m => h('td', { class: 'name' }, m.name, h('span', { class: 'g', title: 'How rare it is, from 1 (very common) to 5 (very rare)' }, 'grade ' + m.grade));
+const a = trader => (/^[AEIOU]/.test(trader) ? 'an ' : 'a ') + trader;
+
+// ============================================================ the form
+const picked = () => kinds.find(kind => kind.code === $('#module').value);
+const pickedBlueprint = () => { const kind = picked(); return kind && kind.blueprints.find(b => b.code === $('#blueprint').value); };
+
+// Each list is filled from the choice above it. A choice that the new list still has stays chosen.
+function fillBlueprints() {
+  const kind = picked();
+  if (!kind) return;
+  Studio.options($('#blueprint'), kind.blueprints.map(b => [b.code, b.name]));
+  if (!pickedBlueprint()) $('#blueprint').value = kind.blueprints[0].code;
+  Studio.options($('#effect'), [['', 'None'], ...kind.experimentals.map(e => [e.code, e.name])]);
+  if ($('#effect').selectedIndex < 0) $('#effect').value = '';
+  fillGrades();
+}
+function fillGrades() {
+  const grades = pickedBlueprint().grades;
+  Studio.options($('#grade'), grades.map(g => [String(g), String(g)]));
+  if ($('#grade').selectedIndex < 0) $('#grade').value = String(grades[grades.length - 1]);   // the highest one offered
+}
+
+function pin(e) {
+  e.preventDefault();
+  const body = { module: $('#module').value, blueprint: $('#blueprint').value, grade: Number($('#grade').value), experimental: $('#effect').value };
+  call('POST', '/api/loadouts/engineering/pin', body).then(() => toast('Pinned.'), problem => toast(problem.message, true));
+}
+
+// The five boxes follow the app, except the one being typed in. A change is sent when all five hold a number the app takes.
+const rollBoxes = [1, 2, 3, 4, 5].map(grade => h('input', { type: 'number', min: 1, max: 50, step: 1, 'aria-label': 'Rolls for grade ' + grade }));
+function sendRolls() {
+  const rolls = rollBoxes.map(box => Math.round(Number(box.value)));
+  if (rolls.every(n => n >= 1 && n <= 50)) call('POST', '/api/loadouts/engineering/rolls', { rolls }).catch(problem => toast(problem.message, true));
+}
+
+// ============================================================ drawing what the app says
+function render() {
+  rollBoxes.forEach((box, i) => { if (box !== document.activeElement && box.value !== String(plan.rolls[i])) box.value = plan.rolls[i]; });
+  const pinned = plan.pins.length > 0;
+  $('#empty').hidden = pinned;
+  $('#plan').hidden = !pinned;
+  $('#unknown').hidden = !pinned || plan.materialsKnown;
+  if (!pinned) return;
+
+  const missing = plan.totals.filter(m => m.short > 0);
+  $('#missing-title').textContent = missing.length ? 'Still to find: ' + count(missing.length, 'material') : 'Still to find';
+  $('#nothing-missing').hidden = missing.length > 0;
+  $('#missing-box').hidden = missing.length === 0;
+  $('#missing').replaceChildren(...byKind(missing, 5, m => [named(m), h('td', { class: 'r bad' }, whole(m.short)), number(m.need), number(m.have), h('td', null, swap(m))], true));
+  $('#pins').replaceChildren(...plan.pins.map(card));
+  $('#totals').replaceChildren(...byKind(plan.totals, 4, m => [named(m), number(m.need), number(m.have),
+    h('td', { class: 'r' + (m.short ? ' bad' : ' good') }, m.short ? whole(m.short) : '✓')]));
+}
+
+// Rows under a heading for each kind of material, in the app's order of kinds; the heading also names the trader
+// that deals in the kind, as the app names it. Where something is missing ("find"), it has a link to the nearest
+// such trader: the trader's name is also what Find by name in Studio Market calls the service.
+function byKind(materials, columns, cells, find) {
+  return [...new Set(materials.map(m => m.kind))].flatMap(kind => {
+    const rows = materials.filter(m => m.kind === kind);
+    const trader = rows.map(m => m.trader).find(Boolean);   // none when no trader deals in any of them
+    return [h('tr', { class: 'group' }, h('td', { colspan: columns }, h('b', null, kind), trader && [dot + 'traded at ' + a(trader),
+        find && [dot, go('Find the nearest', 'Opens Find by name in Studio Market and looks for the nearest ' + trader.toLowerCase(), 'market', 'find.html?find=services&name=' + encodeURIComponent(trader))]])),
+      ...rows.map(m => h('tr', null, cells(m)))];
+  });
+}
+
+function swap(m) {
+  if (m.swap) return [whole(m.swap.give) + ' ' + m.swap.name, h('span', { class: 'g' }, 'grade ' + m.swap.grade), ' for ' + whole(m.swap.get)];
+  return h('span', { class: 'muted' }, m.trader ? 'Nothing spare in its row at the trader' : 'No trader deals in it');
+}
+
+function card(p) {
+  const title = [p.module, p.blueprint + ' to grade ' + p.grade, p.experimental && 'with ' + p.experimental].filter(Boolean).join(dot);
+  const remove = () => call('POST', '/api/loadouts/engineering/unpin', { id: p.id }).catch(problem => toast(problem.message, true));
+  return h('section', { class: 'card pin' },
+    h('header', null, h('b', { title }, title), h('button', { class: 'btn small danger', onclick: remove }, 'Remove')),
+    h('div', { class: 'body' },
+      h('div', { class: 'mats' },
+        h('span', { class: 'head' }, 'Material'), h('span', { class: 'head n' }, 'Takes'), h('span', { class: 'head n' }, 'You hold'),
+        p.materials.map(m => [
+          h('span', null, m.name, h('span', { class: 'g' }, 'grade ' + m.grade)),
+          h('span', { class: 'n' }, whole(m.need)),
+          h('span', { class: 'n ' + (m.have >= m.need ? 'good' : 'bad') }, whole(m.have))])),
+      h('div', { class: 'who' }, h('span', { class: 'head' }, 'Engineers who offer grade ' + p.grade), p.engineers.map(e => engineer(e, p.grade)))));
+}
+
+// An engineer who offers the pin's grade: where they are, and whether they will do it for this commander yet.
+function engineer(e, grade) {
+  const [mark, text] = e.progress === 'Unlocked'
+    ? (e.rank >= grade ? ['good', 'Works to grade ' + e.rank + ' for you'] : ['warn', 'Works only to grade ' + e.rank + ' for you so far'])
+    : e.progress === 'Invited' ? ['warn', 'Invited, not unlocked yet']
+    : e.progress === 'Known' ? ['', 'Known, not invited yet']
+    : ['', 'Not heard of yet'];
+  return h('div', null, h('b', null, e.name), h('span', { class: 'badge ' + mark }, text),
+    h('div', { class: 'muted' }, [e.system, e.base, ly(e.ly)].filter(Boolean).join(dot), dot,
+      go('Route', 'Opens Studio Nav with ' + e.system + ' under To, ready to plot', 'nav', '?to=' + encodeURIComponent(e.system))));
+}
+
+// ============================================================ start-up
+$('#module').addEventListener('change', fillBlueprints);
+$('#blueprint').addEventListener('change', fillGrades);
+$('#form').addEventListener('submit', pin);
+$('#rolls').replaceChildren(...rollBoxes.map((box, i) => h('label', null, 'Grade ' + (i + 1), box)));
+for (const box of rollBoxes) box.addEventListener('change', sendRolls);
+
+// What can be pinned never changes while the app runs: read once.
+Studio.api('GET', '/api/loadouts/engineering/blueprints').then(answer => {
+  kinds = answer.kinds;
+  Studio.options($('#module'), kinds.map(kind => [kind.code, kind.name]));
+  $('#module').value = 'fsd';   // where most commanders start
+  fillBlueprints();
+  $('#pin').disabled = false;
+}, problem => toast(problem.message, true));
+
+// The app's picture, kept up to date. Every request of this page answers with it, so it goes through call().
+const call = Studio.follow('engineering', '/api/loadouts/engineering/plan', picture => { plan = picture; render(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="studio-token" content="__STUDIO_TOKEN__">
+<title>Studio Loadouts</title>
+<link rel="icon" href="../studio.svg">
+<link rel="stylesheet" href="../studio.css">
+<!--
+  STUDIO LOADOUTS, "My ship": the ship being flown, named copies of builds (also the ones made in the
+  Designer), and one-click hand-off to EDSY, Coriolis and the Designer. On the left the list of builds, on
+  the right the one that is selected.
+  Everything comes from the app's /api/loadouts/ routes; the page follows the "loadouts" event, so a ship
+  swap or a module change in the game shows up by itself.
+  The same file is also the short address a build is opened through: /loadouts/?open=edsy&id=NAME fetches
+  the long EDSY or Coriolis link and goes there (see "hand-off" in the script for why).
+  A saved build is also handed on inside Studio (see "from the ship being flown to this build"): what the ship
+  flown still lacks, the stations to buy it at in the fewest stops, that trip sent to Studio Nav, and the
+  build's engineering pinned in the Engineering planner.
+-->
+<style>
+/* Only what is this page's own; the shared look (buttons, boxes, badges, the dialog, the list table, a ship's name,
+   number tiles and four lists...) is in ../studio.css. */
+.layout{--side:270px}
+
+.side{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);background:var(--bg2);padding:16px 12px 12px}
+.builds{flex:1;min-height:0;overflow-y:auto;display:grid;grid-template-columns:minmax(0,1fr);gap:6px;align-content:start;margin-bottom:12px}
+.build{width:100%;text-align:left;padding:8px 11px;border-radius:9px;border:1px solid var(--line);background:var(--panel)}
+.build:hover{border-color:var(--accent-line)}
+.build.active{border-color:var(--accent);background:var(--accent-soft)}
+.build b,.build span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.build b{font-weight:600}
+.build span{color:var(--muted);font-size:12.5px}
+.credit{margin:12px 2px 0}
+
+main{min-width:0;overflow:auto;padding:16px 20px 24px}
+.head{display:flex;align-items:flex-start;gap:16px;margin-bottom:12px}
+.head .title{flex:1;min-width:0}
+.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+
+/* The four lists: weapons and core on the left, optional internals on the right; one under the other in a narrow window. */
+@media (max-width:1249px){.columns{grid-template-columns:minmax(0,1fr)}}
+td.slot{width:96px}
+td.power{width:80px;color:var(--muted)}
+/* a click on a module's engineering line opens the changed numbers */
+button.work:hover{color:var(--text)}
+.changes{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:1px 14px;margin:5px 0 2px;font-size:12.5px;color:var(--muted)}
+/* a saved build's hand-offs: what the ship flown still lacks, where to buy it, and its engineering for the planner */
+.shop{margin-bottom:14px}
+.shop p{margin:0 0 8px}
+.shop .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.shop .part{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.stops{margin:0 0 10px;padding:0;list-style:none;display:grid;gap:8px;counter-reset:stop}
+.stops li{counter-increment:stop;display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:2px 8px;align-items:baseline}
+.stops li::before{content:counter(stop);font-family:var(--hud);font-weight:600;color:var(--accent);grid-row:span 2}
+.stops .buy{grid-column:2 / span 2}
+</style>
+</head>
+<body>
+
+<nav class="subtabs"><a class="active" href="./">My ship</a><a href="designer.html">Designer</a><a href="engineering.html">Engineering</a><a href="guardian.html">Guardian</a></nav>
+
+<div class="layout">
+  <aside class="side">
+    <h2>Builds</h2>
+    <div class="builds" id="builds"></div>
+    <button class="btn primary" id="save" disabled>Save current ship as…</button>
+    <p class="muted small credit">Builds open in <a href="https://edsy.org/" target="_blank" rel="noopener">EDSY</a> and
+      <a href="https://coriolis.io/" target="_blank" rel="noopener">Coriolis</a>, the community's ship designers. Thank you to both teams.</p>
+  </aside>
+  <main id="detail"></main>
+</div>
+
+<script src="../studio.js"></script>
+<script>
+(() => {
+'use strict';
+const { $, h, toast, ask, cover, count, credits, tons, ago, dot } = Studio;
+if (!Studio.served) return;
+
+// ============================================================ hand-off
+// An EDSY or Coriolis link carries the whole build and runs to about 2,600 characters. Windows is known to refuse
+// handing a link longer than 2,083 to the browser, which is what the app's window does with every outside link.
+// So "Open in EDSY" opens this page's own short address instead, in a new window; that copy lands here, fetches
+// the long link and goes to it. A browser tab takes the same path, so there is one way of opening, not two.
+const SITES = { edsy: 'EDSY', coriolis: 'Coriolis' };
+const query = new URLSearchParams(location.search);
+const site = query.get('open');
+if (site && Object.hasOwn(SITES, site)) {
+  cover('Opening ' + SITES[site] + '…', 'Your build is being handed over.');
+  Studio.api('GET', '/api/loadouts/export?to=' + site + '&id=' + encodeURIComponent(query.get('id') || ''))
+    .then(answer => location.replace(answer.url), e => cover('Could not open ' + SITES[site], e.message));
+  return;
+}
+function openIn(site) {
+  window.open('/loadouts/?open=' + site + '&id=' + encodeURIComponent(selected), '_blank', 'noopener');
+}
+
+// ============================================================ state
+let current = null;       // the ship being flown, as /api/loadouts/ship gives it; null while none is known
+let reported = null;      // when the game last wrote that ship to its journal
+let saved = [];           // the saved builds as /api/loadouts/saved lists them, newest first
+let selected = '';        // '' = the current ship, otherwise a saved build's id
+let build = null;         // the saved build on show: { id, name, savedUtc, ship }
+const numbers = new Set();   // slots whose changed numbers are open; emptied when another build is picked
+let lacking = null;       // what the ship being flown lacks to become that build: { shipType, newHull, modules, engineered }; null while not known
+let trip = null;          // where to buy it, once asked for: { name, from, stops, notFound, cutShort, askedUtc }
+let looking = false;      // Spansh is being asked for the stops
+let shopProblem = '';     // why the list or the stops could not be had
+
+// ============================================================ little helpers
+const day = iso => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const dayAndTime = iso => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+// The ship's own name and its ID, whichever it has: “GABRIEL” · SE-06M
+const callsign = s => [s.shipName && '“' + s.shipName + '”', s.shipIdent].filter(Boolean).join(dot);
+
+// ============================================================ the list
+function renderList() {
+  const item = (id, name, sub) => h('button', { class: 'build' + (id === selected ? ' active' : ''), onclick: () => select(id) },
+    h('b', null, name), h('span', null, sub));
+  $('#builds').replaceChildren(
+    item('', 'Current ship', current ? [current.shipType, callsign(current)].filter(Boolean).join(dot) : 'Not known yet'),
+    ...saved.map(b => item(b.id, b.name, b.shipType + dot + day(b.savedUtc))));
+  $('#save').disabled = !current;
+}
+
+async function select(id) {
+  if (id !== selected) numbers.clear();
+  selected = id;
+  build = lacking = trip = null;
+  shopProblem = '';
+  renderList();
+  if (id) {
+    $('#detail').replaceChildren();   // no button of the build shown before can be pressed while this one loads
+    let answer;
+    try { answer = await Studio.api('GET', '/api/loadouts/saved/one?id=' + encodeURIComponent(id)); }
+    catch (e) { toast(e.message, true); if (selected === id) await select(''); return; }
+    if (selected !== id) return;   // another build was clicked while this one loaded
+    build = answer;
+  }
+  renderDetail();
+  loadLacking();
+}
+
+// ============================================================ the selected build
+function renderDetail() {
+  const ship = selected ? build && build.ship : current;
+  if (!ship) {
+    $('#detail').replaceChildren(h('div', { class: 'card', style: 'max-width:560px' }, h('h2', null, 'No ship known yet'),
+      h('p', { class: 'muted', style: 'margin:0' }, 'Start Elite Dangerous and board your ship. Studio reads it from the game\'s journal and shows it here; nothing needs to be set up.')));
+    return;
+  }
+  const title = selected ? build.name : ship.shipType;
+  // The current ship is only as new as the game's last word on it, so that time is always shown.
+  const sub = selected ? [ship.shipType, callsign(ship), 'saved ' + day(build.savedUtc)]
+    : ['Current ship', callsign(ship), 'as the game last reported it, ' + dayAndTime(reported)];
+  const age = selected ? null : 'The game writes your ship down when you start playing, swap ships or change modules. '
+    + 'An engineer\'s work is not written down at once: it shows here the next time the game reports the ship.';
+  const stat = (label, value) => h('div', { class: 'stat' }, h('span', null, label), h('b', null, value));
+  const ly = n => n ? n.toFixed(1) + ' ly' : '–';
+  const groups = names => ship.groups.filter(g => names.includes(g.name)).map(group);
+
+  $('#detail').replaceChildren(
+    h('div', { class: 'head' },
+      h('div', { class: 'title' }, h('h1', { title }, title), h('div', { class: 'muted', title: age }, sub.filter(Boolean).join(dot),
+        ship.hullHealth < 1 && [' ', h('span', { class: 'badge warn' }, 'Hull ' + Math.floor(ship.hullHealth * 100) + '%')])),
+      h('div', { class: 'actions' },
+        h('button', { class: 'btn', title: 'Puts this build on the Designer\'s bench, where every module and its engineering can be changed',
+          onclick: () => { location.href = 'designer.html?' + (selected ? 'id=' + encodeURIComponent(selected) : 'current'); } }, 'Open in Designer'),
+        h('button', { class: 'btn', title: 'Opens this build in the EDSY ship designer, in your browser', onclick: () => openIn('edsy') }, 'Open in EDSY'),
+        h('button', { class: 'btn', title: 'Opens this build in the Coriolis ship designer, in your browser', onclick: () => openIn('coriolis') }, 'Open in Coriolis'),
+        h('button', { class: 'btn', title: 'Copies the build as text (SLEF) that Inara, EDSY, Coriolis and Spansh accept when pasted', onclick: copySlef }, 'Copy SLEF'),
+        selected && h('button', { class: 'btn', onclick: rename }, 'Rename'),
+        selected && h('button', { class: 'btn danger', title: 'Moves the saved build to the Recycle Bin', onclick: remove }, 'Delete'))),
+    h('div', { class: 'stats' },
+      stat('Jump, full hold', ly(ship.jumpLaden)),
+      stat('Jump, empty hold', ly(ship.jumpEmpty)),
+      stat('Best possible jump', ly(ship.jumpMax)),
+      stat('Cargo', ship.cargoCapacity + ' t'),
+      stat('Fuel tank', tons(ship.fuelMain)),
+      stat('Weight, empty', tons(ship.unladenMass)),
+      stat('Ship and modules', credits(ship.hullValue + ship.modulesValue)),
+      stat('Rebuy', credits(ship.rebuy))),
+    selected && handOffs(),
+    h('div', { class: 'columns' },
+      h('div', null, groups(['Hardpoints', 'Utility mounts', 'Core internals'])),
+      h('div', null, groups(['Optional internals']))));
+}
+
+function group(g) {
+  return h('section', { class: 'tablebox group' }, h('header', null, g.name), h('table', null, h('tbody', null, g.modules.map(row))));
+}
+
+function row(m) {
+  const e = m.engineering;
+  const planned = e && !e.changes.length;   // engineered in the Designer: nothing was rolled, so there are no changed numbers to open
+  const open = numbers.has(m.slotId);
+  const toggle = () => { if (!numbers.delete(m.slotId)) numbers.add(m.slotId); renderDetail(); };
+  return h('tr', { class: m.on ? null : 'off' },
+    // A core slot is named after what goes in it; saying "Sensors" twice helps nobody.
+    h('td', { class: 'slot' }, m.name.includes(m.slot) ? '' : m.slot),
+    h('td', { class: 'class' }, (m.size || '') + m.rating),
+    h('td', { class: 'module', title: m.item },
+      m.name, m.mount && h('span', { class: 'muted' }, dot + m.mount),
+      e && h(planned ? 'span' : 'button', planned
+          ? { class: 'work', title: 'Grade ' + e.grade + ', planned in the Designer as rolled to the end of the grade.' }
+          : { class: 'textbtn work', 'aria-expanded': String(open), onclick: toggle,
+              title: 'Grade ' + e.grade + ' (' + Math.round(e.quality * 100) + '% of the way through it) by ' + e.engineer + '. Click for the changed numbers.' },
+        h('span', { class: 'pips' }, [1, 2, 3, 4, 5].map(n => h('i', { class: n <= e.grade ? 'on' : null }))),
+        e.blueprint, e.experimental && h('span', { class: 'muted' }, '+ ' + e.experimental), !planned && h('span', { class: 'muted' }, open ? '▴' : '▾')),
+      e && open && h('div', { class: 'changes' }, e.changes.map(change))),
+    h('td', { class: 'power r' },
+      m.health < 1 && [h('span', { class: 'badge warn', title: 'Damaged' }, Math.floor(m.health * 100) + '%'), ' '],
+      m.on ? h('span', { title: 'Power priority ' + m.priority }, 'P' + m.priority) : 'Off'));
+}
+
+// One changed number: what it was, what it is, and by how much, green when the change helps.
+function change(c) {
+  if (c.text) return [h('span', null, c.label), h('span', { class: 'n' }), h('span', { class: 'n' }, c.text)];
+  const round = n => (+n.toFixed(2)).toLocaleString('en-US');
+  const better = c.value === c.original ? null : (c.value < c.original) === c.lessIsGood;
+  const percent = c.original ? (c.value - c.original) / Math.abs(c.original) * 100 : 0;
+  return [h('span', null, c.label),
+    h('span', { class: 'n' }, round(c.original) + ' → ' + round(c.value)),
+    h('span', { class: 'n' + (better == null ? '' : better ? ' good' : ' bad') }, (percent > 0 ? '+' : '') + percent.toFixed(1) + '%')];
+}
+
+// ============================================================ from the ship being flown to this build
+// A saved build is handed on, so nothing has to be carried across by hand: what the ship flown still lacks, where
+// to buy it in the fewest stops (the app asks Spansh), that trip to Studio Nav, and the engineering to the planner.
+const counted = (n, what) => (n > 1 ? n + ' × ' : '') + what;
+
+function handOffs() {
+  const flown = current ? current.shipType : 'ship';
+  const modules = lacking ? lacking.modules : [];
+  const pieces = modules.reduce((sum, m) => sum + m.count, 0);
+  const what = !lacking ? null
+    : lacking.newHull ? 'This build is a ' + lacking.shipType + ' and you fly a ' + flown + '. Buy the ' + lacking.shipType + ' first: it comes with its plainest modules'
+      + (pieces ? ', and ' + count(pieces, 'module') + ' of this build ' + (pieces === 1 ? 'is' : 'are') + ' still to buy for it:' : ', which is all this build has.')
+    : pieces ? 'Your ' + flown + ' still lacks ' + count(pieces, 'module') + ' of this build:'
+    : 'Your ' + flown + ' has every module of this build on board.';
+  return h('section', { class: 'card shop' },
+    h('h2', null, 'From your ship to this build'),
+    !lacking ? h('p', { class: 'muted' }, shopProblem || 'Comparing it with the ship you fly…') : [
+      h('p', null, what),
+      pieces > 0 && h('p', { class: 'muted' }, modules.map(m => counted(m.count, m.label)).join(dot)),
+      (pieces > 0 || lacking.newHull) && h('div', { class: 'row' },
+        h('button', { class: 'btn' + (trip ? '' : ' primary'), disabled: looking, onclick: findStops,
+          title: 'Asks Spansh which stations near you sell it, and picks the fewest stops. Your station filters in Studio Market count.' }, trip ? 'Look again' : 'Find where to buy it'),
+        looking ? h('span', { class: 'busy' }, h('span', { class: 'spin' }), 'Asking Spansh… Its answers are long, so this can take a while.')
+          : h('span', { class: 'muted small' }, 'Stations and what they sell come from ', h('a', { href: 'https://spansh.co.uk/', target: '_blank', rel: 'noopener' }, 'Spansh'),
+            ', a free service fed by what players\' tools report.')),
+      shopProblem && h('p', { class: 'card bad', style: 'margin-top:10px' }, shopProblem),
+      trip && h('div', { class: 'part' }, stops()),
+      lacking.engineered > 0 && h('div', { class: 'part row' },
+        h('span', null, count(lacking.engineered, 'module') + ' of this build ' + (lacking.engineered === 1 ? 'is' : 'are') + ' engineered.'),
+        h('button', { class: 'btn', onclick: pinEngineering,
+          title: 'Pins each one\'s blueprint to its grade, with its experimental effect, in the Engineering planner. What is pinned just so already is left alone.' }, 'Pin the engineering in the planner'))]);
+}
+
+// The trip: the stops in flying order with what to buy at each, what could not be found, and the button that hands it to Studio Nav.
+function stops() {
+  const cost = trip.stops.reduce((sum, s) => sum + s.buy.reduce((part, b) => part + b.count * b.price, 0), 0);
+  const where = s => [s.system, s.ly.toFixed(1) + ' ly', s.starLs != null && Studio.whole(s.starLs) + ' ls from the star', s.pad && s.pad + ' pad', s.type,
+    s.updated && 'reported ' + ago(s.updated)].filter(Boolean).join(dot);
+  return [
+    trip.stops.length > 0 && h('ol', { class: 'stops' }, trip.stops.map(s => h('li', null,
+      h('span', null, h('b', null, s.station), h('span', { class: 'muted' }, dot + where(s))),
+      h('button', { class: 'btn small', title: 'Then paste it into the galaxy map\'s search box with Ctrl+V', onclick: () => Studio.copyName(s.system) }, 'Copy system'),
+      h('span', { class: 'buy' }, 'Buy ' + s.buy.map(b => counted(b.count, b.what) + ' (' + credits(b.price) + (b.count > 1 ? ' each' : '') + ')').join(', '))))),
+    trip.notFound.length > 0 && h('p', { class: 'card bad' }, (trip.stops.length ? 'Not found: ' : 'Nothing of it was found: ') + trip.notFound.join(', ')
+      + '. Spansh knows no station that sells ' + (trip.notFound.length > 1 ? 'these' : 'this') + ', takes your ship and passes your station filters in Studio Market.'
+      + (trip.cutShort ? ' Studio stops at ' + trip.questions + ' questions to Spansh for one list, so not everything was asked about.' : '')),
+    trip.stops.length > 0 && h('div', { class: 'row' },
+      h('button', { class: 'btn primary', onclick: toNav, title: 'Makes these stops the route in Studio Nav: the next stop, its Copy button and the overlay in the game walk you along them' }, 'Send the trip to Studio Nav'),
+      h('span', { class: 'muted small' }, [count(trip.stops.length, 'stop') + ' from ' + trip.from, credits(cost) + ' at the prices last reported', 'Spansh was asked ' + ago(trip.askedUtc)].join(dot)))];
+}
+
+async function loadLacking() {
+  const id = selected;
+  if (!id) return;
+  try { lacking = await Studio.api('GET', '/api/loadouts/shopping?id=' + encodeURIComponent(id)); }
+  catch (e) { shopProblem = e.message; }
+  if (selected === id) renderDetail();
+}
+
+async function findStops() {
+  const id = selected;
+  [looking, trip, shopProblem] = [true, null, ''];
+  renderDetail();
+  let answer = null, problem = '';
+  try { answer = await Studio.api('POST', '/api/loadouts/shopping/stops', { id }); } catch (e) { problem = e.message; }
+  looking = false;
+  if (selected === id) [trip, shopProblem] = [answer, problem];
+  renderDetail();
+}
+
+async function toNav() {
+  try {
+    const nav = await Studio.api('GET', '/api/nav/route');
+    if (nav.route && !await ask({ title: 'Replace the route in Studio Nav?', ok: 'Replace it',
+      body: 'Studio Nav is following a route to ' + nav.route.request.to + '. The shopping trip takes its place.' })) return;
+    await Studio.api('POST', '/api/nav/trip', { name: trip.name, stops: trip.stops.map(s => ({ system: s.system, address: s.address, x: s.x, y: s.y, z: s.z, note: s.note })) });
+    Studio.open('nav');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function pinEngineering() {
+  try {
+    const a = await Studio.api('POST', '/api/loadouts/pin', { id: selected });
+    toast((a.added ? 'Pinned ' + count(a.added, 'blueprint') + '. ' + (a.added === 1 ? 'It is' : 'They are') + ' on the Engineering page.' : 'Everything this build takes was pinned already.')
+      + (a.notOffered.length ? ' No engineer offers: ' + a.notOffered.join(', ') + '.' : ''), a.notOffered.length > 0);
+  } catch (e) { toast(e.message, true); }
+}
+
+// ============================================================ actions
+async function saveCurrent() {
+  const suggestion = [current.shipType, current.shipName || current.shipIdent].filter(Boolean).join(' ');
+  const name = await ask({ title: 'Save current ship', body: 'A copy of the ship as it is now is kept under this name.', value: suggestion, max: Studio.nameLength, ok: 'Save' });
+  if (!name) return;
+  try {
+    const answer = await Studio.api('POST', '/api/loadouts/save', { name });
+    await loadSaved();
+    await select(answer.id);
+    toast('Saved “' + name + '”.');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function rename() {
+  const was = build;
+  const name = await ask({ title: 'Rename “' + was.name + '”', body: 'The build itself stays as it is.', value: was.name, max: Studio.nameLength, ok: 'Rename' });
+  if (!name || name === was.name) return;
+  try {
+    const answer = await Studio.api('POST', '/api/loadouts/rename', { id: was.id, name });
+    await loadSaved();
+    await select(answer.id);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function remove() {
+  const gone = build;
+  if (!await ask({ title: 'Delete “' + gone.name + '”?', body: 'The saved build goes to the Windows Recycle Bin, so you can still get it back.', ok: 'Delete', danger: true })) return;
+  try {
+    await Studio.api('POST', '/api/loadouts/delete', { id: gone.id });
+    await loadSaved();
+    await select('');
+    toast('Deleted “' + gone.name + '”.');
+  } catch (e) { toast(e.message, true); }
+}
+
+async function copySlef() {
+  let text;
+  try { text = (await Studio.api('GET', '/api/loadouts/export?to=slef&id=' + encodeURIComponent(selected))).text; }
+  catch (e) { toast(e.message, true); return; }
+  if (await Studio.copy(text)) { toast('Copied. Paste it into Inara, EDSY, Coriolis or Spansh.'); return; }
+  // The browser would not let the page write to the clipboard: show the text to copy by hand.
+  await ask({ title: 'Copy this build', body: 'Press Ctrl+C to copy the text, then paste it into Inara, EDSY, Coriolis or Spansh.', area: text });
+}
+
+// ============================================================ loading and following the game
+async function loadSaved() {
+  saved = (await Studio.api('GET', '/api/loadouts/saved')).saved;
+  renderList();
+}
+function showCurrent(answer) {
+  current = answer.ship;
+  reported = answer.reportedUtc;
+  renderList();
+  if (!selected) renderDetail();
+  else if (build) { trip = null; loadLacking(); }   // the ship changed (a module bought, say): what it still lacks is counted afresh
+}
+
+$('#save').addEventListener('click', saveCurrent);
+Studio.follow('loadouts', '/api/loadouts/ship', showCurrent);
+// The saved builds have no event of their own: they are read at the start and whenever the live stream (re)connects.
+const readSaved = () => { loadSaved().catch(() => {}); };
+readSaved();
+Studio.onEvent('open', readSaved);
+})();
+</script>
+</body>
+</html>

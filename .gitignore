@@ -1,0 +1,8 @@
+dist/
+.vs/
+*.user
+
+# The owner's working notes stay on his PC (his choice, 11 October 2026).
+PLAN.md
+CLAUDE.md
+features_request.txt

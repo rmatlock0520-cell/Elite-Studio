@@ -1,0 +1,63 @@
+{
+    "startMode":  "near",
+    "rankBy":  "trip",
+    "returns":  true,
+    "jumpRange":  14,
+    "jumpEmpty":  27,
+    "pad":  "auto",
+    "buyLy":  100,
+    "maxLy":  150,
+    "maxAgeHours":  12,
+    "maxStarLs":  5000,
+    "minSupply":  0,
+    "minDemand":  0,
+    "carriers":  false,
+    "surface":  "horizons",
+    "cargoOverride":  388,
+    "srcPower":  "any",
+    "dstPower":  "any",
+    "srcState":  "any",
+    "dstState":  "any",
+    "hotToggle":  "F2",
+    "hotNext":  "F3",
+    "hotCopy":  "F4",
+    "hotAccept":  "F5",
+    "hotCargo":  "F6",
+    "hotBack":  "F7",
+    "hotMenu":  "F8",
+    "hotFwd":  "F9",
+    "mouseMode":  true,
+    "listSort":  "rank",
+    "position":  "TopCenter",
+    "offsetY":  0,
+    "scale":  0.86,
+    "opacity":  0.92,
+    "onlyWhenElite":  true,
+    "overlayOn":  false,
+    "startInTray":  false,
+    "accent":  "#3D8BFF",
+    "dark":  true,
+    "expBasic":  true,
+    "expStation":  false,
+    "expPower":  false,
+    "expOverlay":  false,
+    "expPresets":  false,
+    "presets":  [
+                    {
+                        "name":  "Quick one-way hops",
+                        "set":  {
+                                    "returns":  false,
+                                    "rankBy":  "hour",
+                                    "maxLy":  40
+                                }
+                    },
+                    {
+                        "name":  "Long round trips",
+                        "set":  {
+                                    "returns":  true,
+                                    "rankBy":  "trip",
+                                    "maxLy":  120
+                                }
+                    }
+                ]
+}

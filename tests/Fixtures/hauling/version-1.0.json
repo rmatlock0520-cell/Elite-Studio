@@ -1,0 +1,23 @@
+{
+    "startMode":  "near",
+    "returns":  false,
+    "jumpRange":  22.5,
+    "pad":  "M",
+    "buyLy":  25,
+    "maxLy":  60,
+    "maxAgeHours":  24,
+    "minSupply":  750,
+    "minDemand":  60000,
+    "carriers":  true,
+    "settlements":  false,
+    "hotToggle":  "Ctrl+Shift+H",
+    "hotNext":  "Ctrl+Shift+N",
+    "hotCopy":  "F4",
+    "hotCargo":  "F7",
+    "position":  "TopLeft",
+    "offsetY":  120,
+    "scale":  1.25,
+    "opacity":  0.5,
+    "onlyWhenElite":  false,
+    "overlayOn":  true
+}

@@ -1,0 +1,1 @@
+Only folders are backups; this file is ignored.

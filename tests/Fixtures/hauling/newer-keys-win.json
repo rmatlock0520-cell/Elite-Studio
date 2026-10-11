@@ -1,0 +1,12 @@
+{
+    "settlements":  true,
+    "surface":  "none",
+    "hotPause":  "F10",
+    "hotAccept":  "F11",
+    "hotCargo":  "F7",
+    "hotMenu":  "F12",
+    "hotToggle":  "Ctrl+Shift+H",
+    "hotNext":  "F3",
+    "minSupply":  1000,
+    "presets":  [  ]
+}

@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="studio-token" content="__STUDIO_TOKEN__">
+<title>Studio Nav - Elite Studio</title>
+<link rel="icon" href="../studio.svg">
+<link rel="stylesheet" href="../studio.css">
+<!--
+  STUDIO NAV: routes from Spansh, and the way along them.
+  Left: ask Spansh for a neutron route or an exact route. Right: the route as a table, with the next system
+  to fly to in big letters and a Copy button, because the game cannot be told to plot a route: the player
+  pastes the name into the galaxy map.
+  The page only draws what the app says. GET /api/nav/route and every "nav" event carry the whole picture
+  (the route, the progress along it, the request Spansh is working on, the last problem); "state" events
+  carry the game. A route may also be a trip another studio handed to the app (a shopping trip from Studio
+  Loadouts): its stops come with a note on what to do there, shown with NEXT and in the table.
+  Shown inside the shell (..\index.html) and also works opened on its own in a browser.
+-->
+<style>
+/* Only what is this page's own; the shared look (buttons, boxes, badges, fields, the list table...) is in ../studio.css. */
+:root{--neutron:#6fd3ff}
+.plan{border-right:1px solid var(--line);padding:16px;overflow:auto}
+.plan form{display:grid;gap:12px}
+.plan form p{margin:0}
+.seg{display:grid}   /* its two buttons fill the column between them */
+#busy,#problem{font-size:13px}
+#busy span:nth-child(2){flex:1}   /* the text takes the room, so Cancel stands at the right */
+.credit{margin:18px 0 0;padding-top:14px;border-top:1px solid var(--line)}
+
+.way{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;padding:16px}
+#empty{margin:auto;max-width:460px;text-align:center;color:var(--muted)}
+.next{margin:0;flex:none}
+.next .line{display:flex;align-items:center;gap:14px}
+.next .tag{font-family:var(--hud);letter-spacing:.16em;font-size:15px;color:var(--accent);flex:none}
+.next b{flex:1;min-width:0;font-family:var(--hud);font-weight:600;font-size:30px;line-height:1.2;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:all}
+.next.arrived .tag{color:var(--good)}
+.next p{margin:6px 0 0}
+.next .foot{display:flex;align-items:center;gap:12px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:13px}
+.next .foot span:first-child{font-weight:600}
+.next .foot .muted{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.next .foot a{flex:none}
+#rows{flex:1;min-height:0}
+td.sys{width:99%}
+td.sys .badge{margin-left:8px}
+.badge.neutron{color:var(--neutron);border-color:rgba(111,211,255,.45)}
+.badge.here{display:none}   /* every row carries the "You are here" badge; only the row marked .here shows it */
+tr.here .badge.here{display:inline-block}
+.name:hover{color:var(--accent)}
+tr.done td,tr.done .name{color:var(--faint)}
+tr.next td{background:var(--accent-soft)}
+tr.next td:first-child{box-shadow:inset 3px 0 var(--accent)}
+tr.next .name{font-weight:600}
+/* a trip's notes: what to do at the stop the ship is in (over NEXT), at the next stop (under it), and at every stop of the table */
+.next .note .tag{font-size:13px;margin-right:10px}
+#here-note{margin:0 0 10px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+#here-note .tag{color:var(--good)}
+td.sys .muted{display:block;white-space:normal;font-size:12.5px}
+</style>
+</head>
+<body>
+
+<nav class="subtabs"><a class="active" href="./">Routes</a><a href="unexplored.html">Unexplored</a></nav>
+
+<div class="layout">
+  <aside class="plan">
+    <h2>Plot a route</h2>
+    <form id="form" novalidate>
+      <div class="seg" role="group" aria-label="Kind of route">
+        <button type="button" data-kind="neutron">Neutron</button>
+        <button type="button" data-kind="exact">Exact</button>
+      </div>
+      <p class="muted small" id="neutron-hint">The fast way across the galaxy: a few long legs from neutron star to neutron star. You plot each leg in the galaxy map.</p>
+      <p class="muted small" id="exact-hint" hidden>Every single jump, with the stars to scoop fuel at. <span id="exact-ship"></span> Spansh takes about a minute over it.</p>
+
+      <div class="field">
+        <label>From<input id="from" list="from-names" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <datalist id="from-names"></datalist>
+      <div class="field">
+        <label>To<input id="to" list="to-names" autocomplete="off" spellcheck="false" placeholder="Type three letters or more"></label>
+      </div>
+      <datalist id="to-names"></datalist>
+
+      <div class="field" id="neutron-only">
+        <label title="How far one jump takes you with a full tank, in light years">Jump range (ly)<input id="range" type="number" min="1" step="any"></label>
+        <label title="Higher stays nearer the straight line. Lower allows longer detours to reach neutron stars. Spansh suggests 60.">Efficiency (%)<input id="efficiency" type="number" min="1" max="100" step="1" value="60"></label>
+      </div>
+
+      <button class="btn primary" id="plot">Plot route</button>
+      <div class="busy" id="busy" hidden><span class="spin"></span><span id="busy-text"></span><button type="button" class="btn small" id="cancel">Cancel</button></div>
+      <p class="card bad" id="problem" hidden></p>
+    </form>
+    <p class="muted small credit">Routes are worked out by <a href="https://spansh.co.uk/" target="_blank" rel="noopener">Spansh</a> (spansh.co.uk), a free service that one person runs for all of us. Please plot only what you mean to fly.</p>
+  </aside>
+
+  <main class="way">
+    <p id="empty">No route yet. Plot one on the left, and Studio will walk you along it: the next system to fly to, a button to copy its name for the galaxy map, and how far is left.</p>
+    <section class="card next" id="next" hidden>
+      <p class="note" id="here-note" hidden><span class="tag">HERE</span><span></span></p>
+      <div class="line">
+        <span class="tag" id="next-tag"></span>
+        <b id="next-name"></b>
+        <button class="btn primary" id="copy" title="Then paste it into the galaxy map's search box with Ctrl+V">Copy name</button>
+      </div>
+      <p class="muted" id="next-facts"></p>
+      <p class="note" id="next-note" hidden><span class="tag">THERE</span><span></span></p>
+      <div class="foot">
+        <span id="left"></span>
+        <span class="muted" id="about"></span>
+        <a id="on-spansh" target="_blank" rel="noopener" title="Opens this route on spansh.co.uk in your browser">See it on Spansh</a>
+        <button class="btn small danger" id="clear">Clear route</button>
+      </div>
+    </section>
+    <div class="tablebox" id="rows" hidden>
+      <table>
+        <thead><tr>
+          <th class="r">Stop</th>
+          <th>System</th>
+          <th class="r" title="Light years from the stop before">Leg (ly)</th>
+          <th class="r" title="Jumps from the stop before">Jumps</th>
+          <th class="r" title="Light years from the start">Total (ly)</th>
+          <th class="r" title="Jumps from the start">Total jumps</th>
+          <th class="r" title="Light years to the destination in a straight line">To go (ly)</th>
+          <th class="r" id="fuel-head" title="Tons in the tank at this stop, after scooping where Refuel is marked">Fuel (t)</th>
+        </tr></thead>
+        <tbody id="hops"></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<script src="../studio.js"></script>
+<script>
+(() => {
+'use strict';
+const { $, h, toast, whole, count, ago, wideDot } = Studio;
+const ly = n => Number(n).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const about = jumps => (jumps > 1 ? 'about ' : '') + count(jumps, 'jump');   // several jumps are an estimate; one is one
+
+let view = { route: null, progress: null, plotting: null, problem: null };   // the app's whole picture of Studio Nav
+let game = {};          // the newest game snapshot
+let kind = 'neutron';
+let typedRange = false; // the jump range box was changed by hand, so it no longer follows the game (the From box: Studio.fromBox)
+let refused = '';       // why the app would not even start the last request
+let filled = false;     // the form has been filled from the route found at start-up
+let tableOf = '';       // the route the table was built for
+let inView = -1;        // the row last scrolled to
+
+// ============================================================ the form
+function setKind(k) {
+  kind = k;
+  for (const b of document.querySelectorAll('.seg button')) b.classList.toggle('active', b.dataset.kind === k);
+  $('#neutron-hint').hidden = $('#neutron-only').hidden = k !== 'neutron';
+  $('#exact-hint').hidden = k !== 'exact';
+}
+
+// From and the jump range follow the game until the player types their own.
+function followGame() {
+  from.show(game.starSystem);
+  if (!typedRange && game.jumpLaden > 0 && $('#range').value !== String(game.jumpLaden)) $('#range').value = game.jumpLaden;
+  $('#exact-ship').textContent = game.shipType
+    ? 'It is worked out for your ' + game.shipType + ' as it is now, with ' + (game.cargoCount || 0) + ' t of cargo on board.'
+    : 'It is worked out for your own ship, which the game has not described yet: start Elite and board your ship first.';
+}
+
+// Name suggestions while typing, through the browser's own list. The app asks Spansh, and only from three letters on.
+function suggest(input, list) {
+  let timer = 0;
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const text = input.value.trim();
+    if (text.length < 3) { list.replaceChildren(); return; }
+    if ([...list.options].some(o => o.value === text)) return;   // a name just picked from the list
+    timer = setTimeout(async () => {
+      let names;
+      try { names = (await Studio.api('GET', '/api/nav/systems?q=' + encodeURIComponent(text))).systems; } catch (e) { return; }
+      if (input.value.trim() !== text) return;   // typed on meanwhile: a newer answer is coming
+      list.replaceChildren(...names.map(name => h('option', { value: name })));
+    }, 300);
+  });
+}
+
+// The app checks what is sent and says in words what is wrong (the form itself checks nothing: a box that
+// is hidden for this kind of route must never block the button).
+function plot() {
+  refused = '';
+  const body = { kind, from: $('#from').value, to: $('#to').value, range: Number($('#range').value), efficiency: Math.round(Number($('#efficiency').value)) };
+  call('POST', '/api/nav/plot', body).catch(e => { refused = e.message; render(); });
+}
+
+// The app's complaint about the form goes as soon as its cause may be gone: a box changed, the other kind
+// of route chosen, the route cleared.
+function dropComplaint() {
+  if (refused) { refused = ''; render(); }
+}
+
+// ============================================================ drawing what the app says
+function render() {
+  const { route, progress, plotting } = view;
+  $('#plot').disabled = !!plotting;
+  $('#busy').hidden = !plotting;
+  const problem = refused || view.problem || '';
+  $('#problem').hidden = !problem;
+  $('#problem').textContent = problem;
+  $('#empty').hidden = !!route;
+  $('#next').hidden = $('#rows').hidden = !route;
+  everySecond();
+  if (!route) { tableOf = ''; return; }
+  if (tableOf !== route.job + route.plottedUtc) buildTable(route);
+  showNext(route, progress);
+  markRows();
+}
+
+function showNext(route, progress) {
+  const arrived = !progress.next;
+  const hop = route.hops[arrived ? route.hops.length - 1 : progress.at + 1];
+  $('#next').classList.toggle('arrived', arrived);
+  $('#next-tag').textContent = arrived ? 'ARRIVED' : 'NEXT';
+  $('#next-name').textContent = hop.system;
+  $('#copy').hidden = arrived;
+  const facts = [];
+  if (arrived) facts.push('You have reached the end of this route.');
+  else {
+    facts.push(ly(progress.nextLy) + ' ly from you');
+    if (progress.nextJumps) facts.push(progress.nextPlotted ? count(progress.nextJumps, 'jump') + ' on the route plotted in the game' : about(progress.nextJumps));
+    if (hop.neutron) facts.push('neutron star: supercharge there');
+    if (hop.refuel) facts.push('scoop fuel there');
+  }
+  $('#next-facts').textContent = facts.join(wideDot);
+  // A stop of a trip says what to do there: for the stop the ship is in that is the thing to do now.
+  for (const [box, note] of [['#here-note', progress.hereNote], ['#next-note', progress.nextNote]]) {
+    $(box).hidden = !note;
+    $(box).lastChild.textContent = note;
+  }
+  $('#left').textContent = arrived ? '' : [count(progress.hopsLeft, 'stop') + ' left', about(progress.jumpsLeft), ly(progress.lyLeft) + ' ly'].join(wideDot);
+}
+
+function buildTable(route) {
+  tableOf = route.job + route.plottedUtc;
+  inView = -1;
+  const exact = route.request.kind === 'exact';
+  $('#fuel-head').hidden = !exact;
+  $('#on-spansh').hidden = !route.job;   // a trip another page handed over is not Spansh's
+  $('#on-spansh').href = 'https://spansh.co.uk/' + (exact ? 'exact-plotter' : 'plotter') + '/results/' + encodeURIComponent(route.job);
+  let totalLy = 0, totalJumps = 0;
+  const number = text => h('td', { class: 'r' }, text);
+  $('#hops').replaceChildren(...route.hops.map((hop, i) => {
+    totalLy += hop.distance;
+    totalJumps += hop.jumps;
+    return h('tr', null,
+      number(i ? i : 'Start'),
+      h('td', { class: 'sys' },
+        h('button', { class: 'textbtn name', title: 'Copy this name' }, hop.system),
+        hop.neutron && h('span', { class: 'badge neutron' }, 'Neutron'),
+        hop.refuel && h('span', { class: 'badge warn' }, 'Refuel'),
+        h('span', { class: 'badge good here' }, 'You are here'),   // shown only in the row markRows() marks "here"
+        hop.note && h('span', { class: 'muted' }, hop.note)),
+      number(i ? ly(hop.distance) : ''), number(i ? hop.jumps : ''),
+      number(ly(totalLy)), number(whole(totalJumps)), number(ly(hop.distanceLeft)),
+      exact && number(ly(hop.fuel)));
+  }));
+}
+
+// Stops behind the player go grey, the next one is lit and kept in view, and the stop the ship is in says so.
+function markRows() {
+  const { route, progress } = view;
+  if (!route) return;
+  const rows = $('#hops').rows;
+  const next = progress.next ? progress.at + 1 : -1;
+  for (let i = 0; i < rows.length; i++) {
+    const mark = (i === next ? 'next' : i <= progress.at ? 'done' : '') + (i === progress.here ? ' here' : '');
+    if (rows[i].className !== mark) rows[i].className = mark;   // this runs with every step along the route: touch only what differs
+  }
+  // The row is brought to the middle of the table by scrolling the table's own box and nothing else
+  // (scrollIntoView also shifts the whole page in a narrow window). While another Studio tab is in front
+  // this page is not drawn and nothing can be scrolled: the row then stays owed until the table is seen again.
+  const keep = next >= 0 ? next : rows.length - 1, box = $('#rows');
+  if (keep === inView || !rows[keep] || !box.clientHeight) return;
+  inView = keep;
+  box.scrollTop += rows[keep].getBoundingClientRect().top - box.getBoundingClientRect().top - (box.clientHeight - rows[keep].offsetHeight) / 2;
+}
+
+// The two texts that change with the clock: how long Spansh has been at it, and how old the route is.
+function everySecond() {
+  const { route, plotting } = view;
+  if (plotting) {
+    const seconds = Math.max(0, Math.round((Date.now() - Date.parse(plotting.startedUtc)) / 1000));
+    $('#busy-text').textContent = (plotting.state === 'queued' ? "Waiting in Spansh's queue" : 'Spansh is working on it') + ', ' + seconds + ' s';
+  }
+  if (route) {
+    const r = route.request;
+    // An exact route may count on a neutron star's charge the ship held when it was plotted: its first jump is then longer than the ship makes without one.
+    const what = r.kind === 'exact' ? 'exact route for ' + count(r.cargo, 'ton') + ' of cargo' + (r.ship && r.ship.isSupercharged ? ', starting supercharged' : '')
+      : r.kind === 'trip' ? r.name || 'a trip'
+      : 'neutron route for ' + r.range + ' ly jumps, efficiency ' + r.efficiency;
+    // The age comes first: in a narrow window the end of this line is cut short (the tooltip has all of it).
+    $('#about').textContent = [(r.kind === 'trip' ? 'Handed over ' : 'Plotted by Spansh ') + ago(route.plottedUtc), what, r.from + ' to ' + r.to].join(wideDot);
+    $('#about').title = $('#about').textContent;
+  }
+}
+
+// ============================================================ what the app says
+function show(v) {
+  view = v;
+  if (!filled) {
+    // Opened with a request or a route already there (a restart, a reload): the form shows what was asked.
+    filled = true;
+    const asked = (v.plotting || v.route || {}).request;
+    if (asked && asked.kind !== 'trip') {   // a trip was never asked for on this form
+      setKind(asked.kind);
+      if (!wanted) $('#to').value = asked.to;
+      if (asked.kind === 'neutron') $('#efficiency').value = asked.efficiency;
+    }
+  }
+  render();
+}
+
+function showGame(s) {
+  game = s;
+  followGame();
+}
+
+// ============================================================ start-up
+if (!Studio.served) return;
+setKind(kind);
+for (const b of document.querySelectorAll('.seg button')) b.addEventListener('click', () => { setKind(b.dataset.kind); dropComplaint(); });
+const from = Studio.fromBox($('#from'));
+$('#range').addEventListener('input', () => { typedRange = true; });
+// Opened with a system to go to (./?to=NAME, as the Unexplored page's "Plot a route to it" and the other studios'
+// "Route" links do): it goes under To, ahead of where the last route went, and waits there for the player to press Plot route.
+const wanted = new URLSearchParams(location.search).get('to');
+if (wanted) $('#to').value = wanted;
+suggest($('#from'), $('#from-names'));
+suggest($('#to'), $('#to-names'));
+$('#form').addEventListener('submit', e => { e.preventDefault(); plot(); });
+$('#form').addEventListener('input', dropComplaint);
+$('#cancel').addEventListener('click', () => call('POST', '/api/nav/cancel', {}).then(dropComplaint, e => toast(e.message, true)));
+$('#clear').addEventListener('click', () => call('POST', '/api/nav/clear', {}).then(dropComplaint, e => toast(e.message, true)));
+$('#copy').addEventListener('click', () => { if (view.progress && view.progress.next) Studio.copyName(view.progress.next); });
+$('#hops').addEventListener('click', e => { const name = e.target.closest('.name'); if (name) Studio.copyName(name.textContent); });
+window.addEventListener('resize', () => { inView = -1; markRows(); });   // a window made smaller may have pushed the next stop out of sight
+// The table coming (back) into sight: the moment to bring the next stop into view if it moved on meanwhile.
+new IntersectionObserver(seen => { if (seen.some(s => s.isIntersecting)) markRows(); }).observe($('#rows'));
+setInterval(everySecond, 1000);
+// The app's two pictures, kept up to date. Every request of this page answers with the first, so it goes through call().
+const call = Studio.follow('nav', '/api/nav/route', show);
+Studio.follow('state', '/api/state', showGame);
+})();
+</script>
+</body>
+</html>

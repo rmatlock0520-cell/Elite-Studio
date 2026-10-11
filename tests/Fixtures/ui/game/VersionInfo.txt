@@ -1,0 +1,1 @@
+{"Version":"2026.09.03.332841","executable":"EliteDangerous64.exe", "name" : "Elite: Dangerous", "useWatchDog64" : "true"}

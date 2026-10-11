@@ -1,0 +1,32 @@
+{
+    "settlements":  true,
+    "hotCopy":  "F6",
+    "hotCargo":  "F7",
+    "hotPause":  "F10",
+    "minSupply":  99,
+    "maxLy":  "80",
+    "buyLy":  "far",
+    "scale":  "big",
+    "hotToggle":  null,
+    "position":  null,
+    "pad":  null,
+    "maxStarLs":  null,
+    "somethingNewer":  5,
+    "presets":  [
+                    { "name":  "  Padded name  ", "set":  { "maxLy":  200, "jumpRange":  50, "hotNext":  "F1" } },
+                    { "name":  "", "set":  { "maxLy":  10 } },
+                    { "name":  "Only what a preset may not hold", "set":  { "jumpRange":  50, "cargoOverride":  100 } },
+                    null,
+                    { "name":  "No set at all" },
+                    { "name":  "A value that does not fit", "set":  { "maxLy":  "far" } },
+                    { "name":  "Typed supply", "set":  { "minSupply":  750, "RETURNS":  false } },
+                    { "name":  "Three", "set":  { "maxLy":  30 } },
+                    { "name":  "Four", "set":  { "maxLy":  40 } },
+                    { "name":  "Five", "set":  { "maxLy":  50 } },
+                    { "name":  "Six", "set":  { "maxLy":  60 } },
+                    { "name":  "Seven", "set":  { "maxLy":  70 } },
+                    { "name":  "Eight", "set":  { "maxLy":  80 } },
+                    { "name":  "Nine", "set":  { "maxLy":  90 } },
+                    { "name":  "Ten", "set":  { "maxLy":  100 } }
+                ]
+}

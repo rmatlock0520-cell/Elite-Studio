@@ -1,0 +1,181 @@
+/*
+  ELITE STUDIO: the look every desktop page shares.
+  The colours, fonts and controls are the theme editor's own, so the whole app feels like one product.
+  (ui/index.html keeps its private copy of these rules: it took many sessions to tune, and it also
+  recolours its accent to match the player's HUD. Change a shared rule here and there together.)
+  A page's own <style> holds only what no other page has: its layout and its special parts. Anything a
+  second page needs moves here, and one of the editor's colours or controls that is not here yet is
+  copied here from ui/index.html: never into a page, and never drawn anew.
+*/
+:root{
+  --bg:#06080c;--bg2:#0a0e14;--panel:#0e131a;--panel2:#131a23;
+  --line:#1f2935;--line2:#2a3645;--text:#e2e8f0;--muted:#8d99aa;--faint:#5b6677;
+  --accent:#ff7100;--accent-ink:#140900;--accent-soft:rgba(255,113,0,.14);--accent-line:rgba(255,113,0,.45);
+  --good:#3ddc84;--warn:#ffb020;--bad:#ff5a4f;
+  --font:"Segoe UI",system-ui,-apple-system,sans-serif;
+  --hud:"Bahnschrift","DIN Alternate","Segoe UI",system-ui,sans-serif;
+  --mono:"Cascadia Mono",Consolas,"Courier New",monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+/* A page fills the window and never scrolls as a whole; its own parts scroll. The red bar and a .subtabs
+   strip take their height at the top, so give the page's main part flex:1 and min-height:0. */
+body{background:var(--bg);color:var(--text);font:14px/1.45 var(--font);display:flex;flex-direction:column;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* a page in two columns, each scrolling by itself: a side column of a fixed width and the main part in the rest
+     <div class="layout"><aside>…</aside><main>…</main></div>      a page sets only the width: .layout{--side:270px} */
+.layout{flex:1;min-height:0;display:grid;grid-template-columns:var(--side,340px) minmax(0,1fr)}
+
+/* text: a page's title, a heading, a paragraph, a link, small print (hints, credits), the four text colours, and
+   .n = a number in a list that is not a table (right-aligned, digits in line, never broken; in a table it is .r) */
+h1{font-family:var(--hud);font-weight:600;letter-spacing:.06em;font-size:24px;line-height:1.2;margin:0}
+h2{font-family:var(--hud);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:14px;margin:0 0 10px}
+p{margin:0 0 10px}
+a{color:var(--accent)}
+.small{font-size:12.5px}
+.muted{color:var(--muted)}
+.good{color:var(--good)}
+.warn{color:var(--warn)}
+.bad{color:var(--bad)}
+.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* buttons: plain, .primary = the one main action, .danger = deletes something, .small = inside a line of text or a table */
+.btn{height:34px;padding:0 14px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
+.btn:hover:not(:disabled){border-color:var(--accent-line)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.primary:hover:not(:disabled){filter:brightness(1.12)}
+.btn.danger{border-color:rgba(255,90,79,.5);color:#ffb3ad}
+.btn.small{height:28px;padding:0 10px;font-size:13px}
+/* a button that looks like the text it stands in (a name to copy, a line that opens); the page gives it its colours */
+.textbtn{border:0;background:none;padding:0;text-align:left}
+/* a link to another studio's page (Studio.open), in the middle of a line: <button class="textbtn go">Route</button> */
+.go{color:var(--accent)}
+.go:hover{text-decoration:underline}
+
+/* a box; .card.bad = something is wrong (a red edge; the text keeps its colour) */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+.card.bad{border-color:rgba(255,90,79,.45);background:rgba(255,90,79,.06);color:inherit}
+
+/* a word or two in a pill: plain, .good or .warn */
+.badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
+.badge.good{color:var(--good);border-color:rgba(61,220,132,.4)}
+.badge.warn{color:var(--warn);border-color:rgba(255,176,32,.45)}
+
+/* status pill with a light: plain = off, .on = green */
+.chip{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 11px;border-radius:999px;border:1px solid var(--line2);background:var(--panel);color:var(--muted);font-size:12.5px;white-space:nowrap}
+.chip .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
+.chip.on .dot{background:var(--good);box-shadow:0 0 8px var(--good)}
+
+/* "working on it": a small turning ring in the colour of the text around it, and the line that says what is being waited for
+     <p class="busy"><span class="spin"></span>Asking Spansh…</p> */
+.spin{width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:middle;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.busy{display:flex;align-items:center;gap:10px;color:var(--muted)}
+
+/* text boxes, number boxes, drop-down lists and text areas (not tick boxes). A .field is one row of them:
+     <div class="field"><input><button class="btn">Use</button></div>                a box and its button
+     <div class="field"><label>From<input></label><label>To<input></label></div>     each box under its caption, sharing the row
+   A .field has no space around it: what holds the fields sets the distance between them. */
+.field{display:flex;gap:8px;align-items:flex-end}
+.field label{flex:1;min-width:0;font-size:12.5px;color:var(--muted)}
+.field input,.field select,.field textarea{display:block;flex:1;width:100%;min-width:0;height:34px;padding:0 10px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);color:var(--text);font-size:14px}
+.field label input,.field label select,.field label textarea{margin-top:4px}
+.field select{padding:0 6px}
+.field textarea{height:auto;padding:8px 10px;resize:none}
+
+/* a choice between a few things: buttons side by side in one frame, the one chosen marked .active
+     <div class="seg" role="group" aria-label="What to find"><button type="button" class="active">Commodity</button><button type="button">Module</button></div> */
+.seg{display:inline-grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--line2);border-radius:7px;overflow:hidden}
+.seg button{height:34px;padding:0 14px;border:0;background:var(--panel2);color:var(--muted);white-space:nowrap}
+.seg button+button{border-left:1px solid var(--line2)}
+.seg button.active{background:var(--accent-soft);color:var(--text);box-shadow:inset 0 -2px var(--accent)}
+
+/* a list as a table: <div class="tablebox"><table>...</table></div>. Compact one-line rows; the box scrolls
+   when it is given a height, and the header row stays in view. .r on a th or td = a number (right-aligned,
+   digits in line). A header the player can click to sort is th.sort; the column sorted by also gets .up or .down. */
+.tablebox{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:auto}
+.tablebox table{width:100%;border-collapse:collapse;font-size:13.5px}
+.tablebox th{position:sticky;top:0;z-index:1;background:var(--panel2);color:var(--muted);font-weight:500;font-size:12px;text-align:left;padding:8px 12px;border-bottom:1px solid var(--line2);white-space:nowrap}
+.tablebox td{padding:5px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tablebox tr:last-child td{border-bottom:0}
+.tablebox .r{text-align:right;font-variant-numeric:tabular-nums}
+.tablebox th.sort{cursor:pointer;user-select:none}
+.tablebox th.sort:hover,.tablebox th.up,.tablebox th.down{color:var(--text)}
+.tablebox th.up::after{content:" \25B4"}
+.tablebox th.down::after{content:" \25BE"}
+
+/* a ship as the game's outfitting screen lists it (My ship, Designer): its name, a row of number tiles, and the
+   four lists in two columns, each list a .tablebox.group with a title bar
+     <div class="head"><h1>Mandalay</h1>…</div>
+     <div class="stats"><div class="stat"><span>Cargo</span><b>32 t</b></div>…</div>
+     <div class="columns"><div><section class="tablebox group"><header>Hardpoints</header><table>…</table></section>…</div><div>…</div></div>
+   A row is td.slot, td.class (size and rating), td.module, then the page's own columns; tr.off = switched off.
+   .work under a module's name is its engineering, the grade shown as five .pips (<i class="on"> = reached).
+   A page sets the width of td.slot and the window width below which the .columns stand one under the other. */
+.head h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.stat{flex:1 1 auto;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:7px 12px}
+.stat span{display:block;color:var(--muted);font-size:12px;white-space:nowrap}
+.stat b{font-family:var(--hud);font-size:17px;font-weight:600;white-space:nowrap}
+.columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+.tablebox.group{margin-bottom:12px}
+.tablebox.group>header{padding:8px 12px;font-family:var(--hud);letter-spacing:.05em;font-size:13px;background:var(--panel2);border-bottom:1px solid var(--line)}
+.tablebox.group table{table-layout:fixed}
+.tablebox.group td{vertical-align:top}
+td.slot,td.class,td.module{padding-right:0}   /* only the columns after them keep the table's space at the right */
+td.slot{color:var(--muted)}
+td.class{width:38px;font-family:var(--hud);font-weight:600}
+td.module{white-space:normal}
+tr.off td.class,tr.off td.module{opacity:.5}
+.work{display:block;margin-top:2px;font-size:12.5px;color:var(--accent)}
+.work .muted{margin-left:6px}
+.pips{display:inline-flex;gap:4px;margin:0 9px 0 2px;vertical-align:1px}
+.pips i{width:6px;height:6px;transform:rotate(45deg);border:1px solid var(--accent)}
+.pips i.on{background:var(--accent)}
+
+/* tab strip, and the dot that marks unsaved changes */
+.tabs{display:flex;gap:2px;padding:8px 10px 0;border-bottom:1px solid var(--line);overflow-x:auto;flex:none}
+.tabs button{border:0;background:none;padding:10px 11px;border-bottom:2px solid transparent;color:var(--muted);font-family:var(--hud);letter-spacing:.06em;font-size:13.5px;white-space:nowrap}
+.tabs button.active{color:var(--text);border-bottom-color:var(--accent)}
+.tabs button:hover{color:var(--text)}
+.dirty{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-left:7px;vertical-align:middle}
+
+/* a studio with more than one page: a row of links to them across the top of each, the page being shown marked .active
+   (the links name the pages by relative path, like everything a page loads)
+     <nav class="subtabs"><a class="active" href="./">Trades</a><a href="find.html">Find by name</a></nav> */
+.subtabs{display:flex;gap:6px;padding:10px 16px;border-bottom:1px solid var(--line);flex:none}
+.subtabs a{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--line2);background:var(--panel);color:var(--muted);font-family:var(--hud);letter-spacing:.04em;font-size:13px;text-decoration:none;white-space:nowrap}
+.subtabs a:hover{color:var(--text)}
+.subtabs a.active{background:var(--accent-soft);border-color:var(--accent);color:var(--text)}
+/* A page shown in one of the in-game overlay's boxes: no way to other pages, and no room for the credits. */
+.overlay .subtabs,.overlay .credit{display:none}
+/* There the whole page scrolls, whatever size the box turns out to have: nothing may end up cut off and out of reach.
+   (In the app window a page is as high as the window, and only its list scrolls.) */
+html.overlay{overflow:auto}   /* (studio.js draws the page smaller there, to fit the box's width) */
+html.overlay,html.overlay body{height:auto;min-height:100%}
+html.overlay body{overflow:visible}
+.overlay .layout,.overlay .found,.overlay .tablebox{flex:none}
+
+/* the message Studio.toast() slides up from the bottom; .bad = a problem (a red edge; the text keeps its colour) */
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(16px);opacity:0;pointer-events:none;background:#141b25;border:1px solid var(--line2);border-left:3px solid var(--accent);padding:11px 16px;border-radius:9px;box-shadow:0 12px 30px rgba(0,0,0,.5);transition:.2s;max-width:min(580px,92vw);z-index:50}
+#toast.show{opacity:1;transform:translateX(-50%)}
+#toast.bad{border-left-color:var(--bad);color:inherit}
+
+/* the dialog Studio.ask() opens over the page: a .box holding a heading, the .body and the buttons in the .foot */
+.modal{position:fixed;inset:0;background:rgba(2,4,8,.72);display:grid;place-items:center;z-index:60;padding:16px}
+.modal .box{width:min(540px,100%);background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:18px 18px 16px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.modal .body{color:var(--muted);margin:8px 0 18px}
+.modal .foot{display:flex;justify-content:flex-end;gap:8px}
+.modal .field{margin-top:8px}
+.modal textarea{height:220px;font:12px/1.4 var(--mono)}
+
+/* whole-page messages: the red "can't reach Elite Studio" bar and the cover Studio.cover() puts in place of the page (studio.js makes both) */
+.banner{background:#2a0f0d;border-bottom:1px solid rgba(255,90,79,.5);color:#ffd3cf;padding:9px 16px;font-size:13px;display:flex;gap:12px;align-items:center}
+.cover{position:fixed;inset:0;background:var(--bg);display:grid;place-items:center;z-index:70;padding:24px}
+.cover .box{max-width:580px}

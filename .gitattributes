@@ -1,0 +1,9 @@
+* text=auto
+*.cmd text eol=crlf
+# Desktop pages stay LF in every checkout.
+src/web/** text eol=lf
+# Recorded game files and golden outputs must stay byte-for-byte.
+tests/Fixtures/** -text
+*.png binary
+*.jpg binary
+*.ico binary

@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="studio-token" content="__STUDIO_TOKEN__">
+<title>Find by name - Studio Market - Elite Studio</title>
+<link rel="icon" href="../studio.svg">
+<link rel="stylesheet" href="../studio.css">
+<!--
+  STUDIO MARKET, FIND BY NAME: the nearest places that have a commodity, a ship module or a ship, and the
+  nearest of each kind of service.
+  On top: what to find, its name (picked from the services' own lists, so nobody has to guess a spelling),
+  where to measure from, the station filters, and a quick button for each service. Below: the places as a
+  table, nearest first, each with a button that copies its system for the galaxy map. While the service has
+  places farther out, the line above the table says so and its "Show more" button adds the next ones.
+  The app does the asking (POST /api/market/find/...): Ardent Insight for commodities, Spansh for the rest.
+  The filters start as the player's own, read from the Market picture (GET /api/market/hauling and every
+  "market" event); one changed here counts for the searches made here and is not saved. Another page hands
+  a search over in the address (?find=services&name=...), and a row hands its system on to Studio Nav.
+  Shown inside the shell (..\index.html) and also works opened on its own in a browser.
+-->
+<style>
+/* Only what is this page's own; the shared look (buttons, fields, the choice buttons, the list table...) is in ../studio.css. */
+.ask{flex:none;display:grid;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--bg2)}
+.ask .line{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-end}
+.ask .name{flex:1 1 260px}
+.ask .grades{flex:0 0 200px}
+.ask .from{flex:0 1 310px}   /* with the Find button, so the two stay together when the row wraps */
+.ask .filters .field{flex:1 1 0}
+.ask .quick{align-items:center;gap:6px}
+.ask .quick span{margin-right:4px}
+.ask .quick .btn{padding:0 8px;font-size:12.5px}   /* ten of them in one row of a 1400 px window */
+#names-problem{margin:0}
+.found{flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;padding:14px 16px}
+.found h2,.found p{margin:0}
+#more{margin-left:10px}
+#empty{margin:auto;max-width:560px;text-align:center}
+#rows{flex:1;min-height:0}
+#rows th,#rows td{padding-left:9px;padding-right:9px}   /* ten columns side by side in a 1100 px window */
+#rows th:first-child{width:99%}   /* the station takes the room to spare, so the copy button stays beside its system */
+#rows td:first-child{font-weight:600}
+#rows .btn{height:24px}   /* keeps a row as low as its text */
+.found .credit{margin-top:auto}   /* at the foot of the page, whatever is above it */
+</style>
+</head>
+<body>
+
+<nav class="subtabs"><a href="./">Trades</a><a class="active" href="find.html">Find by name</a><a href="sniffer.html">Sniffer</a></nav>
+
+<form class="ask" id="form" novalidate>
+  <div class="line">
+    <div class="seg" id="kinds" role="group" aria-label="What to find">
+      <button type="button" data-kind="commodity">Commodity</button>
+      <button type="button" data-kind="module">Module</button>
+      <button type="button" data-kind="ship">Ship</button>
+    </div>
+    <div class="field name">
+      <label>Name<input id="name" list="names" autocomplete="off" spellcheck="false" placeholder="Type a few letters, then pick from the list"></label>
+    </div>
+    <datalist id="names"></datalist>
+    <div class="seg" id="sides" role="group" aria-label="To buy or to sell">
+      <button type="button" data-side="buy" title="The nearest places that sell it">To buy</button>
+      <button type="button" data-side="sell" title="The nearest places that buy it from you">To sell</button>
+    </div>
+    <div class="field grades" id="grades" hidden>
+      <label title="The module's size. Any: every size the station sells">Class<select id="class"><option value="">Any</option></select></label>
+      <label title="E is the plainest, A the best. Any: every rating the station sells">Rating<select id="rating"><option value="">Any</option></select></label>
+    </div>
+    <div class="field from">
+      <label title="Distances are measured from this system">From<input id="from" autocomplete="off" spellcheck="false" placeholder="Start Elite, or type a system"></label>
+      <button class="btn primary" id="find">Find</button>
+    </div>
+  </div>
+
+  <div class="line filters">
+    <div class="field">
+      <label>Landing pad<select id="pad">
+        <option value="auto"></option><option value="S">Small or larger</option><option value="M">Medium or larger</option><option value="L">Large</option>
+      </select></label>
+      <label title="Light seconds from the star you arrive at to the station. 0 or empty: any distance">Max. distance from star (ls)<input id="maxStarLs" type="number" min="0" step="500"></label>
+      <label>Surface stations<select id="surface">
+        <option value="odyssey">All of them</option><option value="horizons">No Odyssey settlements</option><option value="none">None</option>
+      </select></label>
+      <label>Fleet carriers<select id="carriers"><option value="false">Leave out</option><option value="true">Include</option></select></label>
+      <label id="age-label">Max. price age<select id="maxAgeHours"></select></label>
+      <label id="volume-label" title="Tons on sale when buying, tons wanted when selling: stations with less are left out"><span id="volume-caption"></span><select id="volume"></select></label>
+    </div>
+    <button type="button" class="btn" id="mine" title="Back to the filters saved in your settings. What you change here is used on this page only." hidden>My settings</button>
+    <button type="button" class="btn" id="sniff" title="Keeps this commodity search on the Sniffer tab, where you add a price. Studio then runs it every hour, anywhere in the galaxy, and can play a sound when it is met.">Save to Sniffer</button>
+  </div>
+
+  <div class="line quick">
+    <span class="muted small">Nearest:</span>
+  </div>
+  <p class="small warn" id="names-problem" hidden></p>
+</form>
+
+<main class="found">
+  <h2 id="what" hidden></h2>
+  <p class="muted small" id="about" hidden><span id="about-text"></span><a id="on-site" target="_blank" rel="noopener" title="Opens this search on spansh.co.uk in your browser">See it on Spansh</a></p>
+  <p id="note" hidden><span id="note-text"></span><button type="button" class="btn small" id="more" title="Asks the service for the places that come next, farther out, and adds them to the list" hidden>Show more</button></p>
+  <p class="busy" id="busy" hidden><span class="spin"></span><span id="busy-text"></span></p>
+  <p class="card bad" id="problem" hidden></p>
+  <p class="muted" id="empty">Pick what to find and press Find, or press one of the Nearest buttons. Studio lists the nearest places that have it, measured from the system under From, and you copy a system's name into the galaxy map.</p>
+  <div class="tablebox" id="rows" hidden>
+    <table>
+      <thead><tr id="heads"></tr></thead>
+      <tbody id="places"></tbody>
+    </table>
+  </div>
+  <p id="pager" hidden><button type="button" class="btn small" id="prev">◄ The 5 before</button> <span class="muted small" id="pager-text"></span> <button type="button" class="btn small" id="next">The next 5 ►</button></p>
+  <p class="muted small credit">Commodity prices come from <a href="https://ardent-insight.com/" target="_blank" rel="noopener">Ardent Insight</a>; modules, ships and services from <a href="https://spansh.co.uk/" target="_blank" rel="noopener">Spansh</a>. Both are free services that volunteers run for all of us, fed by what players' tools report: an answer is as fresh as the last visit by one of them. Please search for what you mean to fly to.</p>
+</main>
+
+<script src="../studio.js"></script>
+<script>
+(() => {
+'use strict';
+const { $, h, whole, count, ago, wideDot } = Studio;
+
+let kind = 'commodity', side = 'buy';
+let mine = null;            // the Market picture, for the player's own filters: their settings, the pad their ship needs, the choices the overlay menu offers
+const touched = new Set();  // filters changed on this page: they are sent along, the others are the app's to fill in
+const names = {};           // the lists of names already fetched, by kind
+const typed = {};           // what was typed in the name box, by kind
+let busy = false, problem = '';
+let shown = null;           // the search on screen: { kind, side, body, answer }; body is what was asked, for "Show more" to ask again
+let sort = { key: 'ly', down: false };
+
+// ============================================================ what to find
+function setKind(k) {
+  typed[kind] = $('#name').value;
+  kind = k;
+  for (const b of document.querySelectorAll('#kinds button')) b.classList.toggle('active', b.dataset.kind === k);
+  $('#name').value = typed[k] || '';
+  $('#sides').hidden = $('#age-label').hidden = $('#volume-label').hidden = k !== 'commodity';
+  $('#sniff').hidden = k !== 'commodity' || Studio.boxed;   // the overlay's box has no tabs to come back by
+  $('#grades').hidden = k !== 'module';
+  loadNames(k);
+}
+
+function setSide(s) {
+  side = s;
+  for (const b of document.querySelectorAll('#sides button')) b.classList.toggle('active', b.dataset.side === s);
+  showFilters();
+}
+
+// The names to pick from come from the services' own lists; the app keeps them for the session, and so does this page.
+async function loadNames(k) {
+  $('#names').replaceChildren();
+  $('#names-problem').hidden = true;
+  if (!names[k]) {
+    try { names[k] = await Studio.api('GET', '/api/market/find/names?kind=' + k); }
+    catch (e) {
+      if (kind !== k) return;
+      $('#names-problem').textContent = 'The list of names could not be fetched, so a search cannot check a name either. ' + e.message;
+      $('#names-problem').hidden = false;
+      return;
+    }
+  }
+  if (kind !== k) return;   // another kind was picked while waiting
+  $('#names').replaceChildren(...names[k].names.map(name => h('option', { value: name })));
+  if (k === 'module' && $('#class').options.length === 1) {   // only "Any" so far
+    $('#class').append(...names[k].classes.map(c => h('option', { value: c }, c)));
+    $('#rating').append(...names[k].ratings.map(r => h('option', { value: r }, r)));
+  }
+}
+
+// ============================================================ the filters
+// The filter boxes, and the settings each one stands for. The least supply (when buying) and the least
+// demand (when selling) are two settings that share a box: it shows the one for the side chosen.
+// A filter the player has not changed here shows what their settings say, and keeps doing so when those change.
+const filters = { pad: ['pad'], maxStarLs: ['maxStarLs'], surface: ['surface'], carriers: ['carriers'], maxAgeHours: ['maxAgeHours'], volume: ['minSupply', 'minDemand'] };
+function showFilters() {
+  if (!mine) return;
+  const own = mine.settings, offered = key => mine.settingLines.find(line => line.key === key).choices;
+  $('#pad').options[0].textContent = 'As my ship needs (' + mine.inUse.shipPad + ')';
+  $('#volume-caption').textContent = side === 'sell' ? 'Min. demand' : 'Min. supply';
+  choices('#maxAgeHours', offered('maxAgeHours'), own.maxAgeHours, ' h');
+  choices('#volume', offered('minSupply'), own[filters.volume[side === 'sell' ? 1 : 0]], ' t or more');
+  for (const [box, settings] of Object.entries(filters))
+    if (!touched.has(box)) $('#' + box).value = String(own[settings[box === 'volume' && side === 'sell' ? 1 : 0]]);
+  $('#mine').hidden = !touched.size;
+}
+
+// The choices the app offers for a list, and the player's own value when it is none of them.
+function choices(box, offered, own, unit) {
+  const all = offered.some(c => c.value === own) ? offered : [...offered, { value: own, text: own + unit }].sort((a, b) => a.value - b.value);
+  Studio.options($(box), all.map(c => [c.value, c.text]));
+}
+
+function filterValue(box) {
+  const text = $('#' + box).value;
+  return box === 'carriers' ? text === 'true' : box === 'pad' || box === 'surface' ? text : Math.max(0, Math.round(Number(text) || 0));
+}
+
+// ============================================================ searching
+function find(what, name) {
+  const body = { name, from: from.typed ? $('#from').value.trim() : '', filters: {} };
+  for (const box of touched) for (const setting of filters[box]) body.filters[setting] = filterValue(box);
+  if (what === 'commodity') body.side = side;
+  if (what === 'module') { body.class = $('#class').value; body.rating = $('#rating').value; }
+  send({ kind: what, side, body });
+}
+
+// "Show more": the search on screen again, word for word and from the same system, for the places after the ones listed.
+function findMore() {
+  if (shown) send({ ...shown, body: { ...shown.body, from: shown.answer.from, more: shown.answer.more } });
+}
+
+// One search sent to the app. A new search takes the place of what is on screen; more of the same search is added below it.
+async function send(search) {
+  if (busy) return;
+  const before = search.answer;
+  busy = true;
+  if (!before) shown = null;
+  problem = '';
+  $('#busy-text').textContent = search.kind === 'commodity' ? 'Asking Ardent Insight…' : 'Asking Spansh… Its answers are long, so this takes a few seconds.';
+  render();
+  try {
+    const answer = await Studio.api('POST', '/api/market/find/' + search.kind, search.body);
+    // The note and whether there is still more are the newest answer's; the rest stays as the first answer said it.
+    shown = { ...search, answer: before ? { ...before, rows: [...before.rows, ...answer.rows], note: answer.note, more: answer.more } : answer };
+    if (!before) sort = { key: 'ly', down: false };
+  } catch (e) { problem = e.message; }
+  busy = false;
+  render();
+}
+
+// ============================================================ drawing the answer
+// Every column there is: its title, the value rows are sorted by (smallest first; a text sorts by the alphabet),
+// and what is written in the cell when that is not the value itself. "num" puts it on the right, digits in line.
+// The copy button has no value to sort by. It stands right beside the system it copies, where a narrow window cannot cut it off;
+// the button after it hands the system to Studio Nav's Routes page.
+const columns = {
+  station: { title: 'Station', value: r => r.station },
+  system: { title: 'System', value: r => r.system },
+  copy: { title: '', text: r => [
+    h('button', { class: 'btn small', title: 'Then paste it into the galaxy map\'s search box with Ctrl+V', onclick: () => Studio.copyName(r.system) }, 'Copy system'), ' ',
+    h('button', { class: 'btn small', title: 'Opens Studio Nav with this system under To, ready to plot', onclick: () => Studio.open('nav', '?to=' + encodeURIComponent(r.system)) }, 'Route')] },
+  ly: { title: 'Distance (ly)', num: true, value: r => r.distanceLy, text: r => r.distanceLy.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+  ls: { title: 'From star (ls)', num: true, value: r => r.starLs, text: r => r.starLs == null ? '' : whole(r.starLs), hint: 'Light seconds from the star you arrive at' },
+  pad: { title: 'Pad', value: r => r.pad ? 'SML'.indexOf(r.pad) : null, text: r => r.pad || '?', hint: 'The largest landing pad' },
+  type: { title: 'Station type', value: r => r.type },
+  item: { title: 'On sale', value: r => r.item, hint: 'Class and rating, as on the outfitting screen: 5A is class 5, rating A' },
+  price: { title: 'Price (cr)', num: true, value: r => r.price, text: r => r.price == null ? '' : whole(r.price) },
+  tons: { title: '', num: true, value: r => r.tons, text: r => whole(r.tons) },
+  age: { title: 'Reported', value: r => r.updated ? -Date.parse(r.updated) : null, text: r => r.updated ? ago(r.updated) : '', hint: 'When a player\'s tool last reported this' },
+};
+const shownColumns = {
+  commodity: ['station', 'system', 'copy', 'ly', 'ls', 'pad', 'type', 'price', 'tons', 'age'],
+  module: ['station', 'system', 'copy', 'ly', 'ls', 'pad', 'type', 'item', 'price', 'age'],
+  ship: ['station', 'system', 'copy', 'ly', 'ls', 'pad', 'type', 'price', 'age'],
+  services: ['station', 'system', 'copy', 'ly', 'ls', 'pad', 'type', 'age'],
+};
+
+function render() {
+  for (const b of document.querySelectorAll('#find, #more, .quick button')) b.disabled = busy;
+  $('#busy').hidden = !busy;
+  $('#problem').hidden = !problem;
+  $('#problem').textContent = problem;
+  $('#empty').hidden = busy || !!problem || !!shown;
+  $('#what').hidden = $('#about').hidden = !shown;
+  $('#note').hidden = !shown || !shown.answer.note;   // (an answer with more to come always has a note that says so)
+  $('#rows').hidden = !shown || !shown.answer.rows.length;
+  if (!shown) return;
+  const a = shown.answer;
+  $('#what').textContent = a.what;
+  $('#note-text').textContent = a.note || '';
+  $('#more').hidden = a.more == null;   // beside the line that says there is more
+  $('#on-site').hidden = !a.link;
+  if (a.link) $('#on-site').href = a.link;
+  showAsked();
+  columns.tons.title = shown.side === 'sell' ? 'Demand (t)' : 'Supply (t)';
+  const keys = shownColumns[shown.kind];
+  $('#heads').replaceChildren(...keys.map(key => !columns[key].value ? h('th') : h('th', {
+      class: 'sort' + (columns[key].num ? ' r' : '') + (sort.key === key ? sort.down ? ' down' : ' up' : ''), title: columns[key].hint,
+      onclick: () => { sort = { key, down: sort.key === key && !sort.down }; render(); },
+    }, columns[key].title)));
+  const by = columns[sort.key].value;
+  const rows = [...a.rows].sort((x, y) => {
+    const p = by(x), q = by(y);
+    if (p == null || q == null) return (p == null) - (q == null);   // what is not known comes last, whichever way the rest is sorted
+    return (typeof p === 'string' ? p.localeCompare(q) : p - q) * (sort.down ? -1 : 1);
+  });
+  // In the overlay's box there is room for five places at a time; two buttons leaf through the rest.
+  if (paged !== a) [paged, pageAt] = [a, 0];   // a new answer starts at its nearest places
+  pageAt = Math.max(0, Math.min(pageAt, Math.floor((rows.length - 1) / pageRows) * pageRows));
+  const onShow = Studio.boxed ? rows.slice(pageAt, pageAt + pageRows) : rows;
+  $('#pager').hidden = !Studio.boxed || rows.length <= pageRows;
+  $('#pager-text').textContent = 'Places ' + (pageAt + 1) + ' to ' + (pageAt + onShow.length) + ' of ' + rows.length;
+  $('#prev').disabled = pageAt === 0;
+  $('#next').disabled = pageAt + pageRows >= rows.length;
+  $('#places').replaceChildren(...onShow.map(r => h('tr', null,
+    keys.map(key => h('td', { class: columns[key].num && 'r' }, columns[key].text ? columns[key].text(r) : columns[key].value(r))))));
+}
+const pageRows = 5;
+let paged = null, pageAt = 0;   // the answer being leafed through, and the first of its places on show
+$('#prev').onclick = () => { pageAt -= pageRows; render(); };
+$('#next').onclick = () => { pageAt += pageRows; render(); };
+
+// The one text that changes with the clock: how long ago the service was asked.
+function showAsked() {
+  if (!shown) return;
+  const a = shown.answer;
+  $('#about-text').textContent = count(a.rows.length, 'place') + ', measured from ' + a.from + wideDot + a.source + ' was asked ' + ago(a.askedUtc) + (a.link ? wideDot : '');
+}
+
+// ============================================================ what the app says
+function showMine(picture) {
+  mine = picture;
+  showFilters();
+}
+
+// ============================================================ start-up
+if (!Studio.served) return;
+for (const b of document.querySelectorAll('#kinds button')) b.addEventListener('click', () => setKind(b.dataset.kind));
+for (const b of document.querySelectorAll('#sides button')) b.addEventListener('click', () => setSide(b.dataset.side));
+const from = Studio.fromBox($('#from'));   // the system distances are measured from: the one the player is in, until they type another
+for (const box of Object.keys(filters)) $('#' + box).addEventListener('input', () => { touched.add(box); showFilters(); });
+$('#mine').addEventListener('click', () => { touched.clear(); showFilters(); });
+$('#form').addEventListener('submit', e => { e.preventDefault(); find(kind, $('#name').value); });
+$('#more').addEventListener('click', findMore);
+// "Save to Sniffer": the form as it stands goes to the Sniffer page in the address, where the price is added and it is saved.
+$('#sniff').addEventListener('click', () => {
+  const hand = new URLSearchParams({ name: $('#name').value.trim(), side, tons: filterValue('volume') });
+  for (const box of ['pad', 'maxStarLs', 'surface', 'carriers', 'maxAgeHours']) hand.set(box, filterValue(box));
+  location.href = 'sniffer.html?' + hand;
+});
+// Opened with a search in the address (find.html?find=services&name=Raw material trader, the way other pages'
+// "find the nearest…" links come here; find= is commodity, module, ship or services): the form shows it and it is
+// run at once. A commodity is looked for to buy, a module in any class and rating, as the form starts out.
+const asked = new URLSearchParams(location.search), askedKind = asked.get('find'), askedName = asked.get('name') || '';
+const askedHere = Object.hasOwn(shownColumns, askedKind);
+if (askedHere && askedKind !== 'services') { kind = askedKind; $('#name').value = askedName; }   // a service has a button, not a name to type
+setKind(kind);
+setSide(side);
+if (askedHere) find(askedKind, askedName);
+// The quick buttons are the app's list of services, so the page and the app cannot disagree about which there are.
+Studio.api('GET', '/api/market/find/names?kind=services').then(list =>
+  $('.quick').append(...list.names.map(name => h('button', { type: 'button', class: 'btn small', disabled: busy, onclick: () => find('services', name) }, name))), () => {});
+setInterval(showAsked, 30000);
+Studio.follow('state', '/api/state', s => from.show(s.starSystem));
+// The player's settings changed somewhere else (the Trades page, the overlay's menu), or they fly another ship: the untouched filters follow.
+Studio.follow('market', '/api/market/hauling', showMine);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <!-- Windows Forms is referenced for the tray icon (WPF has none) and for the F11 key press that
+         makes Elite reload HUD colours after a theme save (UI\GameFolder.cs). -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>EliteStudio</RootNamespace>
+    <AssemblyName>EliteStudio</AssemblyName>
+    <Product>Elite Studio</Product>
+    <!-- The manifest declares per-monitor DPI awareness and "never ask for administrator rights". -->
+    <ApplicationManifest>App\app.manifest</ApplicationManifest>
+    <ApplicationIcon>App\studio.ico</ApplicationIcon>
+    <!-- WFO0003 wants DPI settings moved out of the manifest; that advice is for Windows Forms apps. This one is WPF. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+  <!-- The ready-to-run copy (the "dotnet publish" line in CLAUDE.md) carries only what a player needs. -->
+  <PropertyGroup>
+    <!-- No debug file from a Release build. A player has no use for it, and the file, like the note the
+         program keeps of where its debug file was written, names the build PC's Windows account. -->
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <!-- Not the programmers' reference texts that come with WebView2 (three .xml files). -->
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+    <!-- WebView2's loader comes twice: once from .NET's own handling of the package, which puts it where
+         .NET looks for it, and once more under runtimes\ from the package's own copy step. This drops the second. -->
+    <WebView2NeverCopyLoaderDllToOutputDirectory>true</WebView2NeverCopyLoaderDllToOutputDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- WPF projects leave System.IO out of the automatic usings; nearly every file here needs it. -->
+    <Using Include="System.IO" />
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <InternalsVisibleTo Include="EliteStudio.Tests" />
+    <Content Include="web\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Also carried inside the program so the tray icon can pick the size that fits the taskbar. -->
+    <EmbeddedResource Include="App\studio.ico" LogicalName="studio.ico" />
+    <!-- The community's tables of ships, modules, materials and names; Core\GameData.cs reads them. -->
+    <EmbeddedResource Include="Core\Data\*" LogicalName="Data.%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+  </ItemGroup>
+  <!-- The WebView2 package hands every program its Windows Forms control as well. Studio shows its pages
+       with the WPF control only, so that library is taken off the list before the build looks at it. -->
+  <Target Name="LeaveOutWebView2ForWindowsForms" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.WinForms'" />
+    </ItemGroup>
+  </Target>
+</Project>

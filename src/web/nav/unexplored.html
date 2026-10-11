@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="studio-token" content="__STUDIO_TOKEN__">
+<title>Unexplored - Studio Nav - Elite Studio</title>
+<link rel="icon" href="../studio.svg">
+<link rel="stylesheet" href="../studio.css">
+<!--
+  STUDIO NAV, UNEXPLORED: finding space where nobody has been.
+  Left, top: the live count of this trip's firsts, kept by the app from the game's journal. That part is
+  certain: the game itself says of every scan whether anyone had discovered or mapped the body before.
+  Left, below, and the map: where few have been. No service lists the systems nobody has visited, so this
+  is the other side of it: EDAstro's count of the systems known in each sector, drawn as the galaxy seen
+  from above, and the first thinly known square in the direction the commander is travelling (or one
+  clicked on the map), with the name of a known system there to hand to the galaxy map or to Routes.
+  The page only draws what the app says. GET /api/nav/explore/trip and every "explore" event carry the
+  count and where the commander is; .../coverage carries the map; POST .../waypoint answers with the
+  square and the system to head for. Shown inside the shell (..\index.html) and also works on its own.
+-->
+<style>
+/* Only what is this page's own; the shared look (buttons, boxes, badges, fields...) is in ../studio.css. */
+.layout{--side:400px}
+.side{border-right:1px solid var(--line);padding:16px;overflow:auto}
+.side h2:not(:first-child){margin-top:22px}
+.here .line,.way .line{display:flex;align-items:center;gap:10px}
+.here b,.way b{flex:1;min-width:0;font-family:var(--hud);font-weight:600;font-size:19px;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:all}
+.here p,.way p{margin:5px 0 0}
+.counts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 10px}
+.counts div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 12px}
+.counts dt{font-size:12.5px;color:var(--muted)}
+.counts dd{margin:1px 0 0;font-family:var(--hud);font-size:26px;line-height:1.15}
+.counts .first dd{color:var(--good)}
+.row{display:flex;align-items:center;gap:10px;margin:0 0 10px}
+.row>:first-child{flex:1;min-width:0;margin:0}
+.side .busy,#look .card{font-size:13px}
+.side .busy{margin:0 0 10px}
+#look{margin-top:14px}
+#suggest{margin-bottom:12px}
+.way .tag{font-family:var(--hud);letter-spacing:.16em;font-size:13px;color:var(--accent)}
+.way .row{margin:10px 0 0}
+.way a.btn{text-decoration:none}
+.credit{margin:18px 0 0;padding-top:14px;border-top:1px solid var(--line)}
+
+.chart{display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;padding:16px}
+.mapbox{flex:1;min-height:0;position:relative;background:var(--bg2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.mapbox canvas{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
+#no-map{position:absolute;inset:0;margin:auto;height:fit-content;max-width:470px;padding:0 16px;text-align:center;color:var(--muted)}
+.legend{margin:0;display:flex;flex-wrap:wrap;gap:4px 18px}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.legend .thin{background:var(--accent);opacity:.55}
+.legend .known{background:linear-gradient(90deg,#2a3441,#9fb0c6)}
+.legend .you{border-radius:50%;background:#fff}
+</style>
+</head>
+<body>
+
+<nav class="subtabs"><a href="./">Routes</a><a class="active" href="unexplored.html">Unexplored</a></nav>
+
+<div class="layout">
+  <aside class="side">
+    <h2>This trip</h2>
+    <section class="card here">
+      <div class="line"><b id="system"></b><span class="badge" id="new" hidden></span></div>
+      <p class="muted" id="bodies"></p>
+    </section>
+    <dl class="counts">
+      <div><dt>Systems visited</dt><dd id="visited">0</dd></div>
+      <div><dt>New systems</dt><dd id="new-systems">0</dd></div>
+      <div><dt>Bodies first discovered</dt><dd id="found">0</dd></div>
+      <div><dt>Bodies first mapped</dt><dd id="mapped">0</dd></div>
+    </dl>
+    <div class="row"><p class="muted small" id="since"></p><button class="btn small danger" id="reset" title="Starts a new trip now: the four counts go back to zero">Reset</button></div>
+    <p class="muted small">This part is certain. With every scan the game says whether anyone had discovered or mapped that star, planet or moon before, and Studio counts the ones nobody had. "Before" means sold to the game's cartographers: your name goes on a find when you sell your exploration data, unless a commander who was there earlier sells first. Selling ends the trip, and your next jump starts a new one. Losing your ship loses its unsold data, so that starts a new trip too.</p>
+
+    <h2>Where few have been</h2>
+    <p class="muted small">Nobody keeps a list of systems no one has visited. What there is, is the other side: a count of the systems commanders are known to have visited, sector by sector. Studio draws it as the galaxy seen from above and finds the nearest thinly known part in the direction you are flying.</p>
+    <div class="row"><p class="muted small" id="about-map"></p><button class="btn" id="get-map" hidden></button></div>
+    <p class="busy" id="map-busy" hidden><span class="spin"></span>Asking EDAstro for its sector list…</p>
+    <p class="card bad" id="map-problem" hidden></p>
+
+    <div id="look" hidden>
+      <div class="row"><p class="muted small" id="looking"></p><button class="btn small" id="follow" hidden title="Look the way your last jumps went again">My heading</button></div>
+      <button class="btn primary" id="suggest">Suggest a waypoint</button>
+      <p class="busy" id="way-busy" hidden><span class="spin"></span>Asking Spansh for a system there…</p>
+      <section class="card way" id="way" hidden>
+        <span class="tag">HEAD FOR</span>
+        <div class="line"><b id="way-name"></b></div>
+        <p class="muted" id="way-facts"></p>
+        <div class="row"><span></span><button class="btn" id="copy" title="Then paste it into the galaxy map's search box with Ctrl+V">Copy name</button><a class="btn primary" id="to-routes" title="Opens Routes with this system under To">Plot a route to it</a></div>
+      </section>
+      <p class="card" id="way-note" hidden></p>
+    </div>
+
+    <p class="muted small credit">The map is made from the sector list of <a href="https://edastro.com/" target="_blank" rel="noopener">EDAstro</a> (edastro.com, by CMDR Orvidius), which Studio fetches only when you ask and keeps for a week. The system to head for is named by <a href="https://spansh.co.uk/" target="_blank" rel="noopener">Spansh</a> (spansh.co.uk). Both are free services run by players for all of us.</p>
+  </aside>
+
+  <main class="chart">
+    <div class="mapbox">
+      <canvas id="map" title="Click to look in that direction from where you are" hidden></canvas>
+      <p id="no-map">No map on this PC yet. Press "Get the map from EDAstro" on the left: Studio fetches one list of about 1.5 MB and draws the galaxy from above, shaded by how many systems are known in each part.</p>
+    </div>
+    <p class="muted small legend" id="legend" hidden>
+      <span><i class="thin"></i>Thinly known: fewer than <span id="thin-below"></span> known systems in a square of 1,280 ly</span>
+      <span><i class="known"></i>Better known, brighter with more</span>
+      <span><i class="you"></i>You, and the way you are looking</span>
+    </p>
+    <p class="muted small" id="meaning" hidden>Read it as "how busy", not "how finished". The galaxy has some 400 billion systems and about 100 million are known, so every square is mostly unexplored. An orange or dark square has had few visitors, and towards the rim it also has few stars; a bright one is well travelled, yet most of its stars are still nobody's. So you need not fly to an orange square to be first: a few hundred light years off the busy routes there are undiscovered systems almost anywhere, and the count on the left proves each one. The waypoint is for when you want a whole region that few have seen.</p>
+  </main>
+</div>
+
+<script src="../studio.js"></script>
+<script>
+(() => {
+'use strict';
+const { $, toast, whole, count, ago, wideDot } = Studio;
+// Places every commander knows, to find one's bearings by: name, x, z in light years.
+const landmarks = [['Sol', 0, 0], ['Sagittarius A*', 25.2, 25900], ['Colonia', -9530.5, 19808.1]];
+
+let trip = null;       // the app's picture of the trip, with where the commander is and which way they are travelling
+let cover = { map: null, stale: true, problem: null };   // the app's answer about the map
+let picked = null;     // the direction clicked on the map, in degrees; null = the way the commander is travelling
+let way = null;        // the app's last answer about a waypoint
+let refused = '';      // why the app gave none
+let asking = false;    // a waypoint is being asked for
+let lie = null;        // how the map lies on the canvas: the side of one square in pixels, and its left and top edge
+
+const bodies = n => whole(n) + (n === 1 ? ' body' : ' bodies');
+// The direction to look in: the one clicked, else the commander's own; null when there is neither.
+const bearing = () => picked != null ? picked : trip ? trip.heading : null;
+
+// ============================================================ the trip
+function showTrip(v) {
+  trip = v;
+  $('#system').textContent = $('#system').title = v.system || 'Waiting for Elite…';   // a long name is cut short; the tooltip has all of it
+  $('#new').hidden = v.isNew == null;
+  $('#new').textContent = v.isNew ? 'New to everyone' : 'Already discovered';
+  $('#new').className = v.isNew ? 'badge good' : 'badge';
+  $('#bodies').textContent = !v.system ? 'The count starts when the game says where you are.'
+    : v.bodyCount ? v.scanned + ' of ' + bodies(v.bodyCount) + ' scanned'
+    : v.scanned ? bodies(v.scanned) + ' scanned. The discovery scanner has not counted them here yet.'
+    : 'Nothing scanned here yet.';
+  const numbers = { visited: v.visited, 'new-systems': v.newSystems, found: v.firstDiscoveries, mapped: v.firstMapped };
+  for (const [id, n] of Object.entries(numbers)) {
+    $('#' + id).textContent = whole(n);
+    $('#' + id).parentElement.classList.toggle('first', id !== 'visited' && n > 0);
+  }
+  everyMinute();
+  showLook();
+  showWay();   // the distance to the waypoint is measured from where the commander is now
+  draw();
+}
+
+// The texts that change with the clock: how long the trip has run, and how old the map is.
+function everyMinute() {
+  if (trip) $('#since').textContent = trip.handedIn ? 'Exploration data sold: this trip is over. Your next jump starts a new one.'
+    : trip.sinceUtc ? 'Counting since ' + ago(trip.sinceUtc) + '.' : 'Nothing counted yet.';
+  const map = cover.map;
+  $('#about-map').textContent = !map ? 'No map on this PC yet.'
+    : "EDAstro's sector list, fetched " + ago(map.fetchedUtc) + '.' + (cover.stale ? ' EDAstro makes a new one every day.' : '');
+}
+
+// ============================================================ the map
+function showCover(c) {
+  cover = c;
+  const map = c.map;
+  $('#no-map').hidden = !!map;
+  $('#map').hidden = $('#legend').hidden = $('#meaning').hidden = $('#look').hidden = !map;
+  if (map) $('#thin-below').textContent = whole(map.thinBelow);
+  $('#get-map').hidden = !c.stale;   // the app keeps a list for a week before it will ask EDAstro again
+  $('#get-map').textContent = map ? 'Fetch a newer list' : 'Get the map from EDAstro';
+  $('#map-problem').hidden = !c.problem;
+  $('#map-problem').textContent = c.problem ? c.problem + (map ? ' The map shown is the older one.' : '') : '';
+  everyMinute();
+  showLook();
+  draw();
+}
+
+async function getMap() {
+  $('#get-map').disabled = true;
+  $('#map-busy').hidden = false;
+  try { showCover(await Studio.api('POST', '/api/nav/explore/coverage', {})); } catch (e) { toast(e.message, true); }
+  $('#map-busy').hidden = true;
+  $('#get-map').disabled = false;
+}
+
+function draw() {
+  const canvas = $('#map'), map = cover.map;
+  const width = canvas.clientWidth, height = canvas.clientHeight;
+  lie = null;
+  if (!map || !width || !height) return;   // no map, or this page is not on show just now: drawn when it is
+  const sharp = window.devicePixelRatio || 1;
+  canvas.width = Math.round(width * sharp);
+  canvas.height = Math.round(height * sharp);
+  const c = canvas.getContext('2d');
+  c.setTransform(sharp, 0, 0, sharp, 0, 0);
+  const size = Math.min(width / map.width, height / map.height);
+  lie = { size, left: (width - size * map.width) / 2, top: (height - size * map.height) / 2 };
+  // A place in the galaxy on the canvas. North (larger z) is up, as on the game's galaxy map seen from above.
+  const at = (x, z) => [lie.left + (x - map.west) / map.square * size, lie.top + (map.height - (z - map.south) / map.square) * size];
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+
+  // The squares. Thin ones in the accent colour, stronger the less is known; the others grey, brighter the more
+  // is known. Counts run from a handful to hundreds of thousands, so both go by the number's size, not the number.
+  const most = Math.log(map.known.reduce((a, b) => Math.max(a, b), 1) / map.thinBelow) || 1;
+  for (let row = 0; row < map.height; row++) for (let column = 0; column < map.width; column++) {
+    const known = map.known[row * map.width + column];
+    if (!known) continue;
+    const thin = known < map.thinBelow;
+    c.globalAlpha = thin ? .3 + .4 * (1 - Math.log(known) / Math.log(map.thinBelow)) : 1;
+    c.fillStyle = thin ? accent : 'hsl(214 22% ' + (15 + 45 * Math.log(known / map.thinBelow) / most) + '%)';
+    c.fillRect(lie.left + column * size, lie.top + (map.height - 1 - row) * size, size + .5, size + .5);   // a hair wider: no seams between squares
+  }
+  c.globalAlpha = 1;
+
+  c.font = '11px "Segoe UI",system-ui,sans-serif';
+  c.textBaseline = 'middle';
+  const dot = (x, y, radius, fill, edge) => {
+    c.beginPath();
+    c.arc(x, y, radius, 0, 2 * Math.PI);
+    c.fillStyle = fill;
+    c.fill();
+    c.lineWidth = 1.5;
+    c.strokeStyle = edge;
+    c.stroke();
+  };
+  const label = (text, x, y) => {
+    c.lineWidth = 3;
+    c.strokeStyle = 'rgba(6,8,12,.85)';   // a dark edge, so the name reads on bright squares too
+    c.strokeText(text, x + 7, y);
+    c.fillStyle = '#e2e8f0';
+    c.fillText(text, x + 7, y);
+  };
+  for (const [name, x, z] of landmarks) {
+    const [px, py] = at(x, z);
+    dot(px, py, 2.5, '#06080c', '#e2e8f0');
+    label(name, px, py);
+  }
+
+  const here = trip && trip.position, towards = bearing();
+  if (!here) return;
+  const [hx, hy] = at(here[0], here[2]);
+  const square = way && way.square && !way.square.here ? way.square : null;
+  if (towards != null) {
+    // The line of sight: as far as the thin square while that was found looking this way, else eight squares long.
+    const reach = square && way.bearing === towards ? Math.hypot(square.x - here[0], square.z - here[2]) : 8 * map.square;
+    const [tx, ty] = at(here[0] + Math.sin(towards * Math.PI / 180) * reach, here[2] + Math.cos(towards * Math.PI / 180) * reach);
+    c.beginPath();
+    c.moveTo(hx, hy);
+    c.lineTo(tx, ty);
+    c.setLineDash([5, 4]);
+    c.lineWidth = 1.5;
+    c.strokeStyle = '#fff';
+    c.stroke();
+    c.setLineDash([]);
+  }
+  if (square) {
+    const column = Math.floor((square.x - map.west) / map.square), row = Math.floor((square.z - map.south) / map.square);
+    c.lineWidth = 2;
+    c.strokeStyle = accent;
+    c.strokeRect(lie.left + column * size, lie.top + (map.height - 1 - row) * size, size, size);
+    const to = way.system || square, [wx, wy] = at(to.x, to.z);
+    dot(wx, wy, 4, accent, '#06080c');
+    if (way.system) label(way.system.name, wx, wy);
+  }
+  dot(hx, hy, 4.5, '#fff', '#06080c');
+}
+
+// ============================================================ the waypoint
+function showLook() {
+  const here = trip && trip.position;
+  $('#looking').textContent = !here ? 'Studio does not know where you are yet. Start Elite, and it will follow you.'
+    : picked != null ? 'Looking the way you clicked on the map.'
+    : trip.heading != null ? 'Looking the way your last jumps went. Click the map to look another way.'
+    : 'Studio cannot tell yet which way you are travelling. Make a few jumps, or click the map to pick a direction.';
+  $('#follow').hidden = picked == null;
+  $('#suggest').disabled = asking || !here || bearing() == null;
+}
+
+async function suggest() {
+  asking = true;
+  $('#way-busy').hidden = false;
+  showLook();
+  try { way = await Studio.api('POST', '/api/nav/explore/waypoint', { bearing: picked }); refused = ''; } catch (e) { way = null; refused = e.message; }
+  asking = false;
+  $('#way-busy').hidden = true;
+  showLook();
+  showWay();
+  draw();
+}
+
+function showWay() {
+  const square = way && way.square, system = way && way.system, here = trip && trip.position;
+  const to = system || square;
+  const ly = to && here ? 'about ' + whole(Math.hypot(to.x - here[0], to.y - here[1], to.z - here[2])) + ' ly from you' : '';
+  $('#way').hidden = !system;
+  if (system) {
+    $('#way-name').textContent = system.name;
+    $('#way-facts').textContent = [ly, 'in the first thinly known square that way: ' + count(square.known, 'known system')].filter(Boolean).join(wideDot);
+    $('#to-routes').href = './?to=' + encodeURIComponent(system.name);
+  }
+  // What there is to say when there is no system to name.
+  const note = refused ? refused
+    : !way || system ? ''
+    : !square ? 'No thinly known square that way before the map ends. Click the map to look another way.'
+    : square.here ? 'You are in a thinly known square already: ' + count(square.known, 'known system') + ' in all of it. Stars off the usual routes are the best bet here, and the count above tells you for certain.'
+    : 'The first thinly known square that way has ' + count(square.known, 'known system') + ', and its middle is ' + ly + '. ' + way.problem;
+  $('#way-note').hidden = !note;
+  $('#way-note').textContent = note;
+  $('#way-note').className = refused || (way && way.problem) ? 'card bad' : 'card';
+}
+
+// A click on the map: look from the commander towards that place.
+function pick(e) {
+  const map = cover.map, here = trip && trip.position;
+  if (!lie || !here || asking) return;
+  const box = e.currentTarget.getBoundingClientRect();
+  const east = map.west + (e.clientX - box.left - lie.left) / lie.size * map.square - here[0];
+  const north = map.south + (map.height - (e.clientY - box.top - lie.top) / lie.size) * map.square - here[2];
+  if (Math.hypot(east, north) < map.square / 4) return;   // on the commander's own spot: no direction in that
+  picked = (Math.atan2(east, north) * 180 / Math.PI + 360) % 360;
+  suggest();
+}
+
+// ============================================================ start-up
+if (!Studio.served) return;
+$('#reset').addEventListener('click', async () => {
+  if (!await Studio.ask({ title: 'Start a new trip?', body: 'The four counts go back to zero. What you found stays yours in the game, of course.', ok: 'Reset', danger: true })) return;
+  call('POST', '/api/nav/explore/reset', {}).catch(e => toast(e.message, true));
+});
+$('#get-map').addEventListener('click', getMap);
+$('#suggest').addEventListener('click', suggest);
+$('#follow').addEventListener('click', () => { picked = null; if (trip && trip.heading != null) suggest(); else { way = null; refused = ''; showLook(); showWay(); draw(); } });
+$('#map').addEventListener('click', pick);
+$('#copy').addEventListener('click', () => { if (way && way.system) Studio.copyName(way.system.name); });
+new ResizeObserver(draw).observe($('#map'));   // also when this page comes (back) on show: hidden, it has no size to draw in
+setInterval(everyMinute, 60000);
+const call = Studio.follow('explore', '/api/nav/explore/trip', showTrip);
+Studio.api('GET', '/api/nav/explore/coverage').then(showCover, () => {});   // no answer: the red bar says so
+})();
+</script>
+</body>
+</html>

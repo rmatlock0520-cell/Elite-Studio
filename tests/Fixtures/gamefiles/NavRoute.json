@@ -1,0 +1,8 @@
+{ "timestamp":"2026-10-08T09:13:54Z", "event":"NavRoute", "Route":[ 
+{ "StarSystem":"Diaguandri", "SystemAddress":670417429889, "StarPos":[-41.06250,-62.15625,-103.25000], "StarClass":"M" }, 
+{ "StarSystem":"Arietis Sector KJ-F a12-2", "SystemAddress":40543954160392, "StarPos":[-73.15625,-41.50000,-89.40625], "StarClass":"Y" }, 
+{ "StarSystem":"Hyades Sector YB-K b9-1", "SystemAddress":2868635510153, "StarPos":[-104.31250,-18.78125,-78.87500], "StarClass":"M" }, 
+{ "StarSystem":"Col 285 Sector LS-T d3-92", "SystemAddress":3171556526435, "StarPos":[-139.00000,1.62500,-76.12500], "StarClass":"M" }, 
+{ "StarSystem":"Col 285 Sector XF-N c7-24", "SystemAddress":6680653861578, "StarPos":[-165.62500,13.53125,-55.68750], "StarClass":"K" }, 
+{ "StarSystem":"Khun", "SystemAddress":3107241104074, "StarPos":[-171.59375,19.96875,-56.96875], "StarClass":"K" }
+ ] }

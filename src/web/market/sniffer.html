@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="studio-token" content="__STUDIO_TOKEN__">
+<title>Sniffer - Studio Market - Elite Studio</title>
+<link rel="icon" href="../studio.svg">
+<link rel="stylesheet" href="../studio.css">
+<!--
+  STUDIO MARKET, SNIFFER: commodity searches the player saves, which Studio runs by itself once an hour,
+  anywhere in the galaxy, with a chime when one is met (the owner, 11 October 2026).
+  On top: the form a search is made or changed with. Find by name's "Save to Sniffer" button comes here with
+  its own form in the address (sniffer.html?name=Gold&side=buy&pad=L...), so only the price is left to type.
+  Below: the saved searches, each with a tick that turns it on or off and a tick for its sound, when it last
+  ran and what it found. "Show" lists the stations a search found under the table, with distances from where
+  the player is now; a click on a column title sorts by it, as on Find by name.
+  Under the table: the stations of every search that is met, each with its commodity. "Show" on a row narrows
+  that list to the one search.
+  The app does the asking and the keeping (GET /api/market/sniffer and the "sniffer" event; POST .../save,
+  set, delete, run, volume; GET .../matches?id=).
+  Shown inside the shell (..\index.html) and also works opened on its own in a browser.
+-->
+<style>
+/* Only what is this page's own; the shared look is in ../studio.css. */
+body{overflow:auto}
+.ask{flex:none;display:grid;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--bg2)}
+.ask .line{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-end}
+.ask .name{flex:1 1 240px}
+.ask .target{flex:0 1 560px}
+.ask .filters .field{flex:1 1 0}
+.ask p{margin:0}
+.kept{flex:none;display:flex;flex-direction:column;gap:10px;padding:14px 16px}
+.kept h2,.kept p{margin:0}
+.kept .head{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.kept .head h2{margin-right:auto}
+.kept .loud{display:flex;align-items:center;gap:8px}
+.kept .loud input{width:140px}
+/* Every column's title and what stands under it are centred on each other (the owner, 11 October 2026). */
+#list th,#list td,#rows th,#rows td{text-align:center;vertical-align:middle}
+#list select.inrow{width:auto;margin-top:4px;padding:0 4px;text-align:left}
+#list .inrow{width:110px;height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--panel2);color:var(--text);text-align:right}
+#list td.met{color:var(--good);font-weight:600}
+#list input[type=checkbox]{width:17px;height:17px;accent-color:var(--accent)}
+#list .btn,#rows .btn{height:24px}
+#rows{max-height:420px}
+</style>
+</head>
+<body>
+
+<nav class="subtabs"><a href="./">Trades</a><a href="find.html">Find by name</a><a class="active" href="sniffer.html">Sniffer</a></nav>
+
+<form class="ask" id="form" novalidate>
+  <div class="line">
+    <div class="field name">
+      <label>Commodity<input id="name" list="names" autocomplete="off" spellcheck="false" placeholder="Type a few letters, then pick from the list"></label>
+    </div>
+    <datalist id="names"></datalist>
+    <div class="seg" id="sides" role="group" aria-label="To buy or to sell">
+      <button type="button" data-side="buy" title="Watch for stations that sell it: their supply and their price">I want to buy</button>
+      <button type="button" data-side="sell" title="Watch for stations that buy it from you: their demand and what they pay">I want to sell</button>
+    </div>
+    <div class="field target">
+      <label title="Credits per ton. Empty or 0: any price"><span id="price-caption"></span><input id="price" type="number" min="0" step="100" placeholder="any"></label>
+      <label id="avg-label">Against the galactic average<select id="avg"></select></label>
+      <label title="Tons. Empty or 0: any amount"><span id="tons-caption"></span><input id="tons" type="number" min="0" step="100" placeholder="any"></label>
+    </div>
+    <button class="btn primary" id="save">Save search</button>
+  </div>
+  <div class="line filters">
+    <div class="field">
+      <label>Landing pad<select id="pad">
+        <option value="auto">As my ship needs</option><option value="S">Small or larger</option><option value="M">Medium or larger</option><option value="L">Large</option>
+      </select></label>
+      <label title="Light seconds from the star you arrive at to the station. 0 or empty: any distance">Max. distance from star (ls)<input id="maxStarLs" type="number" min="0" step="500"></label>
+      <label>Surface stations<select id="surface">
+        <option value="odyssey">All of them</option><option value="horizons">No Odyssey settlements</option><option value="none">None</option>
+      </select></label>
+      <label>Fleet carriers<select id="carriers"><option value="false">Leave out</option><option value="true">Include</option></select></label>
+      <label title="A price reported longer ago than this does not count">Max. price age<select id="maxAgeHours">
+        <option value="1">1 h</option><option value="2">2 h</option><option value="4">4 h</option><option value="8">8 h</option><option value="12">12 h</option>
+        <option value="24">24 h</option><option value="48">2 days</option><option value="72">3 days</option><option value="168">7 days</option>
+      </select></label>
+    </div>
+  </div>
+</form>
+
+<main class="kept">
+  <div class="head">
+    <h2>Saved searches</h2>
+    <button type="button" class="btn small" id="test-sound" title="Plays the alert once">Test sound</button>
+    <label class="loud muted small" title="How loud the alert is. Letting go plays it.">Alert volume<input id="volume" type="range" min="0" max="100" step="5"><output id="volume-text"></output></label>
+  </div>
+  <p class="muted small" id="about"></p>
+  <p class="muted" id="empty" hidden>Nothing saved yet. Fill in the form above and press Save search, or press "Save to Sniffer" on Find by name.</p>
+  <div class="tablebox" id="list" hidden>
+    <table>
+      <thead><tr>
+        <th title="Ticked: Studio runs this search once an hour">On</th>
+        <th title="Ticked: a sound plays every time a run finds a station that meets it">Sound</th>
+        <th>I want to</th><th>Commodity</th>
+        <th class="r" title="What makes the search count: a price in credits, a stand against the galactic average, or both. To buy: that or less. To sell: that or more">Price (cr)</th>
+        <th class="r" title="To buy: tons the station has on sale. To sell: tons the station wants">Supply / demand (t)</th>
+        <th title="By this PC's clock">Last time run</th><th>Found</th>
+        <th title="The station with the best price among those found">Best station</th><th>System</th><th title="Light years from the system you are in">Distance (ly)</th>
+        <th class="r" title="What that station asks, or pays">Its price (cr)</th><th class="r" title="Tons that station has on sale; for a search to sell, the tons it wants">Supply (t)</th><th></th>
+      </tr></thead>
+      <tbody id="searches"></tbody>
+    </table>
+  </div>
+
+  <h2 id="what" hidden></h2>
+  <p class="muted small" id="found-about" hidden></p>
+  <p class="card bad" id="problem" hidden></p>
+  <div class="tablebox" id="rows" hidden>
+    <table>
+      <thead><tr id="heads"></tr></thead>
+      <tbody id="places"></tbody>
+    </table>
+  </div>
+  <p class="muted small credit">Prices come from <a href="https://ardent-insight.com/" target="_blank" rel="noopener">Ardent Insight</a>, a free service that volunteers run for all of us, fed by what players' tools report: an alert means somebody reported this, not that it is still there. The sniffer works while Elite Studio is open.</p>
+</main>
+
+<script src="../studio.js"></script>
+<script>
+(() => {
+'use strict';
+const { $, h, whole, count, ago, wideDot } = Studio;
+
+let side = 'buy';
+let picture = null;        // the app's picture of the saved searches
+let editing = '';          // the id of the saved search being changed in its row; '' for none
+let sort = { key: 'ly', down: false };
+let problem = '';
+
+// ============================================================ the form
+function setSide(s) {
+  side = s;
+  for (const b of document.querySelectorAll('#sides button')) b.classList.toggle('active', b.dataset.side === s);
+  $('#price-caption').textContent = s === 'sell' ? 'Price: this or more (cr)' : 'Price: this or less (cr)';
+  $('#tons-caption').textContent = s === 'sell' ? 'Demand: this or more (t)' : 'Supply: this or more (t)';
+  Studio.options($('#avg'), averages(s === 'sell'));
+  $('#avg-label').title = 'The price against what the commodity costs on average across the galaxy. It works with the price box empty, and together with a price when both are set. '
+    + (s === 'sell' ? 'Average +20% or more: a station that pays at least a fifth over the average.' : 'Average −50% or less: a station that sells at half the average or under.');
+  $('#tons').closest('label').title = (s === 'sell' ? 'Tons the station wants to buy.' : 'Tons the station has on sale.') + ' Empty or 0: any amount';
+}
+
+const number = box => Math.max(0, Math.round(Number($(box).value) || 0));
+
+// A search into the form: the player's own filters, and what Find by name handed over.
+function fill(search) {
+  $('#name').value = search.name || '';
+  setSide(search.side === 'sell' ? 'sell' : 'buy');
+  $('#price').value = search.price > 0 ? search.price : '';
+  $('#tons').value = search.tons > 0 ? search.tons : '';
+  if (search.averagePercent !== undefined) $('#avg').value = search.averagePercent == null ? '' : String(search.averagePercent);
+  if (search.pad != null) $('#pad').value = search.pad;
+  if (search.maxStarLs != null) $('#maxStarLs').value = search.maxStarLs;
+  if (search.surface != null) $('#surface').value = search.surface;
+  if (search.carriers != null) $('#carriers').value = String(search.carriers);
+  if (search.maxAgeHours != null) age(search.maxAgeHours);
+}
+
+// The price age is a list; an age that is not on it (a hand-edited file, the player's own setting) is added.
+function age(hours) {
+  const list = $('#maxAgeHours');
+  if (![...list.options].some(o => o.value === String(hours))) list.append(h('option', { value: hours }, hours + ' h'));
+  list.value = String(hours);
+}
+
+// The form makes a new search. (A saved one is changed in its own row of the table: see edit.)
+async function save() {
+  const search = {
+    id: '', name: $('#name').value.trim(), side, price: number('#price'), averagePercent: percent($('#avg').value), tons: number('#tons'),
+    pad: $('#pad').value, maxStarLs: number('#maxStarLs'), surface: $('#surface').value, carriers: $('#carriers').value === 'true',
+    maxAgeHours: Number($('#maxAgeHours').value) || 48, on: true, sound: true,
+  };
+  try {
+    await call('POST', '/api/market/sniffer/save', search);
+    Studio.toast('Saved. Studio runs it within a minute or two, then every hour.');
+    $('#name').value = $('#price').value = $('#tons').value = $('#avg').value = '';
+  } catch (e) { Studio.toast(e.message, true); }
+  render();
+}
+
+// ============================================================ the saved searches
+// A saved search is changed where it stands: Edit turns its price and its amount into boxes, with Save and Cancel
+// beside them. The form on top is left alone (the owner, 11 October 2026). What is typed is kept in "draft", because
+// the table is drawn again with every event from the app.
+let draft = null;   // { price, avg, tons } as typed and picked, while a row is being changed
+function edit(s) {
+  editing = s ? s.id : '';
+  draft = s ? { price: s.price > 0 ? String(s.price) : '', avg: s.averagePercent == null ? '' : String(s.averagePercent), tons: s.tons > 0 ? String(s.tons) : '' } : null;
+  render();
+  if (s) { const box = $('#searches input[data-edit=price]'); box.focus(); box.select(); }
+}
+
+async function saveRow(s) {
+  const amount = text => Math.max(0, Math.round(Number(text) || 0));
+  try {
+    await call('POST', '/api/market/sniffer/save', { ...s, price: amount(draft.price), averagePercent: percent(draft.avg), tons: amount(draft.tons) });
+    edit(null);
+    Studio.toast('Saved.');
+  } catch (e) { Studio.toast(e.message, true); }
+}
+
+// A box of the row being changed. Enter saves, Escape gives up.
+const box = (s, key, label) => h('input', { type: 'number', min: 0, step: 100, class: 'inrow', 'data-edit': key, value: draft[key], placeholder: 'any', 'aria-label': label,
+  oninput: e => { draft[key] = e.target.value; },
+  onkeydown: e => { if (e.key === 'Enter') saveRow(s); else if (e.key === 'Escape') edit(null); } });
+
+// The choices of "against the galactic average": not used, then the average less 50% up to the average plus 50%, in tens.
+// To buy, a station's price must be that or less; to sell, that or more (the owner, 11 October 2026: "like inara does").
+const averages = selling => [['', 'Not used'], ...[-50, -40, -30, -20, -10, 0, 10, 20, 30, 40, 50].map(p => [String(p), averageWords(p) + (selling ? ' or more' : ' or less')])];
+const averageWords = p => 'Average' + (p ? (p > 0 ? ' +' : ' −') + Math.abs(p) + '%' : '');
+const percent = text => text === '' || text == null ? null : Number(text);
+
+// A saved search's price in words: the credits typed, the stand against the average, or both. Once a run has told
+// Studio the average, the line says what that comes to in credits.
+function priceWords(line) {
+  const s = line.search, selling = s.side === 'sell', way = selling ? 'or more' : 'or less';
+  const bits = [];
+  if (s.price > 0) bits.push(h('div', null, whole(s.price), ' ', h('span', { class: 'muted small' }, way)));
+  if (s.averagePercent != null) bits.push(h('div', null, averageWords(s.averagePercent), ' ', h('span', { class: 'muted small' }, way)),
+    line.average != null && h('div', { class: 'muted small', title: 'The galactic average is ' + whole(line.average) + ' cr' }, '= ' + whole(line.average * (1 + s.averagePercent / 100)) + ' cr'));
+  return bits.length ? bits : h('span', { class: 'muted' }, 'any');
+}
+
+// A saved search's station filters in a few words: what shows when the mouse rests on the commodity's name.
+function words(s) {
+  const filters = [
+    s.pad === 'auto' ? null : { S: 'small pad or larger', M: 'medium pad or larger', L: 'large pad' }[s.pad],
+    s.maxStarLs > 0 ? whole(s.maxStarLs) + ' ls from the star at most' : null,
+    s.surface === 'none' ? 'no surface stations' : s.surface === 'horizons' ? 'no Odyssey settlements' : null,
+    s.carriers ? 'fleet carriers too' : null,
+    'prices up to ' + (s.maxAgeHours < 48 ? s.maxAgeHours + ' h' : Math.round(s.maxAgeHours / 24) + ' days') + ' old',
+  ].filter(Boolean).join(', ');
+  return h('strong', { title: filters }, s.name);
+}
+
+function found(line) {
+  if (line.running) return [h('span', { class: 'spin' }), ' Asking…'];
+  if (line.problem) return [h('span', { class: 'warn' }, 'No answer'), h('div', { class: 'muted small', style: 'white-space:normal;max-width:320px' }, line.problem)];
+  if (!line.ranUtc) return h('span', { class: 'muted' }, line.search.on ? 'Waiting its turn' : 'Off');
+  if (!line.found) return h('span', { class: 'muted' }, 'Not met');
+  // The count is itself the way to its stations, with a word under it that says so.
+  return [count(line.found, 'station'), h('div', null, h('button', { class: 'textbtn go small', title: 'Lists only this search\'s stations, under this table',
+    onclick: () => show(line.search.id) }, 'see them below ▾'))];
+}
+
+const met = line => line.found > 0 && !line.running;
+
+// A time by the player's own clock, as their PC writes times: "2:15 AM"; with the day when that is not today.
+function clock(time) {
+  const at = new Date(time), today = at.toDateString() === new Date().toDateString();
+  return (today ? '' : at.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ', ') + at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+const set = (id, change) => call('POST', '/api/market/sniffer/set', { id, ...change }).catch(e => Studio.toast(e.message, true));
+
+async function run(id) {
+  try { await call('POST', '/api/market/sniffer/run', { id }); }
+  catch (e) { Studio.toast(e.message, true); }
+}
+
+async function remove(line) {
+  const s = line.search;
+  if (!await Studio.ask({ title: 'Delete this saved search?', body: (s.side === 'sell' ? 'Sell ' : 'Buy ') + s.name, ok: 'Delete', danger: true })) return;
+  try {
+    await call('POST', '/api/market/sniffer/delete', { id: s.id });
+    if (editing === s.id) edit(null);
+  } catch (e) { Studio.toast(e.message, true); }
+  render();
+}
+
+// The stations found are listed under the table without anything being pressed: those of every search that is met,
+// each with its commodity (the owner, 11 October 2026: with two searches met, only one showed). "Show" on a row
+// narrows the list to that search's; "Show all" brings the rest back.
+const matches = {};   // by a search's id: { ran, answer }, the stations its run of that time found
+let only = '';        // the id of the one search whose stations are listed; '' for all that are met
+let fetching = 0;
+
+function show(id) {
+  only = id;
+  render();
+  $('#what').scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+// Reads the stations of every search that is met and whose last run this page has not read yet.
+async function readMatches() {
+  const lines = picture.searches;
+  for (const id of Object.keys(matches)) if (!lines.some(line => line.search.id === id && met(line))) delete matches[id];
+  const due = lines.filter(line => met(line) && (!matches[line.search.id] || matches[line.search.id].ran !== line.ranUtc));
+  if (!due.length) return;
+  const mine = ++fetching;
+  problem = '';
+  await Promise.all(due.map(async line => {
+    try { matches[line.search.id] = { ran: line.ranUtc, answer: await Studio.api('GET', '/api/market/sniffer/matches?id=' + encodeURIComponent(line.search.id)) }; }
+    catch (e) { problem = e.message; }
+  }));
+  if (mine === fetching) render();
+}
+
+// ============================================================ drawing
+const columns = {
+  commodity: { title: 'Commodity', value: r => r.commodity, text: r => [h('strong', null, r.commodity), ' ', h('span', { class: 'muted small' }, r.selling ? 'to sell' : 'to buy')] },
+  station: { title: 'Station', value: r => r.station },
+  system: { title: 'System', value: r => r.system },
+  copy: { title: '', text: r => [
+    h('button', { class: 'btn small', title: 'Then paste it into the galaxy map\'s search box with Ctrl+V', onclick: () => Studio.copyName(r.system) }, 'Copy system'), ' ',
+    h('button', { class: 'btn small', title: 'Opens Studio Nav with this system under To, ready to plot', onclick: () => Studio.open('nav', '?to=' + encodeURIComponent(r.system)) }, 'Route')] },
+  ly: { title: 'Distance (ly)', num: true, value: r => r.distanceLy, text: r => r.distanceLy.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+  ls: { title: 'From star (ls)', num: true, value: r => r.starLs, text: r => r.starLs == null ? '' : whole(r.starLs) },
+  pad: { title: 'Pad', value: r => r.pad ? 'SML'.indexOf(r.pad) : null, text: r => r.pad || '?' },
+  type: { title: 'Station type', value: r => r.type },
+  price: { title: 'Price (cr)', num: true, value: r => r.price, text: r => whole(r.price) },
+  tons: { title: 'Supply (t)', num: true, value: r => r.tons, text: r => [whole(r.tons), r.selling && h('div', { class: 'muted small' }, 'demand')], hint: 'Tons the station has on sale; for a search to sell, the tons it wants' },
+  age: { title: 'Reported', value: r => r.updated ? -Date.parse(r.updated) : null, text: r => r.updated ? ago(r.updated) : '' },
+};
+
+function render() {
+  if (!picture) return;
+  const lines = picture.searches;
+  $('#empty').hidden = lines.length > 0;
+  $('#list').hidden = !lines.length;
+  $('#about').textContent = 'A search that is on runs once an hour, anywhere in the galaxy, while Elite Studio is open. Run now asks at once. There is room for ' + picture.most + '; ' + lines.length + ' saved.';
+  if (document.activeElement !== $('#volume')) $('#volume').value = picture.volume;
+  $('#volume-text').textContent = picture.volume ? picture.volume + '%' : 'off';
+  // The row being changed is drawn again like the rest: the box that had the cursor gets it back.
+  const typing = document.activeElement && document.activeElement.dataset.edit;
+  if (editing && !lines.some(line => line.search.id === editing)) [editing, draft] = ['', null];
+  $('#searches').replaceChildren(...lines.map(line => {
+    const s = line.search, changing = editing === s.id, selling = s.side === 'sell';
+    return h('tr', null,
+      h('td', null, h('input', { type: 'checkbox', checked: s.on, 'aria-label': 'Run this search every hour', onchange: e => set(s.id, { on: e.target.checked }) })),
+      h('td', null, h('input', { type: 'checkbox', checked: s.sound, 'aria-label': 'Play a sound when it is met', onchange: e => set(s.id, { sound: e.target.checked }) })),
+      h('td', null, s.side === 'sell' ? 'Sell' : 'Buy'),
+      h('td', null, words(s)),
+      h('td', { class: 'r' }, changing ? [box(s, 'price', 'Price in credits'), h('div', null, h('select', { class: 'inrow', 'data-edit': 'avg', 'aria-label': 'Against the galactic average', onchange: e => { draft.avg = e.target.value; } },
+        averages(selling).map(([value, text]) => h('option', { value, selected: value === draft.avg }, text))))] : priceWords(line)),
+      h('td', { class: 'r' }, changing ? box(s, 'tons', selling ? 'Demand in tons' : 'Supply in tons') : s.tons > 0 ? [whole(s.tons), h('div', { class: 'muted small' }, selling ? 'demand, or more' : 'supply, or more')] : h('span', { class: 'muted' }, selling ? 'any demand' : 'any supply')),
+      h('td', { class: 'muted', title: line.ranUtc ? ago(line.ranUtc) : null }, line.ranUtc ? clock(line.ranUtc) : ''),
+      h('td', { class: met(line) ? 'met' : null }, found(line)),
+      // What triggered it: the station with the best price, its system ready to copy, and what it offers.
+      h('td', null, met(line) ? line.bestStation : ''),
+      h('td', null, met(line) && [line.bestSystem, ' ',
+        h('button', { class: 'btn small', title: 'Then paste it into the galaxy map\'s search box with Ctrl+V', onclick: () => Studio.copyName(line.bestSystem) }, 'Copy')]),
+      h('td', null, met(line) && line.bestLy != null ? line.bestLy.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''),
+      h('td', { class: 'r' }, met(line) ? whole(line.bestPrice) : ''),
+      h('td', { class: 'r' }, met(line) ? [whole(line.bestTons), selling && h('div', { class: 'muted small' }, 'demand')] : ''),
+      changing ? h('td', null,
+        h('button', { class: 'btn small primary', title: 'Keeps the price and the amount as typed. What the search found before is forgotten', onclick: () => saveRow(s) }, 'Save'), ' ',
+        h('button', { class: 'btn small', onclick: () => edit(null) }, 'Cancel')) :
+      h('td', null,
+        h('button', { class: 'btn small', disabled: !met(line), title: 'Lists only this search\'s stations, under this table', onclick: () => show(s.id) }, 'Show'), ' ',
+        h('button', { class: 'btn small', disabled: line.running, title: 'Asks now instead of waiting for the hour', onclick: () => run(s.id) }, 'Run now'), ' ',
+        h('button', { class: 'btn small', title: 'Change its price and its amount, here in its row', onclick: () => edit(s) }, 'Edit'), ' ',
+        h('button', { class: 'btn small danger', onclick: () => remove(line) }, 'Delete')));
+  }));
+  if (typing) $('#searches [data-edit=' + typing + ']')?.focus();
+
+  // The stations found: of every search that is met, or of the one picked with Show. A search that is no longer
+  // met, or was deleted, takes its stations with it.
+  const metLines = lines.filter(line => met(line) && matches[line.search.id]);
+  if (only && !metLines.some(line => line.search.id === only)) only = '';
+  const listed = metLines.filter(line => !only || line.search.id === only);
+  const all = listed.flatMap(line => matches[line.search.id].answer.rows.map(r => ({ ...r, commodity: line.search.name, selling: line.search.side === 'sell' })));
+  $('#problem').hidden = !problem;
+  $('#problem').textContent = problem;
+  $('#what').hidden = $('#found-about').hidden = $('#rows').hidden = !all.length;
+  if (!all.length) return;
+  const from = matches[listed[0].search.id].answer.from;
+  $('#what').textContent = 'Stations found';
+  $('#found-about').replaceChildren(h('span', null,
+    count(all.length, 'station') + ' for ' + (only ? (listed[0].search.side === 'sell' ? 'selling ' : 'buying ') + listed[0].search.name : (listed.length === 1 ? 'the 1 search that is met' : 'the ' + listed.length + ' searches that are met'))
+      + (from ? ', measured from ' + from : wideDot + 'Start Elite to see how far away these are'),
+    only && metLines.length > 1 ? [wideDot, h('button', { class: 'btn small', onclick: () => { only = ''; render(); } }, 'Show all ' + metLines.length + ' searches')] : null,
+    !only && metLines.length > 1 ? wideDot + 'Press Show on a search above to list only its stations' : null,
+    wideDot + 'Click a column title to sort by it',
+    listed.some(line => matches[line.search.id].answer.rows.length >= 100) ? wideDot + 'A search lists its 100 best prices' : null));
+  const keys = Object.keys(columns);
+  $('#heads').replaceChildren(...keys.map(key => !columns[key].value ? h('th') : h('th', {
+      class: 'sort' + (sort.key === key ? sort.down ? ' down' : ' up' : ''), title: columns[key].hint,
+      onclick: () => { sort = { key, down: sort.key === key && !sort.down }; render(); },
+    }, columns[key].title)));
+  const by = columns[sort.key].value;
+  const rows = all.sort((x, y) => {
+    const p = by(x), q = by(y);
+    if (p == null || q == null) return (p == null) - (q == null);
+    return (typeof p === 'string' ? p.localeCompare(q) : p - q) * (sort.down ? -1 : 1);
+  });
+  $('#places').replaceChildren(...rows.map(r => h('tr', null,
+    keys.map(key => h('td', { class: columns[key].num && 'r' }, columns[key].text ? columns[key].text(r) : columns[key].value(r))))));
+}
+
+// ============================================================ start-up
+if (!Studio.served) return;
+for (const b of document.querySelectorAll('#sides button')) b.addEventListener('click', () => setSide(b.dataset.side));
+$('#form').addEventListener('submit', e => { e.preventDefault(); save(); });
+$('#volume').addEventListener('input', () => { $('#volume-text').textContent = Number($('#volume').value) ? $('#volume').value + '%' : 'off'; });
+$('#volume').addEventListener('change', () => call('POST', '/api/market/sniffer/volume', { volume: Number($('#volume').value) }).catch(e => Studio.toast(e.message, true)));
+$('#test-sound').addEventListener('click', () => call('POST', '/api/market/sniffer/volume', { volume: Number($('#volume').value) }).catch(e => Studio.toast(e.message, true)));
+setSide(side);
+const call = Studio.follow('sniffer', '/api/market/sniffer', p => {
+  picture = p;
+  render();
+  readMatches();   // of a search that was run since: its stations are read again
+});
+Studio.api('GET', '/api/market/find/names?kind=commodity').then(list => $('#names').replaceChildren(...list.names.map(name => h('option', { value: name }))), () => {});
+// The filters start as the player's own; a search handed over in the address (Find by name's "Save to Sniffer") lays its own on top.
+const asked = new URLSearchParams(location.search);
+const handed = {};
+for (const key of ['name', 'side', 'pad', 'surface']) if (asked.has(key)) handed[key] = asked.get(key);
+for (const key of ['price', 'tons', 'maxStarLs', 'maxAgeHours']) if (asked.has(key)) handed[key] = Math.max(0, Math.round(Number(asked.get(key)) || 0));
+if (asked.has('carriers')) handed.carriers = asked.get('carriers') === 'true';
+Studio.api('GET', '/api/market/hauling').then(mine => mine.settings, () => ({})).then(own => {
+  fill({ pad: own.pad, maxStarLs: own.maxStarLs, surface: own.surface, carriers: own.carriers, maxAgeHours: own.maxAgeHours, ...handed,
+    name: handed.name || $('#name').value, side: handed.side || side, price: handed.price || number('#price'), tons: handed.tons || number('#tons') });
+  if (handed.name) $('#price').focus();
+});
+
+})();
+</script>
+</body>
+</html>

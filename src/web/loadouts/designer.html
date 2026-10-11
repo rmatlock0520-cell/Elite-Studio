@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="studio-token" content="__STUDIO_TOKEN__">
+<title>Studio Loadouts: Designer</title>
+<link rel="icon" href="../studio.svg">
+<link rel="stylesheet" href="../studio.css">
+<!--
+  STUDIO LOADOUTS, the ship designer (first version). A build lies on the bench: it starts as the ship being
+  flown, a saved build or an empty hull, and every slot can be given another module and other engineering.
+  On the right the ship with its key numbers and the four lists of the game's outfitting screen; on the left
+  the slot that was clicked, with what fits in it.
+  The build on the bench is the game's own "Loadout" journal event, kept in this page (and in the browser's
+  storage, so a look at another page does not lose it). After every change the page sends it to the app's
+  /api/loadouts/designer/ routes, which answer with the names and the numbers: the page works nothing out.
+  "Save as build" puts it with the saved builds of the "My ship" page.
+-->
+<style>
+/* Only what is this page's own; the shared look (the ship's name, number tiles and four lists among it, drawn as
+   on the "My ship" page) is in ../studio.css. */
+.layout{--side:360px}
+
+.side{min-height:0;overflow-y:auto;border-right:1px solid var(--line);background:var(--bg2);padding:16px 12px 12px}
+.side,#slot{display:flex;flex-direction:column;gap:12px}
+.side>*,#slot>*{flex:none}   /* the column scrolls as a whole: nothing in it is squeezed to make it fit */
+.side h2{margin:6px 0 0}
+.side p{margin:0}
+.tools{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.tools label{display:flex;align-items:center;gap:7px}
+.kinds{display:grid;gap:4px}
+.kind{border:1px solid var(--line);border-radius:9px;background:var(--panel);overflow:hidden}
+.kindname{display:flex;justify-content:space-between;width:100%;padding:7px 11px}
+.kindname:hover{color:var(--accent)}
+.part{display:flex;justify-content:space-between;gap:10px;width:100%;padding:5px 11px;border:0;border-top:1px solid var(--line);background:none;text-align:left;font-size:13px}
+.part:hover{background:var(--panel2)}
+.part.active{background:var(--accent-soft);box-shadow:inset 3px 0 var(--accent)}
+.part b{font-family:var(--hud);font-weight:600;white-space:nowrap}
+.part span{color:var(--muted);white-space:nowrap}
+.side .credit{margin-top:auto;padding-top:8px}
+
+main{min-width:0;overflow:auto;padding:16px 20px 24px}
+.head{margin-bottom:12px}
+.stats{margin-bottom:10px}
+/* something is wrong with the build: red = it cannot work as it is, amber = it works with a catch */
+.mark{border:1px solid var(--line2);border-left:3px solid var(--bad);border-radius:9px;background:rgba(255,90,79,.06);padding:8px 12px;margin-bottom:8px}
+.mark.amber{border-left-color:var(--warn);background:rgba(255,176,32,.06)}
+.mark b{font-family:var(--hud);letter-spacing:.05em;margin-right:8px}
+
+.columns{margin-top:6px}
+@media (max-width:1349px){.columns{grid-template-columns:minmax(0,1fr)}}
+/* a slot is clicked to work on it; the one being worked on is marked */
+.group tr{cursor:pointer}
+.group tr:hover td{background:var(--panel2)}
+.group tr.picked td{background:var(--accent-soft)}
+.group tr.picked td:first-child{box-shadow:inset 3px 0 var(--accent)}
+td.slot{width:104px}
+td.num{width:74px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<nav class="subtabs"><a href="./">My ship</a><a class="active" href="designer.html">Designer</a><a href="engineering.html">Engineering</a><a href="guardian.html">Guardian</a></nav>
+
+<div class="layout">
+  <aside class="side">
+    <div class="field"><label>Put on the bench<select id="start"></select></label></div>
+    <button class="btn primary" id="save" disabled>Save as build…</button>
+    <div id="slot"></div>
+    <p class="muted small credit">Ship and module numbers are the community's
+      <a href="https://github.com/EDCD/coriolis-data" target="_blank" rel="noopener">coriolis-data</a>, and the sums follow
+      <a href="https://coriolis.io/" target="_blank" rel="noopener">Coriolis</a>. Thank you to EDCD and its contributors.</p>
+  </aside>
+  <main id="ship"></main>
+</div>
+
+<script src="../studio.js"></script>
+<script>
+(() => {
+'use strict';
+const { $, h, toast, ask, credits, tons, dot } = Studio;
+if (!Studio.served) return;
+
+// ============================================================ state
+const BENCH = 'studio.designer';   // where the browser keeps the build on the bench
+const CORE = 'Core internals';     // the list whose slots are never empty
+let design = null;     // the build on the bench: the journal's Loadout event, changed here and sent to the app as it is
+let view = null;       // the app's picture of it: { ship, shipType, stats, groups }
+let origin = '';       // what it started as, in words
+let unsaved = false;   // changed since it was put on the bench or saved
+let picked = '';       // the slot being worked on (its journal code), '' = none
+let openKind = '';     // the kind of module whose sizes are listed in the slot's picker
+let fits = {};         // what fits each slot of this hull, as the app listed it; a text instead when it could not
+const offers = {};     // what engineers offer for each module code already asked about
+let turn = 0;          // counts the changes, so a late answer about an older state is dropped
+
+const call = (method, path, body) => Studio.api(method, '/api/loadouts/designer/' + path, body);
+const entry = slot => design.Modules.find(m => m.Slot.toLowerCase() === slot.toLowerCase());
+const slotOf = id => view.groups.flatMap(g => g.slots.map(s => ({ ...s, list: g.name }))).find(s => s.slotId === id);
+function remember() { try { localStorage.setItem(BENCH, JSON.stringify({ design, origin, unsaved })); } catch (e) {} }
+// Fills a box with parts the way Studio.h takes them: lists however deep, null and false left out.
+const fill = (box, ...parts) => box.replaceChildren(...parts.flat(Infinity).filter(part => part != null && part !== false));
+
+const megawatts = n => n.toFixed(2) + ' MW';
+const sizeOf = m => (m.size || '') + m.rating;
+
+// ============================================================ the bench
+// Puts a build on the bench: query '' = the ship being flown, '?id=' a saved build, '?ship=' an empty hull.
+async function start(query, quiet) {
+  let answer;
+  try { answer = await call('GET', 'start' + query); } catch (e) { if (!quiet) toast(e.message, true); return false; }
+  design = answer.loadout;
+  view = answer.design;
+  origin = query.startsWith('?ship') ? 'an empty hull' : answer.name ? 'the saved build “' + answer.name + '”' : 'your current ship';
+  unsaved = false;
+  picked = '';
+  fits = {};
+  turn++;
+  remember();
+  render();
+  return true;
+}
+
+// After every change: the app works out the numbers of the build as it is now.
+async function changed() {
+  unsaved = true;
+  remember();
+  const mine = ++turn;
+  let answer;
+  try { answer = await call('POST', 'view', { loadout: design }); } catch (e) { toast(e.message, true); return; }
+  if (mine !== turn) return;
+  view = answer;
+  render();
+}
+
+async function choose() {
+  const choice = $('#start').value;
+  $('#start').value = '';
+  if (!choice) return;
+  if (unsaved && !await ask({ title: 'Clear the bench?', body: 'The build on the bench has changes that are not saved as a build.', ok: 'Clear it', danger: true })) return;
+  await start(choice === 'current' ? '' : choice);
+}
+
+async function save() {
+  const name = await ask({ title: 'Save as build', body: 'The build on the bench is kept under this name and listed on the My ship page, where it opens in EDSY and Coriolis.',
+    value: view.shipType + ' design', max: Studio.nameLength, ok: 'Save' });
+  if (!name) return;
+  try { await call('POST', 'save', { name, loadout: design }); } catch (e) { toast(e.message, true); return; }
+  unsaved = false;
+  remember();
+  render();
+  toast('Saved “' + name + '”. It is on the My ship page.');
+  fillStart().catch(() => {});
+}
+
+// The list to start from: the current ship, the saved builds, and an empty hull of every ship.
+async function fillStart() {
+  const [ships, builds] = await Promise.all([call('GET', 'ships'), Studio.api('GET', '/api/loadouts/saved')]);
+  const group = (label, entries) => entries.length ? h('optgroup', { label }, entries.map(([value, text]) => h('option', { value }, text))) : null;
+  $('#start').replaceChildren(h('option', { value: '' }, 'Choose…'), h('option', { value: 'current' }, 'My current ship'),
+    group('A saved build', builds.saved.map(b => ['?id=' + encodeURIComponent(b.id), b.name + dot + b.shipType])),
+    group('An empty hull', ships.ships.map(s => ['?ship=' + encodeURIComponent(s.ship), s.name])));
+}
+
+// ============================================================ the ship
+function render() {
+  $('#save').disabled = !view;
+  renderSlot();
+  if (!view) {
+    fill($('#ship'), h('div', { class: 'card', style: 'max-width:560px' }, h('h2', null, 'Nothing on the bench yet'),
+      h('p', { class: 'muted', style: 'margin:0' }, 'Choose on the left what to start from: an empty hull of any ship, or a saved build. Your own ship appears there once Elite Dangerous has been started.')));
+    return;
+  }
+  const s = view.stats;
+  const stat = (label, value, tone) => h('div', { class: 'stat' }, h('span', null, label), h('b', { class: tone }, value));
+  const ly = n => n ? n.toFixed(2) + ' ly' : '–';
+  const draw = n => megawatts(n).replace(' MW', '') + ' of ' + megawatts(s.powerCapacity);
+  const laden = s.unladenMass + s.fuelCapacity + s.cargoCapacity;
+  const groups = names => view.groups.filter(g => names.includes(g.name)).map(group);
+  const mark = (tone, title, text) => h('div', { class: 'mark ' + tone, role: 'alert' }, h('b', { class: tone ? 'warn' : 'bad' }, title), text);
+
+  fill($('#ship'),
+    h('div', { class: 'head' }, h('h1', null, view.shipType),
+      h('div', { class: 'muted' }, 'On the bench' + dot + 'started from ' + origin + (unsaved ? dot + 'changed, not saved' : ''))),
+    h('div', { class: 'stats' },
+      stat('Jump, full hold', s.tooHeavy ? '–' : ly(s.jumpLaden)),
+      stat('Jump, empty hold', ly(s.jumpEmpty)),
+      stat('Best possible jump', ly(s.jumpMax)),
+      stat('Cargo', s.cargoCapacity + ' t'),
+      stat('Fuel tank', tons(s.fuelCapacity)),
+      stat('Weight, empty', tons(s.unladenMass), s.tooHeavy ? 'bad' : null),
+      stat('Power, hardpoints in', draw(s.powerRetracted), s.powerRetracted > s.powerCapacity ? 'bad' : null),
+      stat('Power, hardpoints out', draw(s.powerDeployed), s.powerRetracted > s.powerCapacity ? 'bad' : s.powerDeployed > s.powerCapacity ? 'warn' : null),
+      stat('Top speed', s.speed ? Math.round(s.speed) + ' m/s' : '–'),
+      stat('Boost', s.boost ? Math.round(s.boost) + ' m/s' : '–'),
+      stat('Shield', s.shield ? Studio.whole(s.shield) + ' MJ' : 'none'),
+      stat('Armour', Studio.whole(s.armour)),
+      stat('Cost at list price', credits(s.hullCost + s.modulesCost))),
+    s.powerRetracted > s.powerCapacity
+      ? mark('', 'POWER PLANT OVERDRAWN', 'The modules draw ' + megawatts(s.powerRetracted) + ' with the hardpoints retracted; the power plant gives ' + megawatts(s.powerCapacity) + '. The ship would switch modules off.')
+      : s.powerDeployed > s.powerCapacity && mark('amber', 'OVERDRAWN WITH HARDPOINTS OUT', 'Deploying the hardpoints raises the draw to ' + megawatts(s.powerDeployed) + ' of ' + megawatts(s.powerCapacity) + ': the game then switches off the modules with the lowest power priority.'),
+    s.tooHeavy && mark('', 'TOO HEAVY', 'With a full tank and a full hold the ship weighs ' + tons(laden) + ', and its thrusters move ' + tons(s.maxMass) + ' at most. It cannot fly, so it cannot jump.'),
+    !s.jumpMax && mark('', 'CANNOT JUMP', 'The ship needs a frame shift drive that is switched on and a fuel tank.'),
+    s.speed > 0 && !s.boost && mark('amber', 'CANNOT BOOST', 'The power distributor\'s engine capacitor is too small for this ship\'s boost.'),
+    s.unknown.length > 0 && mark('amber', 'NOT IN THE SUMS', 'Studio has no numbers yet for ' + s.unknown.join(', ') + ', so the numbers above leave ' + (s.unknown.length > 1 ? 'them' : 'it') + ' out.'),
+    h('div', { class: 'columns' },
+      h('div', null, groups(['Hardpoints', 'Utility mounts', CORE])),
+      h('div', null, groups(['Optional internals']))));
+}
+
+function group(g) {
+  return h('section', { class: 'tablebox group' }, h('header', null, g.name), h('table', null, h('tbody', null, g.slots.map(s => row(s, g.name)))));
+}
+
+function row(s, list) {
+  const m = s.module, e = m && m.engineering, n = m && view.stats.modules[m.slotId];
+  // A core slot is named after what goes in it, and saying "Sensors" twice helps nobody. A slot for one kind of
+  // module ("Military") says its size too; the others have it in their name.
+  const label = m && m.name.includes(s.slot) ? '' : list === 'Optional internals' && !s.slot.startsWith('Size') ? s.slot + ' ' + s.size : s.slot;
+  return h('tr', { class: (s.slotId === picked ? 'picked' : '') + (m && !m.on ? ' off' : ''), onclick: () => pick(s.slotId) },
+    h('td', { class: 'slot' }, label),
+    h('td', { class: 'class' }, m ? sizeOf(m) : ''),
+    h('td', { class: 'module', title: m ? m.item : null },
+      // (the name is a button so the keyboard can reach the slot; a click on it rises to the row)
+      h('button', { class: 'textbtn' + (m ? '' : ' muted') }, m ? m.name : 'Empty'), m && m.mount && h('span', { class: 'muted' }, dot + m.mount),
+      e && h('span', { class: 'work' }, h('span', { class: 'pips' }, [1, 2, 3, 4, 5].map(i => h('i', { class: i <= e.grade ? 'on' : null }))),
+        e.blueprint, e.experimental && h('span', { class: 'muted' }, '+ ' + e.experimental))),
+    h('td', { class: 'num r', title: 'Weight' }, n && n.mass ? tons(n.mass) : ''),
+    h('td', { class: 'num r', title: m && !m.on ? 'Switched off: draws nothing' : 'Power draw' }, n && n.power ? megawatts(n.power) : ''));
+}
+
+// ============================================================ one slot
+async function pick(slot) {
+  picked = slot;
+  const s = slotOf(slot);
+  openKind = s.module ? s.module.name : '';
+  render();
+  const key = slot.toLowerCase();
+  if (!fits[key]) {
+    const hull = view.ship;
+    let answer;
+    try { answer = (await call('GET', 'fits?ship=' + encodeURIComponent(hull) + '&slot=' + encodeURIComponent(slot))).kinds; } catch (e) { answer = e.message; }
+    if (!view || view.ship !== hull) return;   // another ship was put on the bench meanwhile
+    fits[key] = answer;
+  }
+  if (s.module) await offered(s.module.item);
+  renderSlot();
+}
+
+// What engineers offer for a module, asked once per module code.
+async function offered(item) {
+  const key = item.toLowerCase();
+  if (!offers[key]) { try { offers[key] = await call('GET', 'engineering?item=' + encodeURIComponent(item)); } catch (e) { toast(e.message, true); } }
+  return offers[key];
+}
+
+function renderSlot() {
+  const s = view && picked && slotOf(picked);
+  if (!s) {
+    fill($('#slot'), view && h('p', { class: 'muted' }, 'Click a slot of the ship to change the module in it or its engineering.'));
+    return;
+  }
+  const m = s.module, kinds = fits[picked.toLowerCase()], offer = m && offers[m.item.toLowerCase()];
+  fill($('#slot'),
+    // "Medium 1 · size 2", "Power Plant · size 5"; a slot that already says its size, or has none to say, is left as it is
+    h('h2', null, s.slot + (s.size && !s.slot.startsWith('Size') && s.slotId !== 'Armour' ? dot + 'size ' + s.size : '')),
+    h('p', null, m ? [h('b', null, sizeOf(m) + ' ' + m.name), m.mount && dot + m.mount] : h('span', { class: 'muted' }, 'This slot is empty.')),
+    m && h('div', { class: 'tools' },
+      h('label', null, h('input', { type: 'checkbox', checked: m.on, onchange: e => { entry(picked).On = e.target.checked; changed(); } }), 'Switched on'),
+      s.list !== CORE && h('button', { class: 'btn small', onclick: () => fit(null) }, 'Empty this slot')),
+    offer && offer.blueprints.length > 0 && engineering(m, offer),
+    h('h2', null, m ? 'Fit something else' : 'Fit a module'),
+    !kinds ? h('p', { class: 'busy' }, h('span', { class: 'spin' }), 'Looking up what fits…')
+      : typeof kinds === 'string' ? h('p', { class: 'muted' }, kinds)
+      : h('div', { class: 'kinds' }, kinds.map(kind => kindBox(kind, kinds.length === 1, m))));
+}
+
+// One kind of module that fits ("Cargo Rack"); a click lists its sizes and ratings, biggest and best first.
+function kindBox(kind, only, m) {
+  const open = only || kind.name === openKind;
+  return h('div', { class: 'kind' },
+    h('button', { class: 'textbtn kindname', 'aria-expanded': String(open), onclick: () => { openKind = open ? '' : kind.name; renderSlot(); } },
+      kind.name, h('span', { class: 'muted' }, kind.modules.length + (open ? ' ▴' : ' ▾'))),
+    open && kind.modules.map(p => h('button', { class: 'part' + (m && m.item.toLowerCase() === p.item ? ' active' : ''), title: p.item, onclick: () => fit(p) },
+      h('b', null, sizeOf(p) + (p.mount ? ' ' + p.mount : '') || kind.name), h('span', null, tons(p.mass) + dot + megawatts(p.power) + dot + credits(p.cost)))));
+}
+
+// Fits a module from the picker in the slot being worked on, or empties the slot (null).
+async function fit(part) {
+  const at = design.Modules.findIndex(m => m.Slot.toLowerCase() === picked.toLowerCase());
+  const was = design.Modules[at];
+  if (!part) design.Modules.splice(at, 1);
+  else {
+    // A new module is in full health and without engineering. It keeps the switch and the power priority of the one it
+    // replaces; in an empty slot it starts switched on at the first priority.
+    const now = { Slot: was ? was.Slot : picked, Item: part.item, On: was ? was.On : true, Priority: was ? was.Priority : 0, Health: 1 };
+    if (was) design.Modules[at] = now; else design.Modules.push(now);
+    await offered(part.item);   // so its engineering choices are there when the slot is drawn again
+  }
+  changed();
+}
+
+// The three choices an engineer gives: blueprint, grade, experimental effect. Anything chosen here is planned
+// as rolled to the end of its grade; a real ship's own roll stays as the game reported it until it is touched.
+function engineering(m, offer) {
+  const module = entry(picked), work = module.Engineering, code = work ? work.BlueprintName : '';
+  const known = offer.blueprints.find(b => b.code.toLowerCase() === code.toLowerCase());
+  const effect = work && work.ExperimentalEffect || '';
+  const plan = (blueprint, grade, experimental) => {
+    const recipe = offer.blueprints.find(b => b.code === blueprint), extra = offer.experimentals.find(x => x.code === experimental);
+    if (!blueprint) delete module.Engineering;
+    else {
+      const top = recipe ? recipe.grades[recipe.grades.length - 1] : grade;
+      module.Engineering = { BlueprintName: blueprint, Level: recipe && !recipe.grades.includes(grade) ? top : grade, Quality: 1 };
+      if (extra) Object.assign(module.Engineering, { ExperimentalEffect: extra.code, ExperimentalEffect_Localised: extra.name });
+    }
+    changed();
+  };
+  const select = (label, entries, value, disabled, onchange) => h('label', null, label, h('select', { disabled, onchange }, entries.map(([v, text]) => h('option', { value: v, selected: String(v) === String(value) }, text))));
+  // A blueprint or effect of a real ship that the table does not list keeps its place in the list under the game's own name.
+  const blueprints = [['', 'None'], ...offer.blueprints.map(b => [b.code, b.name])];
+  if (code && !known) blueprints.push([code, m.engineering.blueprint]);
+  const effects = [['', 'None'], ...offer.experimentals.map(x => [x.code, x.name])];
+  if (effect && !offer.experimentals.some(x => x.code.toLowerCase() === effect.toLowerCase())) effects.push([effect, m.engineering.experimental || effect]);
+  return [
+    h('h2', null, 'Engineering'),
+    h('div', { class: 'field' },
+      select('Blueprint', blueprints, known ? known.code : code, false, e => plan(e.target.value, work ? work.Level : 5, effect)),
+      select('Grade', (known ? known.grades : work ? [work.Level] : []).map(g => [g, 'Grade ' + g]), work ? work.Level : '', !work, e => plan(code, +e.target.value, effect))),
+    h('div', { class: 'field' }, select('Experimental effect', effects, effect, !work || effects.length < 2, e => plan(code, work.Level, e.target.value))),
+    work && h('p', { class: 'muted small' }, work.Modifiers
+      ? 'These are your ship\'s own numbers: grade ' + work.Level + ', rolled ' + Math.round(work.Quality * 100) + '% of the way. Change anything here and the module is planned afresh.'
+      : 'Planned as rolled to the end of grade ' + work.Level + '.'),
+  ];
+}
+
+// ============================================================ start-up
+$('#start').addEventListener('change', choose);
+$('#save').addEventListener('click', save);
+(async () => {
+  render();
+  fillStart().catch(() => {});   // no answer: the red bar says so
+  // "Open in Designer" on the My ship page comes here with ?current or ?id=; taken off the address so a reload does not start over.
+  const query = new URLSearchParams(location.search);
+  if (query.has('current') || query.has('id')) {
+    history.replaceState(null, '', location.pathname);
+    if (await start(query.has('id') ? '?id=' + encodeURIComponent(query.get('id')) : '')) return;
+  }
+  let kept = null;
+  try { kept = JSON.parse(localStorage.getItem(BENCH)); } catch (e) {}
+  if (kept && kept.design) {
+    ({ design, origin, unsaved } = kept);
+    try { view = await call('POST', 'view', { loadout: design }); } catch (e) { design = null; }
+    if (view) { render(); return; }
+  }
+  await start('', true);   // nothing kept: the ship being flown, when the game has reported one
+})();
+})();
+</script>
+</body>
+</html>

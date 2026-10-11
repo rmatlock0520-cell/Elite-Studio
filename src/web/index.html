@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="studio-token" content="__STUDIO_TOKEN__">
+<title>Elite Studio</title>
+<link rel="icon" href="studio.svg">
+<link rel="stylesheet" href="studio.css">
+<!--
+  ELITE STUDIO: the shell.
+  The slim bar on top (app name, one tab per studio, live game status) and below it one frame per studio page.
+  Each studio is a page of its own in its own folder (ui\, market\, nav\, loadouts\); this page only frames them.
+  A studio's frame is made the first time its tab is opened and is then kept, merely hidden, so nothing in it
+  is lost when the player looks at another studio. A page can ask for a page of another studio with a request
+  in its address (Studio.open in studio.js): that studio's tab then comes to the front showing that page.
+-->
+<style>
+.bar{flex:none;display:flex;align-items:stretch;gap:18px;padding:0 16px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#0c1118,#080b10)}
+.brand{display:flex;align-items:center;gap:10px;flex:none}
+.brand img{width:22px;height:22px}
+.brand b{font-family:var(--hud);font-weight:600;letter-spacing:.16em;font-size:15px;white-space:nowrap}
+.bar .tabs{padding:0;border-bottom:0}
+.status{flex:1;min-width:0;overflow:hidden;display:flex;align-items:center;justify-content:flex-end;gap:10px;color:var(--muted);font-size:12.5px}
+.status .chip{flex:none}
+.status .where{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pages{flex:1;min-height:0}
+#pages iframe{display:block;width:100%;height:100%;border:0}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">
+    <img src="studio.svg" alt="">
+    <b>ELITE STUDIO</b>
+  </div>
+  <!-- data-studio is the studio's folder. -->
+  <nav class="tabs" id="tabs" aria-label="Studios">
+    <button data-studio="ui" title="HUD color themes for your cockpit.">Studio UI<i class="dirty" hidden></i></button>
+    <button data-studio="market" title="Trades, hauling, and finding commodities, modules and ships by name.">Studio Market<i class="dirty" hidden></i></button>
+    <button data-studio="nav" title="Neutron and quickest routes, and finding unexplored space.">Studio Nav<i class="dirty" hidden></i></button>
+    <button data-studio="loadouts" title="Ship design, engineering and the Guardian helper.">Studio Loadouts<i class="dirty" hidden></i></button>
+  </nav>
+  <div class="status" id="status" hidden>
+    <span class="chip" id="game"><span class="dot"></span><span id="game-text"></span></span>
+    <span class="where" id="where"></span>
+  </div>
+</header>
+
+<div class="banner" id="banner" hidden></div>
+
+<main id="pages"></main>
+
+<script src="studio.js"></script>
+<script>
+(() => {
+'use strict';
+const { $ } = Studio;
+
+// ============================================================ tabs and frames
+const tabs = [...document.querySelectorAll('#tabs button')].map(button =>
+  ({ id: button.dataset.studio, name: button.textContent, button, frame: null, dirty: 0 }));
+let current = null;
+
+// Shows a studio. "page" is given when another page asked for one of this studio's pages (Studio.open): the page
+// in the studio's folder and its request ('' = the first page); that one then takes the place of whatever
+// the studio's frame showed. Left out, the frame stays as the player left it.
+function showTab(tab, page) {
+  current = tab;
+  try { localStorage.setItem('studio.tab', tab.id); } catch (e) {}
+  for (const t of tabs) {
+    t.button.classList.toggle('active', t === tab);
+    if (t.frame) t.frame.hidden = t !== tab;
+  }
+  const address = new URL(tab.id + '/' + (page || ''), location.href).href;
+  if (tab.frame) {
+    if (page != null) tab.frame.contentWindow.location.replace(address);
+    tab.frame.contentWindow.focus();   // so Ctrl+S, Ctrl+Z... go to the page just shown
+    return;
+  }
+
+  // The first time: the studio's page goes into a frame of its own, which is kept from then on.
+  tab.frame = document.createElement('iframe');
+  tab.frame.title = tab.name;
+  tab.frame.src = address;
+  // A page that has just loaded (first time, or reloaded from inside) has no unsaved changes yet.
+  tab.frame.addEventListener('load', () => { setDirty(tab, 0); if (current === tab) tab.frame.contentWindow.focus(); });
+  $('#pages').append(tab.frame);
+}
+
+// ============================================================ unsaved changes
+// A page reports its own count with window.parent.postMessage({ studio: 'dirty', count: n }, location.origin).
+// The tab gets a dot, and the app gets the total so it can warn before its window closes.
+// Pages repeat their count every few seconds. A change always goes to the app. A repeat goes only now and then, and
+// only while something is unsaved: the app keeps one total, and a second Elite Studio page (a browser tab beside the
+// app's window) starts by telling it "nothing unsaved", so the page that does have changes must soon say so again.
+let sent = 0;   // when the total last went to the app
+function setDirty(tab, count) {
+  if (tab.dirty === count && !(count && Date.now() - sent > 10000)) return;
+  tab.dirty = count;
+  tab.button.querySelector('.dirty').hidden = !count;
+  sendDirty();
+}
+let sending = Promise.resolve();   // one at a time, so the app can never be left holding an older total than the newest
+function sendDirty() {
+  sent = Date.now();
+  const count = tabs.reduce((sum, t) => sum + t.dirty, 0);
+  sending = sending.then(() => Studio.api('POST', '/api/app/dirty', { count }).catch(() => {}));
+}
+// The other thing a page may say: Studio.open() in studio.js asks for a page of a studio (its own or another)
+// with { studio: 'open', to: the studio's folder, page: the page in it and its request }.
+window.addEventListener('message', e => {
+  if (e.origin !== location.origin || !e.data) return;
+  if (e.data.studio === 'dirty') {
+    const tab = tabs.find(t => t.frame && t.frame.contentWindow === e.source);
+    if (tab) setDirty(tab, Number(e.data.count) || 0);
+  } else if (e.data.studio === 'open') {
+    const tab = tabs.find(t => t.id === e.data.to);
+    if (tab) showTab(tab, String(e.data.page || ''));
+  }
+});
+
+// ============================================================ status strip
+function showState(s) {
+  $('#game').className = s.gameRunning ? 'chip on' : 'chip';
+  $('#game-text').textContent = s.gameRunning ? 'Elite running' : 'Elite closed';
+  const ship = s.shipType && s.shipName ? s.shipType + ' “' + s.shipName + '”' : s.shipType || s.shipName;
+  const where = [s.commander && 'CMDR ' + s.commander, ship, s.starSystem, s.docked && s.station].filter(Boolean).join(Studio.dot);
+  $('#where').textContent = where;
+  $('#where').title = where;   // the strip cuts long text short in a narrow window; the tooltip still has all of it
+  $('#status').hidden = false;
+}
+
+// ============================================================ start-up
+if (!Studio.served) return;
+sendDirty();   // this page is new and has no frames yet: whatever an earlier one reported is gone
+Studio.follow('state', '/api/state', showState);
+for (const t of tabs) t.button.addEventListener('click', () => showTab(t));
+let last = null;
+try { last = localStorage.getItem('studio.tab'); } catch (e) {}
+showTab(tabs.find(t => t.id === last) || tabs[0]);
+})();
+</script>
+</body>
+</html>

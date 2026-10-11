@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="studio-token" content="__STUDIO_TOKEN__">
+<title>Guardian - Studio Loadouts</title>
+<link rel="icon" href="../studio.svg">
+<link rel="stylesheet" href="../studio.css">
+<!--
+  GUARDIAN HELPER: a checklist of everything a Guardian technology broker unlocks.
+  Right: every module, weapon and fighter with its recipe, what the commander holds toward it, and whether it
+  is unlocked already. Left: the three kinds of blueprint segment the recipes start with, how many are still
+  needed, which kind of Guardian site gives each, and known sites with their distance from the ship.
+  The page only draws what the app says: GET /api/loadouts/guardian/list and every "guardian" event carry the
+  whole picture, so a material picked up, cargo bought, an unlock or a jump show by themselves.
+  Its links hand a name to another studio (Studio.open): a site or a beacon to Studio Nav's Routes, the broker
+  and the cargo a recipe takes to Find by name in Studio Market.
+-->
+<style>
+/* Only what is this page's own; the shared look (buttons, links to other studios, boxes, badges, the list table...) is in ../studio.css. */
+.layout{--side:350px}
+.side{border-right:1px solid var(--line);background:var(--bg2);padding:16px;overflow:auto}
+.side p{margin:0 0 8px}
+.segment{padding:12px 14px}
+.segment h2{margin-bottom:6px}
+.segment .count{font-size:13.5px}
+.sites{display:grid;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:13.5px}
+.name{color:var(--text);font-weight:600}
+.name:hover{color:var(--accent)}
+.credit{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+
+main{min-width:0;overflow:auto;padding:16px 20px 24px}
+.top{display:flex;align-items:baseline;gap:14px;margin-bottom:12px}
+.top .busy{font-size:13px}
+main h2{margin-top:18px}
+td.what{width:225px;vertical-align:top;white-space:normal}
+td.what .badge{margin-left:8px}
+td.recipe{white-space:normal;line-height:1.9}
+/* one line of a recipe: green when enough is held, red when not, plain once the thing is unlocked */
+.part{display:inline-block;margin:0 6px 0 0;padding:0 8px;border:1px solid var(--line2);border-radius:6px;line-height:1.55;white-space:nowrap}
+.part small{color:var(--muted);margin-left:6px;font-size:12px}
+.part.ok{border-color:rgba(61,220,132,.4)}
+.part.ok small{color:var(--good)}
+.part.short{border-color:rgba(255,90,79,.45)}
+.part.short small{color:var(--bad)}
+tr.done td.what,tr.done .part{color:var(--faint)}
+/* the "where to buy" link at the end of a recipe's line */
+.part .go{margin-left:6px;font-size:12px}
+</style>
+</head>
+<body>
+
+<nav class="subtabs"><a href="./">My ship</a><a href="designer.html">Designer</a><a href="engineering.html">Engineering</a><a class="active" href="guardian.html">Guardian</a></nav>
+
+<div class="layout">
+  <aside class="side">
+    <p class="muted small">Every recipe starts with a blueprint segment from a Guardian site. Take the finished recipe to a Guardian technology
+      broker: the materials from your stores, the cargo in your hold.
+      <button class="textbtn go" id="broker" title="Opens Find by name in Studio Market and looks for the nearest one">Find the nearest Guardian technology broker</button></p>
+    <div id="segments"></div>
+    <p class="muted small credit">Recipes compared between <a href="https://github.com/msarilar/EDEngineer" target="_blank" rel="noopener">EDEngineer</a>
+      and <a href="https://github.com/jixxed/ed-odyssey-materials-helper" target="_blank" rel="noopener">ED Odyssey Materials Helper</a>.
+      The sites were surveyed by <a href="https://canonn.science/codex/guardian-structure/" target="_blank" rel="noopener">Canonn</a>. Thank you to all three.</p>
+  </aside>
+
+  <main>
+    <div class="top">
+      <h1 id="summary"></h1>
+      <span class="busy" id="reading" hidden><span class="spin"></span>Reading your older journals for things you unlocked before…</span>
+    </div>
+    <div id="groups"></div>
+  </main>
+</div>
+
+<script src="../studio.js"></script>
+<script>
+(() => {
+'use strict';
+const { $, h, whole, count, ly, dot, go } = Studio;
+if (!Studio.served) return;
+
+const GROUPS = ['Modules', 'Weapons', 'Fighters'];
+// What each kind of blueprint segment is for, in the words the left column uses.
+const FOR = { Guardian_WeaponBlueprint: 'weapon', Guardian_ModuleBlueprint: 'module', Guardian_VesselBlueprint: 'fighter' };
+const list = words => words.length < 2 ? words.join('') : words.slice(0, -1).join(', ') + ' or ' + words[words.length - 1];
+// A system: its name copies it for the galaxy map, and "Route" hands it to Studio Nav.
+const system = name => [h('button', { class: 'textbtn name', title: 'Copy this name for the galaxy map', onclick: () => Studio.copyName(name) }, name),
+  ' ', go('Route', 'Opens Studio Nav with ' + name + ' under To, ready to plot', 'nav', '?to=' + encodeURIComponent(name))];
+
+// ============================================================ the checklist
+// One line of a recipe. Cargo still to be bought has a link to the places that sell it.
+function part(p, unlocked) {
+  const cargo = p.kind === 'Commodity';
+  const enough = p.have >= p.need;
+  return h('span', { class: 'part' + (unlocked ? '' : enough ? ' ok' : ' short'),
+      title: (cargo ? 'Cargo: it has to be in your ship\'s hold at the broker. ' : p.kind + ' material. ') + 'You hold ' + whole(p.have) + '.' },
+    whole(p.need) + ' ' + p.name, cargo && ' (cargo)', !unlocked && h('small', null, 'have ' + whole(p.have)),
+    cargo && !unlocked && !enough && go('where to buy', 'Opens Find by name in Studio Market and looks for the nearest places that sell ' + p.name,
+      'market', 'find.html?find=commodity&name=' + encodeURIComponent(p.name)));
+}
+
+function row(item) {
+  const ready = !item.unlocked && item.recipe.every(p => p.have >= p.need);
+  const state = item.unlocked ? h('span', { class: 'badge good' }, 'Unlocked')
+    : ready ? h('span', { class: 'badge warn', title: 'You hold everything: take it to a Guardian technology broker' }, 'Ready to unlock')
+    : h('span', { class: 'badge' }, 'Locked');
+  return h('tr', { class: item.unlocked ? 'done' : null },
+    h('td', { class: 'what' }, h('b', null, item.name), h('div', { class: 'muted' }, item.detail, state)),
+    h('td', { class: 'recipe' }, item.recipe.map(p => part(p, item.unlocked))));
+}
+
+// ============================================================ where the segments come from
+function segment(b, items) {
+  const locked = items.filter(item => !item.unlocked && item.blueprint === b.code).length;
+  const what = FOR[b.code];
+  const needs = locked
+    ? ['You hold ', h('b', { class: b.have >= b.need ? 'good' : 'bad' }, whole(b.have)), '. The ' + count(locked, what) + ' still locked ' + (locked === 1 ? 'takes ' : 'take ') + whole(b.need) + (locked === 1 ? '.' : ' between them.')]
+    : ['You hold ' + whole(b.have) + '. Every ' + what + ' is unlocked, so no more are needed.'];
+  const beacon = b.sites.some(site => site.beaconSystem);
+  return h('section', { class: 'card segment' },
+    h('h2', null, b.name),
+    h('p', { class: 'count' }, needs),
+    h('p', { class: 'muted small' }, 'Found at Guardian structures of the ' + (b.layouts.length === 1 ? 'shape' : 'shapes') + ' explorers call ' + list(b.layouts)
+      + '. Charge the site\'s six pylons, give the data terminal ' + (beacon ? 'an ' : 'a ') + b.key + ' and scan its core: one segment each time. '
+      + (beacon ? 'The key comes from a Guardian beacon, a structure in space; each site below is listed with its beacon.' : 'Relics are found at the sites themselves.')),
+    h('div', { class: 'sites' }, b.sites.map(site => h('div', null,
+      system(site.system), h('span', { class: 'muted' }, dot + 'body ' + site.body + (site.ly == null ? '' : dot + ly(site.ly))),
+      site.beaconSystem && h('div', { class: 'muted' }, 'Beacon: ', system(site.beaconSystem), dot + 'body ' + site.beaconBody)))));
+}
+
+// ============================================================ what the app says
+function show(view) {
+  const unlocked = view.items.filter(item => item.unlocked).length;
+  $('#summary').textContent = unlocked + ' of ' + view.items.length + ' unlocked';
+  $('#reading').hidden = view.historyRead;
+  $('#groups').replaceChildren(...GROUPS.flatMap(group => {
+    const items = view.items.filter(item => item.group === group);
+    return [h('h2', null, group + dot + items.filter(item => item.unlocked).length + ' of ' + items.length),
+      h('div', { class: 'tablebox' }, h('table', null, h('tbody', null, items.map(row))))];
+  }));
+  $('#segments').replaceChildren(...view.blueprints.map(b => segment(b, view.items)));
+}
+
+$('#broker').addEventListener('click', () => Studio.open('market', 'find.html?find=services&name=' + encodeURIComponent('Guardian technology broker')));
+Studio.follow('guardian', '/api/loadouts/guardian/list', show);
+})();
+</script>
+</body>
+</html>

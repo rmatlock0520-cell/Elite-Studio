@@ -1,0 +1,218 @@
+{
+  "name": "T9 design test",
+  "savedUtc": "2026-10-09T19:44:34.3317203Z",
+  "loadout": {
+    "timestamp": "2026-10-09T19:44:34Z",
+    "event": "Loadout",
+    "Ship": "type9",
+    "ShipName": "",
+    "ShipIdent": "",
+    "HullHealth": 1,
+    "Modules": [
+      {
+        "Slot": "Armour",
+        "Item": "type9_armour_grade3",
+        "On": true,
+        "Priority": 0,
+        "Health": 1,
+        "Engineering": {
+          "BlueprintName": "Armour_HeavyDuty",
+          "Level": 5,
+          "Quality": 1,
+          "ExperimentalEffect": "special_armour_chunky",
+          "ExperimentalEffect_Localised": "Deep Plating"
+        }
+      },
+      {
+        "Slot": "PowerPlant",
+        "Item": "int_powerplant_size6_class5",
+        "On": true,
+        "Priority": 0,
+        "Health": 1,
+        "Engineering": {
+          "BlueprintName": "PowerPlant_Boosted",
+          "Level": 3,
+          "Quality": 1,
+          "ExperimentalEffect": "special_powerplant_lightweight",
+          "ExperimentalEffect_Localised": "Stripped Down"
+        }
+      },
+      {
+        "Slot": "MainEngines",
+        "Item": "int_engine_size7_class5",
+        "On": true,
+        "Priority": 0,
+        "Health": 1,
+        "Engineering": {
+          "BlueprintName": "Engine_Dirty",
+          "Level": 5,
+          "Quality": 1,
+          "ExperimentalEffect": "special_engine_overloaded",
+          "ExperimentalEffect_Localised": "Drag Drives"
+        }
+      },
+      {
+        "Slot": "FrameShiftDrive",
+        "Item": "int_hyperdrive_size6_class5",
+        "On": true,
+        "Priority": 0,
+        "Health": 1,
+        "Engineering": {
+          "BlueprintName": "FSD_LongRange",
+          "Level": 5,
+          "Quality": 1,
+          "ExperimentalEffect": "special_fsd_heavy",
+          "ExperimentalEffect_Localised": "Mass Manager"
+        }
+      },
+      {
+        "Slot": "LifeSupport",
+        "Item": "int_lifesupport_size5_class1",
+        "On": true,
+        "Priority": 0,
+        "Health": 1
+      },
+      {
+        "Slot": "PowerDistributor",
+        "Item": "int_powerdistributor_size6_class5",
+        "On": true,
+        "Priority": 0,
+        "Health": 1,
+        "Engineering": {
+          "BlueprintName": "PowerDistributor_PriorityEngines",
+          "Level": 5,
+          "Quality": 1,
+          "ExperimentalEffect": "special_powerdistributor_capacity",
+          "ExperimentalEffect_Localised": "Cluster Capacitors"
+        }
+      },
+      {
+        "Slot": "Radar",
+        "Item": "int_sensors_size4_class1",
+        "On": true,
+        "Priority": 0,
+        "Health": 1
+      },
+      {
+        "Slot": "FuelTank",
+        "Item": "int_fueltank_size6_class3",
+        "On": true,
+        "Priority": 0,
+        "Health": 1
+      },
+      {
+        "Slot": "CargoHatch",
+        "Item": "modularcargobaydoor",
+        "On": true,
+        "Priority": 0,
+        "Health": 1
+      },
+      {
+        "Slot": "Slot00_Size8",
+        "Item": "int_cargorack_size8_class1",
+        "On": true,
+        "Priority": 0,
+        "Health": 1
+      },
+      {
+        "Slot": "Slot01_Size8",
+        "Item": "int_cargorack_size8_class1",
+        "On": true,
+        "Priority": 0,
+        "Health": 1
+      },
+      {
+        "Slot": "Slot02_Size7",
+        "Item": "int_shieldgenerator_size7_class5",
+        "On": true,
+        "Priority": 0,
+        "Health": 1,
+        "Engineering": {
+          "BlueprintName": "ShieldGenerator_Reinforced",
+          "Level": 5,
+          "Quality": 1,
+          "ExperimentalEffect": "special_shield_health",
+          "ExperimentalEffect_Localised": "Hi-Cap"
+        }
+      },
+      {
+        "Slot": "Slot03_Size6",
+        "Item": "int_hullreinforcement_size5_class2",
+        "On": true,
+        "Priority": 0,
+        "Health": 1,
+        "Engineering": {
+          "BlueprintName": "HullReinforcement_HeavyDuty",
+          "Level": 5,
+          "Quality": 1,
+          "ExperimentalEffect": "special_hullreinforcement_chunky",
+          "ExperimentalEffect_Localised": "Deep Plating"
+        }
+      },
+      {
+        "Slot": "Slot04_Size5",
+        "Item": "int_guardianfsdbooster_size5",
+        "On": true,
+        "Priority": 0,
+        "Health": 1
+      },
+      {
+        "Slot": "TinyHardpoint1",
+        "Item": "hpt_shieldbooster_size0_class5",
+        "On": true,
+        "Priority": 0,
+        "Health": 1,
+        "Engineering": {
+          "BlueprintName": "ShieldBooster_HeavyDuty",
+          "Level": 5,
+          "Quality": 1,
+          "ExperimentalEffect": "special_shieldbooster_chunky",
+          "ExperimentalEffect_Localised": "Super Capacitors"
+        }
+      },
+      {
+        "Slot": "TinyHardpoint2",
+        "Item": "hpt_shieldbooster_size0_class5",
+        "On": true,
+        "Priority": 0,
+        "Health": 1
+      },
+      {
+        "Slot": "MediumHardpoint1",
+        "Item": "hpt_multicannon_gimbal_medium",
+        "On": true,
+        "Priority": 0,
+        "Health": 1,
+        "Engineering": {
+          "BlueprintName": "Weapon_Overcharged",
+          "Level": 5,
+          "Quality": 1,
+          "ExperimentalEffect": "special_weapon_lightweight",
+          "ExperimentalEffect_Localised": "Stripped Down"
+        }
+      },
+      {
+        "Slot": "MediumHardpoint2",
+        "Item": "hpt_beamlaser_fixed_medium",
+        "On": true,
+        "Priority": 0,
+        "Health": 1,
+        "Engineering": {
+          "BlueprintName": "Weapon_Efficient",
+          "Level": 5,
+          "Quality": 1
+        }
+      }
+    ],
+    "HullValue": 72116858,
+    "ModulesValue": 220000854,
+    "Rebuy": 14605885,
+    "UnladenMass": 1393.8,
+    "CargoCapacity": 512,
+    "MaxJumpRange": 35.738889,
+    "FuelCapacity": {
+      "Main": 64,
+      "Reserve": 0.77
+    }
+  }
+}

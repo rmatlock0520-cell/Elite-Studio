@@ -1,0 +1,2548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="studio-token" content="__STUDIO_TOKEN__">
+<title>Studio UI - Elite Studio</title>
+<link rel="icon" href="../studio.svg">
+<!--
+  STUDIO UI, the HUD colour theme editor of Elite Studio
+  This page is the whole editor. It is shown inside Elite Studio's shell page (..\index.html) and served by Elite Studio's local web server,
+  which reads and writes the HUD colour files in your Elite Dangerous folder.
+  The app serves the copy of this file that the build puts in its "web" folder: after an edit here, build again
+  (or start the app with --web-root pointing at src\web) and reload the page.
+-->
+<style>
+:root{
+  --bg:#06080c;--bg2:#0a0e14;--panel:#0e131a;--panel2:#131a23;--panel3:#19212c;
+  --line:#1f2935;--line2:#2a3645;--text:#e2e8f0;--muted:#8d99aa;--faint:#5b6677;
+  --accent:#ff7100;--accent-ink:#140900;--accent-soft:rgba(255,113,0,.14);--accent-line:rgba(255,113,0,.45);
+  --good:#3ddc84;--warn:#ffb020;--bad:#ff5a4f;
+  --font:"Segoe UI",system-ui,-apple-system,sans-serif;
+  --hud:"Bahnschrift","DIN Alternate","Segoe UI",system-ui,sans-serif;
+  --mono:"Cascadia Mono",Consolas,"Courier New",monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:14px/1.45 var(--font);overflow:hidden}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.topbar{height:58px;display:flex;align-items:center;gap:14px;padding:0 16px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#0c1118,#080b10)}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand svg{width:26px;height:26px;flex:none}
+.brand b{font-family:var(--hud);font-weight:600;letter-spacing:.16em;font-size:16px;white-space:nowrap}
+.brand span{color:var(--muted);font-size:12px;white-space:nowrap}
+.chips{display:flex;gap:8px;flex-wrap:wrap;min-width:0;flex:1}
+.chip{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 11px;border-radius:999px;border:1px solid var(--line2);background:var(--panel);color:var(--muted);font-size:12.5px;white-space:nowrap}
+.chip .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
+.chip.on .dot{background:var(--good);box-shadow:0 0 8px var(--good)}
+.chip.warn{border-color:rgba(255,176,32,.55);color:#ffd27a;cursor:pointer;background:rgba(255,176,32,.08)}
+.chip.warn .dot{background:var(--warn)}
+.chip.bad{border-color:rgba(255,90,79,.55);color:#ffb3ad}
+.chip.bad .dot{background:var(--bad)}
+.actions{display:flex;align-items:center;gap:8px}
+
+.btn{height:34px;padding:0 14px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
+.btn:hover:not(:disabled){border-color:var(--accent-line)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.primary:hover:not(:disabled){filter:brightness(1.12)}
+.btn.icon{width:34px;padding:0;font-size:17px}
+.btn.small{height:28px;padding:0 10px;font-size:13px}
+.btn.danger{border-color:rgba(255,90,79,.5);color:#ffb3ad}
+.count{min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:rgba(0,0,0,.28);font-size:12px;display:inline-grid;place-items:center}
+.switch{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;cursor:pointer;user-select:none;white-space:nowrap}
+.switch input{appearance:none;-webkit-appearance:none;width:34px;height:20px;border-radius:999px;background:var(--panel3);border:1px solid var(--line2);position:relative;margin:0;cursor:pointer;transition:.15s;flex:none}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--muted);transition:.15s}
+.switch input:checked{background:var(--accent-soft);border-color:var(--accent)}
+.switch input:checked::after{left:16px;background:var(--accent)}
+
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 480px;height:calc(100vh - 58px)}
+.stage{display:flex;flex-direction:column;min-width:0;min-height:0;padding:14px;gap:10px}
+.preview{position:relative;flex:1;min-height:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#020305}
+#hud{position:absolute;inset:0;width:100%;height:100%;display:block}
+#hud text{font-family:var(--hud)}
+#hud [data-id]{cursor:pointer;transition:opacity .12s}
+#hud.focus [data-id]:not(.hl){opacity:.14}
+.stagebar{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px;min-height:34px}
+.stagebar .label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stagebar .label b{color:var(--text);font-weight:600}
+.views{display:flex;gap:6px;flex-wrap:wrap}
+.views button{height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--line2);background:var(--panel);color:var(--muted);font-family:var(--hud);letter-spacing:.04em;font-size:13px}
+.views button.active{background:var(--accent-soft);border-color:var(--accent);color:var(--text)}
+.compare-note{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:rgba(6,8,12,.85);border:1px solid var(--line2);border-radius:999px;padding:5px 14px;font-size:12.5px;color:var(--text);pointer-events:none}
+
+.panel{display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--line);background:var(--bg2)}
+.tabs{display:flex;gap:2px;padding:8px 10px 0;border-bottom:1px solid var(--line);overflow-x:auto;flex:none}
+.tabs button{border:0;background:none;padding:10px 11px;border-bottom:2px solid transparent;color:var(--muted);font-family:var(--hud);letter-spacing:.06em;font-size:13.5px;white-space:nowrap}
+.tabs button.active{color:var(--text);border-bottom-color:var(--accent)}
+.tabs button:hover{color:var(--text)}
+.tabbody{flex:1;overflow:auto;padding:16px}
+
+h2{font-family:var(--hud);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:14px;margin:0 0 10px}
+h3{font-family:var(--hud);font-weight:600;letter-spacing:.06em;font-size:12.5px;margin:20px 0 8px;color:var(--muted);text-transform:uppercase}
+p{margin:0 0 10px}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+.card.note{border-color:rgba(255,176,32,.4);background:rgba(255,176,32,.06)}
+.card.bad{border-color:rgba(255,90,79,.45);background:rgba(255,90,79,.06)}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
+.steps div{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12.5px;color:var(--muted)}
+.steps b{display:block;color:var(--text);font-family:var(--hud);letter-spacing:.04em;font-size:13px;margin-bottom:2px}
+.palettes{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.pal{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel);text-align:left;font-size:13px}
+.pal:hover{border-color:var(--accent-line)}
+.sw{display:flex;flex:none}
+.sw i{width:12px;height:22px;display:block}
+.sw i:first-child{border-radius:4px 0 0 4px}
+.sw i:last-child{border-radius:0 4px 4px 0}
+.role{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.role:last-child{border-bottom:0}
+.role .name{font-weight:600}
+.role .desc{color:var(--muted);font-size:12.5px}
+.role .n{color:var(--faint);font-size:12px;white-space:nowrap}
+input[type=color]{width:44px;height:32px;padding:0;border:1px solid var(--line2);border-radius:7px;background:none;cursor:pointer;flex:none}
+input[type=color]::-webkit-color-swatch-wrapper{padding:3px}
+input[type=color]::-webkit-color-swatch{border:0;border-radius:4px}
+.checks{display:grid;gap:9px;margin:14px 0}
+.checks label{display:flex;gap:10px;align-items:flex-start;color:var(--muted);font-size:13px;cursor:pointer}
+.checks input{margin-top:3px;accent-color:var(--accent)}
+.row-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+.search{width:100%;height:36px;padding:0 12px;border-radius:8px;border:1px solid var(--line2);background:var(--panel);outline:none}
+.search:focus{border-color:var(--accent)}
+.toolrow{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+.groups{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+.groups button{height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--line2);background:var(--panel);color:var(--muted);font-size:12.5px}
+.groups button.active{background:var(--accent-soft);border-color:var(--accent);color:var(--text)}
+.groups button .c{color:var(--faint);margin-left:5px}
+.cat{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden}
+.cat>header{padding:9px 12px;font-family:var(--hud);letter-spacing:.05em;font-size:13px;background:var(--panel2);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px}
+.cat>header span{color:var(--faint);font-family:var(--font);letter-spacing:0;font-size:12px}
+.el{padding:9px 12px;border-bottom:1px solid var(--line)}
+.el:last-child{border-bottom:0}
+.el.flash,.role.flash{animation:flash 1.6s ease-out}
+@keyframes flash{0%,30%{background:var(--accent-soft)}100%{background:transparent}}
+.el .top{display:flex;align-items:center;gap:10px;min-height:32px}
+.el .t{flex:1;min-width:0;font-size:13.5px}
+.dirty{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-left:7px;vertical-align:middle}
+.el .d{color:var(--muted);font-size:12px;margin-top:3px;white-space:pre-line}
+.el .d.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+.ctl{display:flex;align-items:center;gap:8px;flex:none}
+.hex{width:80px;height:30px;padding:0 8px;border-radius:6px;border:1px solid var(--line2);background:var(--panel2);font-family:var(--mono);font-size:12.5px;text-transform:uppercase}
+.el select{height:30px;max-width:220px;border-radius:6px;border:1px solid var(--line2);background:var(--panel2);padding:0 6px}
+.el input[type=range]{width:130px;accent-color:var(--accent)}
+.num{width:66px;height:30px;padding:0 6px;border-radius:6px;border:1px solid var(--line2);background:var(--panel2);font-family:var(--mono);font-size:12.5px}
+.alpha{display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--muted);font-size:12px}
+.alpha input{width:150px;accent-color:var(--accent)}
+.reset{border:0;background:none;color:var(--faint);width:26px;height:26px;border-radius:6px;flex:none;font-size:15px}
+.reset:hover{color:var(--text);background:var(--panel3)}
+.reset.off{visibility:hidden}
+.reset.def{width:auto;padding:0 7px;font-size:11.5px;border:1px solid var(--line2)}
+.reset.def.off{display:none}
+.modenote{margin-top:6px;font-size:12px;color:#ffd27a}
+.linkbtn{border:0;background:none;color:var(--accent);text-decoration:underline;cursor:pointer;padding:0;font-size:12px}
+.matrix{display:grid;grid-template-columns:auto repeat(3,1fr);gap:6px 8px;align-items:center;font-size:12.5px;margin:10px 0}
+.matrix .num{width:100%}
+.swatch{display:inline-block;width:18px;height:18px;border-radius:4px;vertical-align:middle;border:1px solid rgba(255,255,255,.15)}
+
+.themes-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.theme{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel);text-align:left;padding:0;display:flex;flex-direction:column}
+.theme:hover{border-color:var(--accent-line)}
+.theme img,.theme .noimg{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#05070a}
+.theme .meta{padding:8px 10px}
+.theme .nm{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.theme .au{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dots{display:flex;gap:4px;margin-top:6px}
+.dots i{width:12px;height:12px;border-radius:50%;border:1px solid rgba(255,255,255,.15)}
+.list{display:grid;gap:8px}
+.item{display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:9px}
+.item .grow{flex:1;min-width:0}
+.item .nm{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;margin:0}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
+.badge.good{color:var(--good);border-color:rgba(61,220,132,.4)}
+.badge.warn{color:var(--warn);border-color:rgba(255,176,32,.45)}
+.badge.bad{color:var(--bad);border-color:rgba(255,90,79,.45)}
+.log{font-family:var(--mono);font-size:12px;background:#05070a;border:1px solid var(--line);border-radius:8px;padding:10px;white-space:pre-wrap;color:#b9c4d2;max-height:240px;overflow:auto;margin-top:10px}
+.field{display:flex;gap:8px;margin-top:8px}
+.field input{flex:1;min-width:0;height:34px;padding:0 10px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2)}
+
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(16px);opacity:0;pointer-events:none;background:#141b25;border:1px solid var(--line2);border-left:3px solid var(--accent);padding:11px 16px;border-radius:9px;box-shadow:0 12px 30px rgba(0,0,0,.5);transition:.2s;max-width:min(580px,92vw);z-index:50}
+#toast.show{opacity:1;transform:translateX(-50%)}
+#toast.bad{border-left-color:var(--bad)}
+#toast.good{border-left-color:var(--good)}
+.modal{position:fixed;inset:0;background:rgba(2,4,8,.72);display:grid;place-items:center;z-index:60;padding:16px}
+.modal .box{width:min(540px,100%);background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:18px 18px 16px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.modal .body{color:var(--muted);margin:8px 0 18px}
+.modal .body ul{margin:8px 0;padding-left:18px}
+.modal .foot{display:flex;justify-content:flex-end;gap:8px}
+.cover{position:fixed;inset:0;background:var(--bg);display:grid;place-items:center;z-index:70;padding:24px}
+.cover .box{max-width:580px}
+.banner{position:fixed;top:58px;left:0;right:0;z-index:40;background:#2a0f0d;border-bottom:1px solid rgba(255,90,79,.5);color:#ffd3cf;padding:9px 16px;font-size:13px;display:flex;gap:12px;align-items:center}
+.spin{width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+@media (max-width:1100px){
+  body{overflow:auto}
+  .layout{grid-template-columns:1fr;height:auto}
+  .stage{height:62vw;min-height:300px}
+  .panel{border-left:0;border-top:1px solid var(--line)}
+  .tabbody{overflow:visible}
+  .brand span{display:none}
+}
+@media (max-width:720px){
+  .topbar{flex-wrap:wrap;height:auto;padding:10px 16px}
+  .banner{top:0}
+  .palettes,.themes-grid,.steps{grid-template-columns:1fr}
+  .el .top{flex-wrap:wrap}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand" hidden>
+    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="10" fill="none" stroke="var(--accent)" stroke-width="2.5"/><path d="M16 1v8M16 23v8M1 16h8M23 16h8" stroke="var(--accent)" stroke-width="2.5"/></svg>
+    <b>STUDIO UI</b>
+  </div>
+  <div class="chips" id="chips"></div>
+  <div class="actions">
+    <button class="btn icon" id="btn-undo" title="Undo (Ctrl+Z)" aria-label="Undo">&#8630;</button>
+    <button class="btn icon" id="btn-redo" title="Redo (Ctrl+Y)" aria-label="Redo">&#8631;</button>
+    <label class="switch" title="Save to the game automatically after every change, so you only need to press F11 in Elite"><input type="checkbox" id="auto-save"> Auto-save</label>
+    <button class="btn" id="btn-discard" title="Throw away changes you haven't saved">Discard</button>
+    <button class="btn primary" id="btn-save" title="Write your colors into Elite (Ctrl+S)">Save to game <span class="count" id="dirty-count">0</span></button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="stage">
+    <div class="preview">
+      <svg id="hud" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Preview of your cockpit HUD"></svg>
+      <div class="compare-note" id="compare-note" hidden>Showing the colors currently in the game</div>
+    </div>
+    <div class="views" id="views" role="tablist" aria-label="Preview page">
+      <button data-view="cockpit" class="active">Cockpit</button>
+      <button data-view="drawn">Cockpit (drawn)</button>
+      <button data-view="station">Station menu</button>
+      <button data-view="galaxy">Galaxy map</button>
+      <button data-view="foot">On foot</button>
+      <button data-view="fss">Scanner</button>
+      <button data-view="nav">Nav panel (1)</button>
+      <button data-view="systems">Systems panel (4)</button>
+    </div>
+    <div class="stagebar">
+      <span class="label" id="hover-label">Point at any part of the HUD to see what it is · click it to edit</span>
+      <button class="btn small" id="btn-compare" title="Hold down to see the colors that are in the game right now">Hold to compare</button>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <nav class="tabs" id="tabs">
+      <button data-tab="quick" class="active">Quick Theme</button>
+      <button data-tab="all">All Settings</button>
+      <button data-tab="themes">Themes</button>
+      <button data-tab="backups">Backups</button>
+      <button data-tab="edhm">Setup</button>
+    </nav>
+    <div class="tabbody" id="tab-quick"></div>
+    <div class="tabbody" id="tab-all" hidden></div>
+    <div class="tabbody" id="tab-themes" hidden></div>
+    <div class="tabbody" id="tab-backups" hidden></div>
+    <div class="tabbody" id="tab-edhm" hidden></div>
+  </aside>
+</main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<div class="banner" id="banner" hidden></div>
+
+<div class="cover" id="cover-nohelper" hidden>
+  <div class="box">
+    <h2>Start Elite Studio</h2>
+    <p class="muted">This page needs Elite Studio to talk to Elite Dangerous. Start <b>Elite Studio</b> and open Studio UI from its window.</p>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// ============================================================ basics
+const TOKEN = document.querySelector('meta[name="studio-token"]').content;
+const IN_APP = TOKEN.indexOf('__STUDIO_') !== 0;   // served by Elite Studio (in its window or in a browser), so the app's folder picker, report and log can be asked for
+const API = '/api/ui';   // this page's own routes; the app's shared ones (folder picker, report, log) are under /api/app
+// remember recent errors for the diagnostic report (and pass them to the app's log)
+const ERRORS = [];
+function noteError(text) {
+  ERRORS.push(new Date().toLocaleTimeString() + '  ' + text);
+  if (ERRORS.length > 30) ERRORS.shift();
+  if (IN_APP) api('POST', '/api/app/log', { message: 'Studio UI: ' + text }).catch(() => {});
+}
+window.addEventListener('error', e => noteError((e.message || 'error') + (e.filename ? ' (line ' + e.lineno + ')' : '')));
+window.addEventListener('unhandledrejection', e => noteError('Unhandled: ' + ((e.reason && e.reason.message) || e.reason)));
+const FILES = ['Startup-Profile', 'Advanced', 'SuitHud', 'XML-Profile'];
+const SVGNS = 'http://www.w3.org/2000/svg';
+const ORANGE = '#ff7100';          // Elite's stock HUD orange (approximate)
+const DEFAULT_SHIELD = '#5ab8ff';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+function h(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  if (attrs) for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k === 'class') n.className = v;
+    else if (k === 'html') n.innerHTML = v;
+    else if (k.startsWith('on') && typeof v === 'function') n.addEventListener(k.slice(2), v);
+    else if (k === 'value' || k === 'checked' || k === 'disabled' || k === 'selected') n[k] = v;
+    else n.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat(Infinity)) if (k != null && k !== false) n.append(k.nodeType ? k : String(k));
+  return n;
+}
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('hudstudio.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('hudstudio.' + k, JSON.stringify(v)); } catch (e) {} },
+};
+
+// ============================================================ colour maths
+const clamp01 = v => Math.min(1, Math.max(0, Number.isFinite(v) ? v : 0));
+const srgbToLin = c => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+const linToSrgb = v => v <= 0.0031308 ? v * 12.92 : 1.055 * Math.pow(v, 1 / 2.4) - 0.055;
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return [0, 0, 0];
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function rgbToHex(r, g, b) { return '#' + [r, g, b].map(v => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0')).join(''); }
+const hex01 = hex => hexToRgb(hex).map(v => v / 255);
+const from01 = (r, g, b) => rgbToHex(r * 255, g * 255, b * 255);
+const linToHex = (r, g, b) => from01(linToSrgb(clamp01(r)), linToSrgb(clamp01(g)), linToSrgb(clamp01(b)));
+function mix(a, b, t) { const A = hexToRgb(a), B = hexToRgb(b); return rgbToHex(A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t); }
+function luminance(hex) { const [r, g, b] = hex01(hex).map(srgbToLin); return 0.2126 * r + 0.7152 * g + 0.0722 * b; }
+function rgbToHsl([r, g, b]) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+  let hh = 0, s = 0;
+  if (mx !== mn) {
+    const d = mx - mn;
+    s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    if (mx === r) hh = (g - b) / d + (g < b ? 6 : 0); else if (mx === g) hh = (b - r) / d + 2; else hh = (r - g) / d + 4;
+    hh *= 60;
+  }
+  return [hh, s, l];
+}
+function hslToHex(hh, s, l) {
+  hh = ((hh % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((hh / 60) % 2 - 1)), m = l - c / 2;
+  const [r, g, b] = hh < 60 ? [c, x, 0] : hh < 120 ? [x, c, 0] : hh < 180 ? [0, c, x] : hh < 240 ? [0, x, c] : hh < 300 ? [x, 0, c] : [c, 0, x];
+  return from01(r + m, g + m, b + m);
+}
+function fmt(n) { if (!Number.isFinite(n)) n = 0; let r = Math.round(n * 10000) / 10000; if (Object.is(r, -0)) r = 0; return String(r); }
+function cmpVer(a, b) {
+  const pa = String(a || '0').split('.').map(Number), pb = String(b || '0').split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const d = (pa[i] || 0) - (pb[i] || 0); if (d) return d; }
+  return 0;
+}
+
+// ============================================================ what the settings mean
+// Mode settings that decide whether a custom colour is used at all.
+const GOVERNING = new Set(['AdvancedMode', 'ShortMode', 'ShortModeB', 'ShieldColor', 'PowerDistributor', 'HullGaugeMode', 'GalaxyMapMode',
+  'AmbientLights', 'ShipPanelOpacity', 'SCSnowMode', 'ProbeTrailMode', 'SC_SideLines', 'MouseCursorMode', 'CausticEffect', 'AHUDText',
+  'TextModeShort', 'RankBoxesMode', 'SpaceDustMode']);
+// A few colours whose mode setting isn't directly above them in the settings list.
+const MODE_OVERRIDES = {
+  'Advanced:x52|y52|z52': 'Startup-Profile:x140',
+  'Advanced:x237|y237|z237': 'Startup-Profile:y106',
+  'Advanced:x224|y224|z224': 'Startup-Profile:y136',
+  'Advanced:x225|y225|z225': 'Startup-Profile:y136',
+  'Advanced:x47|y47|z47': 'Startup-Profile:y136',
+  'Advanced:x46|y46|z46': 'Startup-Profile:y136',
+  'Advanced:x177|y177|z177': 'Startup-Profile:y81',
+};
+function modeState(m, v) {
+  switch (m.type) {
+    case 'ShieldColor': case 'HullGaugeMode': case 'AmbientLights': return v === 100 || v === 101 ? 'custom' : v === 199 ? 'xml' : 'default';
+    case 'PowerDistributor': return v >= 100 && v <= 103 ? 'custom' : v === 199 ? 'xml' : 'default';
+    case 'ShipPanelOpacity': return v === 100 ? 'custom' : v === 199 ? 'xml' : v === 101 ? 'grey' : 'default';
+    case 'CausticEffect': case 'SpaceDustMode': return v === 1 || v === 2 ? 'custom' : 'default';
+    case 'AHUDText': return v === 101 ? 'custom' : v === 100 ? 'text' : 'default';
+    case 'TextModeShort': return v === 100 ? 'custom' : 'text';
+    case 'SC_SideLines': return v === 100 ? 'custom' : v === 199 ? 'xml' : v === 0 ? 'off' : 'default';
+    case 'RankBoxesMode': return v === 100 || v === 101 ? 'custom' : 'default';
+    case 'MouseCursorMode': return v === 100 ? 'custom' : (v === 199 || v === 198) ? 'xml' : 'default';
+    default: return v === 100 || v === 101 ? 'custom' : v === 199 ? 'xml' : 'default';
+  }
+}
+function customValueFor(m) { return m.type === 'CausticEffect' || m.type === 'SpaceDustMode' ? 1 : m.type === 'AHUDText' ? 101 : 100; }
+
+// Approximate stock Elite colours, used by the preview when a part is on "Elite default".
+const DEFAULT_COLORS = {
+  'Advanced:x247|y247|z247|w247': '#ff2a1a', 'Advanced:x246|y246|z246|w246': '#35d435', 'Advanced:x238|y238|z238|w238': '#22d8ff',
+  'Advanced:x51|y51|z51': '#3a9dff', 'Advanced:x82|y82|z82|w82': '#4db8ff', 'Advanced:x178|y178|z178': '#2ad4ff',
+  'Advanced:x71|y71|z71|w71': '#2ad4ff', 'Advanced:x184|y184|z184': '#3fa9ff', 'Advanced:x222|y222|z222': '#3fa9ff',
+  'Advanced:x143|y143|z143|w143': '#140a02', 'Advanced:x62|y62|z62|w62': '#ff3322', 'Advanced:x172|y172|z172': '#ff3322',
+  'Advanced:x159|y159|z159': '#ff3322', 'Advanced:x189|y189|z189': '#ff3322', 'Advanced:x196|y196|z196|w196': '#ff66cc',
+  'Advanced:x88|y88|z88': '#e8f4ff', 'Advanced:x94|y94|z94': '#ffb35c',
+  'Advanced:x201|y201|z201|w201': DEFAULT_SHIELD, 'Advanced:x202|y202|z202|w202': DEFAULT_SHIELD, 'Advanced:x203|y203|z203|w203': DEFAULT_SHIELD,
+  'Advanced:x228|y228|z228': DEFAULT_SHIELD,
+  'Advanced:x90|y90|z90': '#1a1208',
+  'Advanced:x69|y69|z69': '#fff0dc', 'Advanced:x70|y70|z70': '#ffd9b0',
+  'Advanced:x200|y200|z200|w200': '#39d5ff', 'Advanced:x197|y197|z197|w197': '#8ee6ff', 'Advanced:x198|y198|z198|w198': '#ffffff', 'Advanced:x199|y199|z199|w199': '#39d5ff',
+  'SuitHud:x31|y31|z31': '#39c8e8', 'SuitHud:x37|y37|z37|w37': '#bff3ff', 'SuitHud:x38|y38|z38|w38': '#39c8e8',
+  'SuitHud:x32|y32|z32|w32': '#6fd6ff', 'SuitHud:x33|y33|z33|w33': '#6fd6ff', 'SuitHud:x34|y34|z34|w34': '#6fd6ff',
+  'SuitHud:x126|y126|z126': '#4db8ff', 'SuitHud:x127|y127|z127': '#ffd23c',
+};
+
+const ID = {
+  text: 'Advanced:x77|y77|z77|w77',
+  shieldMode: 'Startup-Profile:z105', inner: 'Advanced:x201|y201|z201|w201', middle: 'Advanced:x202|y202|z202|w202', outer: 'Advanced:x203|y203|z203|w203', single: 'Advanced:x228|y228|z228',
+  galFog: 'Startup-Profile:w190',
+  distMode: 'Startup-Profile:y136', dTop: 'Advanced:x223|y223|z223', dMid: 'Advanced:x224|y224|z224', dBot: 'Advanced:x225|y225|z225', dG1: 'Advanced:x47|y47|z47', dG2: 'Advanced:x46|y46|z46',
+};
+const XML_KEYS = [['x150', 'y150', 'z150'], ['x151', 'y151', 'z151'], ['x152', 'y152', 'z152']];
+
+// Quick Theme: which of your colours each colour setting follows.
+const ROLES = [
+  { id: 'primary', name: 'Main HUD', desc: 'Panels, radar, bars and lines' },
+  { id: 'accent', name: 'Accent', desc: 'Icons, pips, highlights and target markers' },
+  { id: 'text', name: 'Text', desc: 'Most of the HUD text' },
+  { id: 'shields', name: 'Shields', desc: 'Shield rings (ship and suit)' },
+  { id: 'holo', name: 'Holograms', desc: 'Ship, target, SRV and terrain holograms' },
+  { id: 'hostile', name: 'Hostile & warnings', desc: 'Enemies, missile lock, speeding, shields down' },
+  { id: 'friendly', name: 'Friendly & wing', desc: 'Friends, wingmates and crew' },
+  { id: 'lights', name: 'Cabin lights', desc: 'Cockpit ambient lighting (only if ticked below)' },
+];
+const ROLE_SAMPLE = { primary: 'Advanced:x236|y236|z236', accent: 'Advanced:x214|y214|z214', text: ID.text, shields: ID.middle, holo: 'Advanced:x248|y248|z248',
+  hostile: 'Advanced:x247|y247|z247|w247', friendly: 'Advanced:x246|y246|z246|w246', lights: 'Advanced:x69|y69|z69' };
+const ROLE_BASE = { primary: 'primary', dim: 'primary', dark: 'primary', accent: 'accent', text: 'text', shields: 'shields', shieldsLight: 'shields',
+  shieldsDark: 'shields', holo: 'holo', hostile: 'hostile', friendly: 'friendly', lights: 'lights', lights2: 'lights' };
+const ROLE_MAP = {
+  // upper panels
+  'Advanced:x232|y232|z232|w232': 'primary', 'Advanced:x233|y233|z233|w233': 'accent', 'Advanced:x208|y208|z208|w208': 'primary',
+  'Advanced:x235|y235|z235': 'accent', 'Advanced:x183|y183|z183': 'primary', 'Advanced:x128|y128|z128|w128': 'friendly',
+  // reticle & targets
+  'Advanced:x61|y61|z61|w61': 'accent', 'Advanced:x129|y129|z129': 'accent', 'Advanced:x63|y63|z63|w63': 'primary',
+  'Advanced:x56|y56|z56|w56': 'primary', 'Advanced:x57|y57|z57|w57': 'primary', 'Advanced:x58|y58|z58|w58': 'accent',
+  'Advanced:x59|y59|z59': 'accent', 'Advanced:x60|y60|z60': 'accent', 'Advanced:x62|y62|z62|w62': 'hostile',
+  'Advanced:x64|y64|z64|w64': 'primary', 'Advanced:x65|y65|z65|w65': 'accent', 'Advanced:x66|y66|z66|w66': 'primary', 'Advanced:x67|y67|z67|w67': 'accent',
+  // text
+  'Advanced:x77|y77|z77|w77': 'text', 'Advanced:x82|y82|z82|w82': 'accent', 'Advanced:x193|y193|z193': 'accent',
+  // ship panels
+  'Advanced:x204|y204|z204|w204': 'primary', 'Advanced:x51|y51|z51': 'accent', 'Advanced:x79|y79|z79': 'dim', 'Advanced:x52|y52|z52': 'primary',
+  'Advanced:x53|y53|z53': 'accent', 'Advanced:x178|y178|z178': 'accent', 'Advanced:x98|y98|z98|w98': 'accent', 'Advanced:x76|y76|z76': 'primary',
+  'Advanced:x90|y90|z90': 'dark', 'Advanced:x92|y92|z92|w92': 'primary', 'Advanced:x91|y91|z91': 'accent', 'Advanced:x146|y146|z146': 'primary',
+  // cabin lighting
+  'Advanced:x69|y69|z69': 'lights', 'Advanced:x70|y70|z70': 'lights2',
+  // space effects that belong to the HUD look
+  'Advanced:x39|y39|z39': 'primary', 'Advanced:x40|y40|z40': 'accent', 'Advanced:x44|y44|z44': 'hostile', 'Advanced:x29|y29|z29': 'accent',
+  'Advanced:x125|y125|z125|w125': 'accent', 'Advanced:x160|y160|z160': 'accent',
+  // combat & analysis
+  'Advanced:x55|y55|z55': 'primary', 'Advanced:x48|y48|z48': 'accent', 'Advanced:x45|y45|z45': 'text', 'Advanced:x189|y189|z189': 'hostile',
+  'Advanced:x54|y54|z54|w54': 'accent', 'Advanced:x144|y144|z144|w144': 'text',
+  // shields & holograms
+  'Advanced:x159|y159|z159': 'hostile', 'Advanced:x88|y88|z88': 'text', 'Advanced:x201|y201|z201|w201': 'shieldsLight',
+  'Advanced:x202|y202|z202|w202': 'shields', 'Advanced:x203|y203|z203|w203': 'shieldsDark', 'Advanced:x228|y228|z228': 'shields',
+  'Advanced:x226|y226|z226': 'holo', 'Advanced:x215|y215|z215': 'accent', 'Advanced:x205|y205|z205|w205': 'holo', 'Advanced:x212|y212|z212': 'primary',
+  'Advanced:x248|y248|z248': 'holo', 'Advanced:x72|y72|z72': 'holo', 'Advanced:x253|y253|z253|w253': 'holo', 'Advanced:x252|y252|z252|w252': 'holo',
+  'Advanced:x50|y50|z50|w50': 'holo', 'Advanced:x209|y209|z209|w209': 'primary', 'Advanced:x71|y71|z71|w71': 'accent', 'Advanced:x96|y96|z96|w96': 'accent',
+  'Advanced:x95|y95|z95|w95': 'text', 'Advanced:x185|y185|z185|w185': 'text', 'Advanced:x250|y250|z250|w250': 'holo', 'Advanced:x251|y251|z251|w251': 'holo',
+  // radar
+  'Advanced:x236|y236|z236': 'primary', 'Advanced:x237|y237|z237': 'dim', 'Advanced:x239|y239|z239|w239': 'accent', 'Advanced:x240|y240|z240': 'primary',
+  'Advanced:x231|y231|z231': 'dim', 'Advanced:x241|y241|z241|w241': 'primary', 'Advanced:x242|y242|z242|w242': 'accent', 'Advanced:x243|y243|z243|w243': 'text',
+  'Advanced:x244|y244|z244|w244': 'primary', 'Advanced:x245|y245|z245|w245': 'primary', 'Advanced:x246|y246|z246|w246': 'friendly',
+  'Advanced:x247|y247|z247|w247': 'hostile', 'Advanced:x238|y238|z238|w238': 'friendly', 'Advanced:x196|y196|z196|w196': 'hostile',
+  'Advanced:x221|y221|z221': 'primary', 'Advanced:x219|y219|z219': 'primary', 'Advanced:x220|y220|z220': 'accent', 'Advanced:x184|y184|z184': 'accent',
+  'Advanced:x172|y172|z172': 'hostile', 'Advanced:x149|y149|z149|w149': 'accent', 'Advanced:x182|y182|z182|w182': 'accent',
+  // power distributor
+  'Advanced:x223|y223|z223': 'primary', 'Advanced:x224|y224|z224': 'accent', 'Advanced:x225|y225|z225': 'dim', 'Advanced:x47|y47|z47': 'accent',
+  'Advanced:x46|y46|z46': 'primary', 'Advanced:x214|y214|z214': 'accent', 'Advanced:x122|y122|z122|w122': 'dim', 'Advanced:x230|y230|z230': 'primary',
+  'Advanced:x227|y227|z227': 'dim',
+  // signature, fuel, status lights
+  'Advanced:x206|y206|z206': 'primary', 'Advanced:x216|y216|z216': 'primary', 'Advanced:x94|y94|z94': 'accent', 'Advanced:x145|y145|z145|w145': 'accent',
+  'Advanced:x217|y217|z217|w217': 'dim', 'Advanced:x218|y218|z218|w218': 'accent',
+  // on foot
+  'SuitHud:x31|y31|z31': 'primary', 'SuitHud:x32|y32|z32|w32': 'shieldsLight', 'SuitHud:x33|y33|z33|w33': 'shields', 'SuitHud:x34|y34|z34|w34': 'shieldsDark',
+  'SuitHud:x35|y35|z35|w35': 'hostile', 'SuitHud:x36|y36|z36|w36': 'accent', 'SuitHud:x37|y37|z37|w37': 'text', 'SuitHud:x38|y38|z38|w38': 'accent',
+};
+const PALETTES = [
+  { name: 'Elite Orange', c: { primary: '#ff7100', accent: '#ffb347', text: '#ff9a3c', shields: '#4fb2ff', holo: '#ff7100', hostile: '#ff2d1f', friendly: '#34d058', lights: '#ff7100' } },
+  { name: 'Ice Blue', c: { primary: '#3fa9ff', accent: '#9be7ff', text: '#cfefff', shields: '#7cf2ff', holo: '#3fa9ff', hostile: '#ff3b30', friendly: '#3ddc84', lights: '#5aa9e6' } },
+  { name: 'Emerald', c: { primary: '#19d27a', accent: '#b6ff6b', text: '#d8ffe9', shields: '#36e0d0', holo: '#19d27a', hostile: '#ff4040', friendly: '#3fa9ff', lights: '#1fbf6a' } },
+  { name: 'Synthwave', c: { primary: '#ff2fb9', accent: '#29e6ff', text: '#ffd4f6', shields: '#29e6ff', holo: '#b44cff', hostile: '#ff3355', friendly: '#6dff8f', lights: '#b44cff' } },
+  { name: 'Crimson', c: { primary: '#e0203a', accent: '#ff8a65', text: '#ffd6d6', shields: '#ffb020', holo: '#e0203a', hostile: '#ffe000', friendly: '#33d17a', lights: '#c01830' } },
+  { name: 'Royal Gold', c: { primary: '#ffc234', accent: '#fff1a8', text: '#fff6d6', shields: '#7fd4ff', holo: '#ffc234', hostile: '#ff3b30', friendly: '#3ddc84', lights: '#e6a100' } },
+  { name: 'Violet Haze', c: { primary: '#9b6bff', accent: '#e0a3ff', text: '#efe3ff', shields: '#6de3ff', holo: '#9b6bff', hostile: '#ff3b6b', friendly: '#4bff9b', lights: '#7a4fe0' } },
+  { name: 'Monochrome', c: { primary: '#e8edf2', accent: '#ffffff', text: '#ffffff', shields: '#9fb8cc', holo: '#cfd8e0', hostile: '#ff4d4d', friendly: '#4dff88', lights: '#bfc8d0' } },
+  { name: 'Toxic', c: { primary: '#9dff00', accent: '#eaff6b', text: '#efffd0', shields: '#00ffd5', holo: '#9dff00', hostile: '#ff2e63', friendly: '#00b3ff', lights: '#7acc00' } },
+  { name: 'Arctic Teal', c: { primary: '#00d4c8', accent: '#7afff4', text: '#d6fffb', shields: '#7ab8ff', holo: '#00d4c8', hostile: '#ff4f4f', friendly: '#b6ff6b', lights: '#00a89f' } },
+];
+function roleColor(role, R) {
+  switch (role) {
+    case 'dim': return mix(R.primary, '#000000', 0.45);
+    case 'dark': return mix(R.primary, '#000000', 0.86);
+    case 'shieldsLight': return mix(R.shields, '#ffffff', 0.35);
+    case 'shieldsDark': return mix(R.shields, '#000000', 0.3);
+    case 'lights2': return mix(R.lights, '#000000', 0.35);
+    default: return R[role];
+  }
+}
+function harmonyFrom(primary) {
+  const [hh, s, l] = rgbToHsl(hexToRgb(primary));
+  const nearRed = hh < 25 || hh > 335, nearGreen = hh > 85 && hh < 165;
+  return {
+    primary,
+    accent: hslToHex(hh + 28, Math.min(1, s * 1.05), Math.min(0.8, l + 0.16)),
+    text: hslToHex(hh, Math.min(s, 0.55), 0.86),
+    shields: hslToHex(hh + 180, 0.85, 0.66),
+    holo: primary,
+    hostile: nearRed ? '#ffd400' : '#ff2d2d',
+    friendly: nearGreen ? '#33c8ff' : '#33dd66',
+    lights: hslToHex(hh, Math.min(s, 0.8), Math.max(0.3, l - 0.1)),
+  };
+}
+// XML matrix that turns Elite orange into the given colour (hue rotation, then an exact fix for orange).
+function xmlForColor(hex) {
+  const o = hex01(ORANGE), t = hex01(hex);
+  const hue = c => Math.atan2(Math.sqrt(3) * (c[1] - c[2]), 2 * c[0] - c[1] - c[2]);
+  const d = hue(t) - hue(o), c = Math.cos(d), s = Math.sin(d);
+  const M = [
+    [0.213 + c * 0.787 - s * 0.213, 0.715 - c * 0.715 - s * 0.715, 0.072 - c * 0.072 + s * 0.928],
+    [0.213 - c * 0.213 + s * 0.143, 0.715 + c * 0.285 + s * 0.140, 0.072 - c * 0.072 - s * 0.283],
+    [0.213 - c * 0.213 - s * 0.787, 0.715 - c * 0.715 + s * 0.715, 0.072 + c * 0.928 + s * 0.072],
+  ];
+  let X = [0, 1, 2].map(i => [0, 1, 2].map(j => M[j][i]));
+  const oX = [0, 1, 2].map(j => o[0] * X[0][j] + o[1] * X[1][j] + o[2] * X[2][j]);
+  const n2 = o[0] * o[0] + o[1] * o[1] + o[2] * o[2];
+  X = X.map((row, i) => row.map((v, j) => v + (o[i] / n2) * (t[j] - oX[j])));
+  return X.map(row => row.map(v => Math.round(v * 100) / 100));
+}
+
+// ============================================================ state
+const S = {
+  status: null, presets: {}, groups: [], els: [], byId: new Map(), modeFor: new Map(), prefKeys: new Set(),
+  baseline: {}, working: {}, texts: {}, others: [], latest: null, latestError: null,
+  tab: 'quick', group: null, search: '', onlyChanged: false, compare: false, roles: {}, saving: false,
+  themes: null, themeFilter: '', helperOk: true, editGen: 0,
+};
+const history = { undo: [], redo: [] };
+let pending = null, commitTimer = 0, autosaveTimer = 0, renderQueued = false;
+
+const vals = () => (S.compare ? S.baseline : S.working);
+function val(file, key) { const m = vals()[file]; const v = m && m.get(key); const n = parseFloat(v); return Number.isFinite(n) ? n : NaN; }
+function valW(file, key) { const m = S.working[file]; const n = parseFloat(m && m.get(key)); return Number.isFinite(n) ? n : NaN; }
+
+function setValue(file, key, num) {
+  const m = S.working[file];
+  if (!m || !m.has(key)) return false;
+  const str = fmt(num), cur = m.get(key);
+  if (parseFloat(cur) === parseFloat(str)) return false;
+  if (!pending) pending = new Map();
+  const id = file + '|' + key;
+  if (!pending.has(id)) pending.set(id, { file, key, before: cur });
+  m.set(key, str);
+  S.editGen++;
+  queueRender();
+  return true;
+}
+function commit(label) {
+  clearTimeout(commitTimer);
+  if (!pending) return false;
+  const entries = [];
+  for (const e of pending.values()) { const after = S.working[e.file].get(e.key); if (after !== e.before) entries.push({ ...e, after }); }
+  pending = null;
+  if (!entries.length) return false;
+  history.undo.push({ label: label || 'Edit', entries });
+  if (history.undo.length > 300) history.undo.shift();
+  history.redo.length = 0;
+  updateTopbar();
+  scheduleAutosave();
+  return true;
+}
+function scheduleCommit(label) { clearTimeout(commitTimer); commitTimer = setTimeout(() => commit(label), 700); }
+function undo() {
+  commit();
+  const step = history.undo.pop();
+  if (!step) return;
+  for (const e of step.entries) S.working[e.file].set(e.key, e.before);
+  history.redo.push(step);
+  afterBulkChange();
+  toast('Undone: ' + step.label);
+  scheduleAutosave();
+}
+function redo() {
+  const step = history.redo.pop();
+  if (!step) return;
+  for (const e of step.entries) S.working[e.file].set(e.key, e.after);
+  history.undo.push(step);
+  afterBulkChange();
+  toast('Redone: ' + step.label);
+  scheduleAutosave();
+}
+
+function isKeyDirty(f, k) {
+  const a = S.working[f] && S.working[f].get(k), b = S.baseline[f] && S.baseline[f].get(k);
+  return a != null && b != null && Math.abs(parseFloat(a) - parseFloat(b)) > 0.00006;
+}
+const isElDirty = e => e.keys.some(k => isKeyDirty(e.file, k));
+function collectChanges() {
+  const out = {};
+  for (const f of FILES) { const m = S.working[f]; if (!m) continue; for (const [k, v] of m) if (isKeyDirty(f, k)) (out[f] || (out[f] = {}))[k] = v; }
+  return out;
+}
+function dirtyCount() { let n = 0; for (const f of FILES) { const m = S.working[f]; if (m) for (const k of m.keys()) if (isKeyDirty(f, k)) n++; } return n; }
+
+function readColor(el) {
+  const m = vals()[el.file], k = el.keys, num = x => { const n = parseFloat(m && m.get(x)); return Number.isFinite(n) ? n : 0; };
+  const a = k[3] ? clamp01(num(k[3])) : null;
+  return { hex: linToHex(num(k[0]), num(k[1]), num(k[2])), a };
+}
+function writeColor(el, hex, a) {
+  const [r, g, b] = hex01(hex).map(srgbToLin);
+  setValue(el.file, el.keys[0], r); setValue(el.file, el.keys[1], g); setValue(el.file, el.keys[2], b);
+  if (el.keys[3] && a != null) setValue(el.file, el.keys[3], a);
+}
+function xmlMatrix() { return XML_KEYS.map((row, i) => row.map((k, j) => { const v = val('XML-Profile', k); return Number.isFinite(v) ? v : (i === j ? 1 : 0); })); }
+function applyXml(hex) {
+  const X = xmlMatrix(), v = hex01(hex);
+  const out = [0, 1, 2].map(j => clamp01(v[0] * X[0][j] + v[1] * X[1][j] + v[2] * X[2][j]));
+  return from01(out[0], out[1], out[2]);
+}
+function writeXml(X) { XML_KEYS.forEach((row, i) => row.forEach((k, j) => setValue('XML-Profile', k, X[i][j]))); }
+
+// Colour a part really shows, taking its mode (custom / XML / Elite default) into account.
+function elColor(id) {
+  const el = S.byId.get(id), def = DEFAULT_COLORS[id] || ORANGE;
+  if (!el || !el.available) return { hex: def, a: 1 };
+  const own = readColor(el), m = S.modeFor.get(id);
+  if (!m || !m.available) return { hex: own.hex, a: own.a == null ? 1 : own.a };
+  const st = modeState(m, val(m.file, m.keys[0]));
+  if (st === 'custom') return { hex: own.hex, a: own.a == null ? 1 : own.a };
+  if (st === 'xml') return { hex: applyXml(def), a: 1 };
+  if (st === 'text') return elColor(ID.text);
+  if (st === 'grey') return { hex: '#3a3f47', a: 1 };
+  if (st === 'off') return { hex: def, a: 0 };
+  return { hex: def, a: 1 };
+}
+function modeVal(id, fallback) { const m = S.byId.get(id); return m && m.available ? val(m.file, m.keys[0]) : fallback; }
+function shieldColor(which) {
+  const v = modeVal(ID.shieldMode, 200);
+  const rc = id => { const el = S.byId.get(id); if (!el || !el.available) return { hex: DEFAULT_SHIELD, a: 1 }; const c = readColor(el); return { hex: c.hex, a: c.a == null ? 1 : c.a }; };
+  if (v === 100) return rc(ID[which]);
+  if (v === 101) return { hex: rc(ID.single).hex, a: 1 };
+  if (v === 199) return { hex: applyXml(DEFAULT_SHIELD), a: 1 };
+  return { hex: DEFAULT_SHIELD, a: 1 };
+}
+function distColor(i, n) {
+  const v = modeVal(ID.distMode, 200), t = n > 1 ? i / (n - 1) : 0;
+  const rc = id => { const el = S.byId.get(id); return el && el.available ? readColor(el).hex : ORANGE; };
+  if (v === 100) return { hex: rc(ID.dTop), a: 1 };
+  if (v === 101) return { hex: mix(rc(ID.dG2), rc(ID.dG1), t), a: 1 };
+  if (v === 102) return { hex: rc(t < 0.34 ? ID.dBot : t < 0.67 ? ID.dMid : ID.dTop), a: 1 };
+  if (v === 103) { const b = rc(ID.dBot), m = rc(ID.dMid), tp = rc(ID.dTop); return { hex: t < 0.5 ? mix(b, m, t * 2) : mix(m, tp, (t - 0.5) * 2), a: 1 }; }
+  if (v === 199) return { hex: applyXml(ORANGE), a: 1 };
+  return { hex: ORANGE, a: 1 };
+}
+function sourceColor(src) {
+  if (src === 'text') return elColor(ID.text);
+  if (src.startsWith('xml:')) return { hex: applyXml(src.slice(4)), a: 1 };   // stock Elite colour run through the XML matrix
+  if (src.startsWith('xmlw:')) return { hex: applyXml(src.slice(5)), a: 1 };  // Elite's greys/whites through the XML matrix ("White becomes…")
+  if (src === 'galfog') { const v = modeVal(ID.galFog, 200); return { hex: '#04060b', a: v === 2 ? 0.6 : v === 1 ? 0.35 : 0 }; }   // GalMap Fog: less haze = darker map
+  if (src.startsWith('fixed:')) return { hex: src.slice(6), a: 1 };          // Elite's own colour, not changeable
+  if (src.startsWith('unknown:')) return { hex: src.slice(8), a: 1 };        // seen in game, setting not identified yet
+  if (src.startsWith('trim:')) return { hex: src.slice(5), a: 1 };           // canopy trim: Elite's own bright reflections
+  if (src.startsWith('selbar:')) return { hex: selectionBarColor(), a: 1 };  // lit-up selection bar (Elite draws it brighter)
+  // "Ship Panel Shadows": Elite draws it as a dark shadow, about a quarter of the color's brightness
+  if (src.startsWith('shadow:')) { const c = sourceColor(src.slice(7)); return { hex: mix(c.hex, '#000000', 0.72), a: Math.min(1, c.a * 2) }; }
+  if (src.startsWith('shield:')) return shieldColor(src.slice(7));
+  if (src.startsWith('dist:')) { const [, i, n] = src.split(':'); return distColor(+i, +n); }
+  return elColor(src);
+}
+function hoverIdFor(src) {
+  if (!src) return null;
+  if (src === 'text') return ID.text;
+  if (src.startsWith('xml:')) return 'XML';
+  if (src.startsWith('xmlw:')) return 'XMLW';
+  if (src === 'galfog') return ID.galFog;
+  if (src.startsWith('fixed:')) return 'FIXED';
+  if (src.startsWith('unknown:')) return 'UNKNOWN';
+  if (src.startsWith('trim:')) return 'TRIM';
+  if (src.startsWith('selbar:')) return 'XML';
+  if (src.startsWith('shadow:')) return src.slice(7);
+  if (src.startsWith('shield:')) return ID[src.slice(7)];
+  if (src.startsWith('dist:')) return ID.dTop;
+  return src;
+}
+
+// ============================================================ API
+async function api(method, path, body) {
+  const opt = { method, headers: { 'X-Studio-Token': TOKEN } };
+  if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  let res;
+  try { res = await fetch(path, opt); } catch (e) { setHelper(false, 'down'); throw new Error("Can't reach Elite Studio."); }
+  let data = null;
+  try { data = await res.json(); } catch (e) {}
+  if (res.status === 401) { setHelper(false, 'restarted'); throw new Error('Elite Studio was restarted. Please reload this page.'); }
+  setHelper(true);
+  if (!res.ok || !data || data.ok === false) throw new Error((data && data.error) || ('Request failed (' + res.status + ')'));
+  return data;
+}
+function setHelper(ok, why) {
+  if (ok === S.helperOk && ok) return;
+  S.helperOk = ok;
+  const b = $('#banner');
+  if (ok) { b.hidden = true; return; }
+  if (window.parent !== window) return;   // inside Elite Studio's shell page, which shows this bar and its Reload button for the whole window
+  b.innerHTML = '';
+  b.append(why === 'restarted'
+    ? h('span', null, 'Elite Studio was restarted. Reload this page to reconnect.')
+    : h('span', null, "Can't reach Elite Studio. Start Elite Studio, then reload this page."),
+  h('button', { class: 'btn small', onclick: () => location.reload() }, 'Reload'));
+  b.hidden = false;
+}
+
+// ============================================================ loading
+function parseIni(text) {
+  const out = new Map();
+  if (!text) return out;
+  const m = /^[ \t]*\[Constants\][^\n]*/im.exec(text);
+  if (!m) return out;
+  let body = text.slice(m.index + m[0].length);
+  const next = /^[ \t]*\[/m.exec(body);
+  if (next) body = body.slice(0, next.index);
+  const re = /^[ \t]*([xyzw]\d+)[ \t]*=[ \t]*(-?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)/gm;
+  let r;
+  while ((r = re.exec(body))) if (!out.has(r[1])) out.set(r[1], r[2]);
+  return out;
+}
+// Label for settings that aren't in the catalogue (e.g. added by a future HUD mod version): the comments above the line.
+function iniLabels(text) {
+  const out = new Map();
+  if (!text) return out;
+  const lines = text.split(/\r?\n/);
+  lines.forEach((line, i) => {
+    const m = /^[ \t]*([xyzw]\d+)[ \t]*=/.exec(line);
+    if (!m || out.has(m[1])) return;
+    let title = '';
+    for (let j = i - 1; j >= 0 && j >= i - 14; j--) {
+      const c = lines[j].trim();
+      if (!c.startsWith(';')) break;
+      const t = c.replace(/^;+/, '').trim();
+      if (!t || /^[-=*_\s]+$/.test(t) || /^set [xyzw]\d+ value/i.test(t) || /^\d+\s*=/.test(t)) continue;
+      const star = /\*\*\s*(.+?)\s*\*\*/.exec(t);
+      if (star) { title = star[1]; break; }
+      if (!title) title = t;
+    }
+    out.set(m[1], title || m[1]);
+  });
+  return out;
+}
+function setupCatalog(cat) {
+  S.presets = cat.presets || {};
+  S.groups = cat.groups.map(g => ({ id: g.id, title: g.title, els: g.els.map(e => ({ ...e, keys: [].concat(e.keys), group: g.id })) }));
+  for (const g of S.groups) for (const e of g.els) {
+    S.els.push(e); S.byId.set(e.id, e);
+    if (g.id === 'Prefs') for (const k of e.keys) S.prefKeys.add(e.file + ':' + k);
+  }
+  for (const g of S.groups) {
+    let last = null, cat2 = null;
+    for (const e of g.els) {
+      if (e.cat !== cat2) { cat2 = e.cat; last = null; }
+      if (e.kind === 'mode' && GOVERNING.has(e.type)) last = e;
+      else if (e.kind === 'color' && last) S.modeFor.set(e.id, last);
+    }
+  }
+  for (const [c, m] of Object.entries(MODE_OVERRIDES)) if (S.byId.has(c) && S.byId.has(m)) S.modeFor.set(c, S.byId.get(m));
+  S.group = S.groups[0].id;
+  S.keyEl = new Map();   // "File:key" -> the setting it belongs to
+  for (const e of S.els) for (const k of e.keys) S.keyEl.set(e.file + ':' + k, e);
+}
+async function loadFromGame(keepEdits) {
+  const r = await api('GET', API + '/ini');
+  applyIni(r.files || {}, keepEdits);
+}
+function applyIni(files, keepEdits) {
+  S.texts = files;
+  for (const f of FILES) S.baseline[f] = parseIni(S.texts[f]);
+  if (!keepEdits) {
+    for (const f of FILES) S.working[f] = new Map(S.baseline[f]);
+    history.undo.length = 0; history.redo.length = 0; pending = null;
+  } else {
+    for (const f of FILES) {
+      const w = S.working[f] || (S.working[f] = new Map()), b = S.baseline[f];
+      for (const [k, v] of b) if (!w.has(k)) w.set(k, v);
+      for (const k of [...w.keys()]) if (!b.has(k)) w.delete(k);
+    }
+  }
+  for (const e of S.els) e.available = e.keys.every(k => S.baseline[e.file] && S.baseline[e.file].has(k));
+  const known = new Set();
+  for (const e of S.els) for (const k of e.keys) known.add(e.file + ':' + k);
+  S.others = [];
+  for (const f of FILES) {
+    if (f === 'XML-Profile') continue;
+    const labels = iniLabels(S.texts[f]);
+    for (const k of S.baseline[f].keys()) if (!known.has(f + ':' + k)) S.others.push({ file: f, key: k, label: labels.get(k) || k });
+  }
+}
+
+// ============================================================ preview
+const paintNodes = [], nodesById = new Map();
+function sv(tag, attrs, parent) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) if (attrs[k] !== undefined) n.setAttribute(k, attrs[k]);
+  parent.appendChild(n);
+  return n;
+}
+function paint(n, o) {
+  paintNodes.push({ n, s: o.s, f: o.f, sa: o.sa, fa: o.fa, b: o.b });
+  const id = o.id || hoverIdFor(o.s || o.f);
+  if (id) { n.dataset.id = id; if (!nodesById.has(id)) nodesById.set(id, []); nodesById.get(id).push(n); }
+  return n;
+}
+const L = (parent, tag, attrs, o) => paint(sv(tag, attrs, parent), o || {});
+function T(parent, x, y, str, size, src, extra, o) {
+  const n = sv('text', Object.assign({ x, y, 'font-size': size }, extra || {}), parent);
+  n.textContent = str;
+  return paint(n, Object.assign({ f: src || 'text' }, o || {}));
+}
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+const PANEL_BG = 'Advanced:x90|y90|z90';   // "Ship Panel Shadows": the fill behind text in every panel
+function buildHud() {
+  const svg = $('#hud');
+  svg.innerHTML = `<defs>
+    <radialGradient id="space" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="#0d1a2e"/><stop offset=".55" stop-color="#070c16"/><stop offset="1" stop-color="#020306"/></radialGradient>
+    <radialGradient id="planet" cx="32%" cy="30%" r="80%"><stop offset="0" stop-color="#34496a"/><stop offset=".65" stop-color="#111c2c"/><stop offset="1" stop-color="#070b12"/></radialGradient>
+    <linearGradient id="dash" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0c1017"/><stop offset="1" stop-color="#030405"/></linearGradient>
+    <filter id="glow" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="soft" x="-30%" y="-80%" width="160%" height="260%"><feGaussianBlur stdDeviation="7"/></filter>
+  </defs>`;
+  // Cockpit page, laid out from a real Kestrel Mk II screenshot (1920x1080 scaled to 1600x900).
+  // Elite's cockpit HUD has no boxed panels: just lines, holograms, bars and text over the canopy.
+  svg.querySelector('defs').insertAdjacentHTML('beforeend', `
+    <linearGradient id="strut" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4a3a2c"/><stop offset="1" stop-color="#1c140e"/></linearGradient>
+    <linearGradient id="dashwarm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b3620"/><stop offset="1" stop-color="#1d1109"/></linearGradient>`);
+  sv('rect', { width: 1600, height: 900, fill: 'url(#space)' }, svg);
+  const rnd = mulberry32(7);
+  for (let i = 0; i < 140; i++) sv('circle', { cx: (rnd() * 1600).toFixed(1), cy: (rnd() * 640).toFixed(1), r: (rnd() * 1.1 + 0.3).toFixed(2), fill: '#ffffff', 'fill-opacity': (0.2 + rnd() * 0.6).toFixed(2) }, svg);
+  // canopy struts and the warm-coloured dashboard (Elite's own, not changeable)
+  sv('path', { d: 'M0 0 H150 L640 600 L590 640 L0 90 Z', fill: 'url(#strut)' }, svg);
+  sv('path', { d: 'M1600 0 H1450 L960 600 L1010 640 L1600 90 Z', fill: 'url(#strut)' }, svg);
+  sv('path', { d: 'M0 900 V710 L420 662 L660 640 H940 L1180 662 L1600 710 V900 Z', fill: 'url(#dashwarm)' }, svg);
+  sv('path', { d: 'M0 710 L420 662 L660 640 H940 L1180 662 L1600 710', fill: 'none', stroke: '#9a6a44', 'stroke-opacity': 0.6, 'stroke-width': 2 }, svg);
+  sv('ellipse', { cx: 800, cy: 760, rx: 250, ry: 110, fill: '#6a4028', 'fill-opacity': 0.45 }, svg);
+  // Cabin lighting tints the cockpit surfaces (tested in game: it does NOT change the white canopy trim).
+  const LIGHT1 = 'Advanced:x69|y69|z69', LIGHT2 = 'Advanced:x70|y70|z70', GLOW = 'Advanced:x190|y190|z190';
+  L(svg, 'path', { d: 'M0 900 V710 L420 662 L660 640 H800 V900 Z' }, { f: LIGHT1, fa: 0.28, b: 'Advanced:w69' });
+  L(svg, 'path', { d: 'M1600 900 V710 L1180 662 L940 640 H800 V900 Z' }, { f: LIGHT2, fa: 0.28, b: 'Advanced:w69' });
+  L(svg, 'ellipse', { cx: 800, cy: 760, rx: 250, ry: 110 }, { f: GLOW, fa: 0.18, b: 'Advanced:w69' });
+  // One bright canopy light bar along the top edge of the dashboard, just under the view of space:
+  // Elite's own trim, it glares when a star shines down on the cockpit. No colour setting dims it;
+  // the LightNight add-on (F5 in game) switches the reflections off. Kept above the HUD panels.
+  const bar = 'M0 698 L420 650 L660 628 H940 L1180 650 L1600 698 V708 L1180 660 L940 638 H660 L420 660 L0 708 Z';
+  L(sv('g', { filter: 'url(#soft)' }, svg), 'path', { d: bar }, { f: 'trim:#f4f1ea', fa: 0.7 });
+  L(svg, 'path', { d: bar }, { f: 'trim:#f4f1ea', fa: 0.85 });
+  const g = sv('g', { filter: 'url(#glow)' }, svg);
+  const rot = (deg, x, y) => sv('g', { transform: `rotate(${deg} ${x} ${y})` }, g);
+
+  // --- comms panel (top left): two slanted lines with a row of icons
+  const CHAT = 'Advanced:x232|y232|z232|w232', CHATI = 'Advanced:x233|y233|z233|w233';
+  L(g, 'line', { x1: 83, y1: 36, x2: 508, y2: 112, 'stroke-width': 1.8 }, { s: CHAT });
+  L(g, 'line', { x1: 79, y1: 62, x2: 508, y2: 137, 'stroke-width': 1.8 }, { s: CHAT });
+  [0.08, 0.3, 0.45, 0.62, 0.8, 0.95].forEach((t, i) => {
+    const x = 96 + t * 390, y = 58 + t * 70;
+    if (i === 0) L(g, 'path', { d: `M${x - 9} ${y - 8} h18 v11 h-10 l-5 5 v-5 h-3 Z`, 'stroke-width': 1.5, fill: 'none' }, { s: CHATI });
+    else if (i % 2) L(g, 'circle', { cx: x, cy: y, r: 6, 'stroke-width': 1.5, fill: 'none' }, { s: CHATI });
+    else L(g, 'rect', { x: x - 6, y: y - 6, width: 12, height: 12, rx: 2, 'stroke-width': 1.5, fill: 'none' }, { s: CHATI });
+  });
+
+  // --- info panel (top right): two slanted lines, INFO, messages and the clock
+  const INFO = 'Advanced:x208|y208|z208|w208';
+  L(g, 'line', { x1: 1058, y1: 112, x2: 1512, y2: 38, 'stroke-width': 2.2 }, { s: INFO });
+  L(g, 'line', { x1: 1058, y1: 127, x2: 1512, y2: 53, 'stroke-width': 2.2 }, { s: INFO, sa: 0.8 });
+  const ti = rot(-9.3, 1060, 120);
+  T(ti, 1062, 122, 'INFO', 17, 'text', { 'letter-spacing': 1 });
+  T(ti, 1060, 146, '>1 contact lost', 14, 'text', null, { fa: 0.85 });
+  T(rot(-9.3, 1500, 46), 1500, 46, '20:29:55', 20, 'text', { 'text-anchor': 'end', 'letter-spacing': 2 });
+
+  // --- weapon / fire-group arc (right): setting not identified yet
+  L(g, 'path', { d: 'M1236 308 Q1275 470 1244 632', 'stroke-width': 1.6, fill: 'none' }, { s: 'unknown:#8a86ff' });
+  L(g, 'line', { x1: 1233, y1: 616, x2: 1372, y2: 616, 'stroke-width': 1.6 }, { s: 'unknown:#e0409a' });
+  T(g, 1258, 610, 'POINT DEFENCE T...', 15, 'text', { 'letter-spacing': 0.5 });
+  L(g, 'rect', { x: 1258, y: 619, width: 108, height: 5 }, { f: 'Advanced:x45|y45|z45', b: 'Advanced:w45' });
+  T(g, 1260, 641, '12/10000', 14, 'text');
+
+  // --- reticle and markers in space
+  const RC = 'Advanced:x58|y58|z58|w58', TB = 'Advanced:x56|y56|z56|w56', TBS = 'Advanced:x57|y57|z57|w57';
+  L(g, 'circle', { cx: 800, cy: 360, r: 70, 'stroke-width': 2, fill: 'none' }, { s: RC });
+  for (const ang of [-90, 30, 150]) {
+    const a = ang * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a);
+    L(g, 'line', { x1: 800 + cs * 82, y1: 360 + sn * 82, x2: 800 + cs * 110, y2: 360 + sn * 110, 'stroke-width': 5, 'stroke-linecap': 'round' }, { s: TB });
+    L(g, 'line', { x1: 800 + cs * 44, y1: 360 + sn * 44, x2: 800 + cs * 58, y2: 360 + sn * 58, 'stroke-width': 3, 'stroke-linecap': 'round' }, { s: TBS });
+  }
+  L(g, 'circle', { cx: 862, cy: 306, r: 10, 'stroke-width': 2, fill: 'none' }, { s: 'Advanced:x59|y59|z59', b: 'Advanced:w59' });
+  for (const [x, y] of [[788, 356], [812, 356], [800, 372]]) L(g, 'circle', { cx: x, cy: y, r: 3 }, { f: 'Advanced:x60|y60|z60', b: 'Advanced:w60' });
+  L(g, 'circle', { cx: 838, cy: 392, r: 4.5 }, { f: 'Advanced:x61|y61|z61|w61' });
+  const PST = 'Advanced:x64|y64|z64|w64', DST = 'Advanced:x67|y67|z67|w67', PSC = 'Advanced:x66|y66|z66|w66';
+  L(g, 'path', { d: 'M1022 250 L1040 268 L1022 286 L1004 268 Z', 'stroke-width': 2, fill: 'none' }, { s: PST });
+  T(g, 1050, 273, 'EAGLE MK II', 13, 'text', { 'letter-spacing': 1 }, { fa: 0.85 });
+  L(g, 'circle', { cx: 560, cy: 262, r: 16, 'stroke-width': 2.2, fill: 'none' }, { s: DST });
+  L(g, 'circle', { cx: 560, cy: 262, r: 3 }, { f: DST });
+  T(g, 585, 258, 'GAGARIN VISTA', 14, 'text', { 'letter-spacing': 1 }, { b: 'Advanced:w68' });
+  T(g, 585, 276, '2.30 km', 12, 'text', null, { fa: 0.7, b: 'Advanced:w68' });
+  L(g, 'circle', { cx: 1110, cy: 440, r: 12, 'stroke-width': 2, fill: 'none' }, { s: PSC });
+
+  // --- mid HUD above the radar
+  const MID = 'Advanced:x184|y184|z184', FSD = 'Advanced:x182|y182|z182|w182';
+  T(g, 800, 540, 'FRAME SHIFT DRIVE CHARGING', 13, MID, { 'text-anchor': 'middle', 'letter-spacing': 3 }, { b: 'Advanced:w184' });
+  L(g, 'rect', { x: 680, y: 550, width: 240, height: 6, rx: 2, 'stroke-width': 1.2, fill: 'none' }, { s: FSD, sa: 0.6 });
+  L(g, 'rect', { x: 680, y: 550, width: 150, height: 6, rx: 2 }, { f: FSD });
+
+  // --- radar on the centre console
+  const RIM = 'Advanced:x236|y236|z236', GRID = 'Advanced:x237|y237|z237', cx = 800, cy = 752, rx = 175, ry = 66;
+  L(g, 'ellipse', { cx, cy, rx, ry }, { f: RIM, fa: 0.08 });
+  L(g, 'ellipse', { cx, cy, rx: rx + 16, ry: ry + 7, 'stroke-width': 1.2, fill: 'none' }, { s: RIM, sa: 0.55, b: 'Advanced:w236' });
+  L(g, 'ellipse', { cx, cy, rx, ry, 'stroke-width': 2.6, fill: 'none' }, { s: RIM, b: 'Advanced:w236' });
+  for (const k of [0.34, 0.67]) L(g, 'ellipse', { cx, cy, rx: rx * k, ry: ry * k, 'stroke-width': 1.2, fill: 'none' }, { s: GRID, b: 'Advanced:w237' });
+  for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; L(g, 'line', { x1: cx, y1: cy, x2: cx + Math.cos(a) * rx, y2: cy + Math.sin(a) * ry, 'stroke-width': 1 }, { s: GRID, sa: 0.6, b: 'Advanced:w237' }); }
+  const TRI = 'Advanced:x239|y239|z239|w239';
+  L(g, 'path', { d: `M${cx} ${cy - 9} L${cx + 8} ${cy + 6} L${cx - 8} ${cy + 6} Z`, 'stroke-width': 1.6 }, { s: TRI, f: TRI, fa: 0.3 });
+  const blip = (src, px, py, ht, hollow) => {
+    L(g, 'ellipse', { cx: px, cy: py, rx: 7, ry: 2.6, 'stroke-width': 1.3, fill: 'none' }, { s: src, sa: 0.8, b: 'Advanced:x113' });
+    L(g, 'line', { x1: px, y1: py, x2: px, y2: py - ht, 'stroke-width': 1.5 }, { s: src, b: 'Advanced:y115' });
+    L(g, 'rect', { x: px - 4.5, y: py - ht - 4.5, width: 9, height: 9, 'stroke-width': 1.5, fill: hollow ? 'none' : undefined }, hollow ? { s: src, b: 'Advanced:x114' } : { s: src, f: src, b: 'Advanced:x114' });
+  };
+  blip('Advanced:x245|y245|z245|w245', 720, 738, 34);
+  blip('Advanced:x245|y245|z245|w245', 880, 772, -18, true);
+  blip('Advanced:x246|y246|z246|w246', 770, 790, 22);
+  blip('Advanced:x247|y247|z247|w247', 858, 728, 42);
+  // heat (left) and speed (right) arcs beside the radar, with their readouts
+  const HEAT = 'Advanced:x221|y221|z221';
+  L(g, 'path', { d: 'M640 700 Q590 760 632 830', 'stroke-width': 4, fill: 'none' }, { s: HEAT, b: 'Advanced:w221' });
+  L(g, 'path', { d: 'M960 700 Q1010 760 968 830', 'stroke-width': 4, fill: 'none' }, { s: HEAT, b: 'Advanced:w221' });
+  L(g, 'path', { d: 'M960 700 Q985 730 992 760', 'stroke-width': 4, fill: 'none' }, { f: undefined, s: 'Advanced:x222|y222|z222', sa: 0.9 });
+  T(g, 662, 690, '27%', 16, 'text', { 'letter-spacing': 1 });
+  L(g, 'path', { d: 'M640 690 q4 -10 0 -16 q8 6 6 16 Z' }, { f: 'fixed:#ff3b30' });
+  T(g, 955, 700, '14', 16, 'text');
+  const ZOOM = 'Advanced:x240|y240|z240', LVL = 'Advanced:x231|y231|z231';
+  L(g, 'line', { x1: 904, y1: 744, x2: 904, y2: 836, 'stroke-width': 1.4 }, { s: ZOOM, b: 'Advanced:w240' });
+  for (let i = 0; i < 5; i++) L(g, 'line', { x1: 898, y1: 748 + i * 21, x2: 910, y2: 748 + i * 21, 'stroke-width': 1.2 }, { s: LVL, b: 'Advanced:w231' });
+
+  // --- lower left: target information and target hologram
+  const LOW = 'Advanced:x204|y204|z204|w204';
+  const tl = rot(-6, 70, 760);
+  L(tl, 'line', { x1: 64, y1: 728, x2: 356, y2: 728, 'stroke-width': 1.8 }, { s: LOW });
+  T(tl, 70, 752, 'GAGARIN VISTA', 16, 'text', { 'letter-spacing': 1 }, { fa: 0.5 });
+  ['1 | CENTAURI VALUES PARTY', 'ERLAZA SYSTEM', 'DEMOCRACY'].forEach((s, i) => T(tl, 70, 776 + i * 24, s, 16, 'text', { 'letter-spacing': 1 }));
+  T(tl, 70, 848, 'EXTRACTION', 16, 'text', { 'letter-spacing': 1 }, { fa: 0.5 });
+  const TH = 'Advanced:x72|y72|z72';
+  const rock = 'M440 700 L468 676 L506 684 L522 716 L512 752 L476 768 L446 752 L432 726 Z';
+  L(g, 'path', { d: rock }, { f: TH, fa: 0.14, b: 'Advanced:y73' });
+  L(g, 'path', { d: rock, 'stroke-width': 1.6, fill: 'none' }, { s: TH, b: 'Advanced:y73' });
+  L(g, 'path', { d: 'M468 676 L476 722 L512 752 M432 726 L476 722 L506 684', 'stroke-width': 1, fill: 'none' }, { s: TH, sa: 0.6, b: 'Advanced:y73' });
+  L(g, 'ellipse', { cx: 476, cy: 800, rx: 78, ry: 20, 'stroke-width': 2, fill: 'none' }, { s: 'Advanced:x226|y226|z226', b: 'Advanced:w226' });
+  L(g, 'ellipse', { cx: 476, cy: 812, rx: 56, ry: 13, 'stroke-width': 1.4, fill: 'none' }, { s: 'Advanced:x205|y205|z205|w205' });
+
+  // --- lower right: your ship hologram, shields, power distributor, fuel and status lights
+  const tr = rot(7, 1150, 760);
+  holoShip(tr, 1133, 728, 0.95, 'Advanced:x248|y248|z248', 'own');
+  for (const [rx2, ry2, which] of [[92, 60, 'outer'], [80, 52, 'middle'], [68, 44, 'inner']]) L(tr, 'ellipse', { cx: 1133, cy: 740, rx: rx2, ry: ry2, 'stroke-width': 3.2, fill: 'none' }, { s: 'shield:' + which, b: 'Advanced:w228' });
+  T(tr, 1150, 792, '100%', 15, 'Advanced:x88|y88|z88', { 'text-anchor': 'middle', 'letter-spacing': 1 }, { b: 'Advanced:w88' });
+  L(tr, 'path', { d: 'M1070 818 Q1133 842 1196 818', 'stroke-width': 2, fill: 'none' }, { s: 'Advanced:x226|y226|z226', b: 'Advanced:w226' });
+  T(tr, 1076, 836, '100%', 14, 'Advanced:x212|y212|z212', null, { b: 'Advanced:w212' });
+  const td = rot(5, 1290, 770);
+  [{ x: 1238, lab: 'SYS', fill: 5, pips: 2 }, { x: 1278, lab: 'ENG', fill: 8, pips: 3 }, { x: 1318, lab: 'WEP', fill: 5, pips: 1 }].forEach(c => {
+    for (let i = 0; i < 8; i++) {
+      const y = 788 - i * 11, on = i < c.fill;
+      L(td, 'rect', { x: c.x, y, width: 20, height: 8, 'stroke-width': 1, fill: on ? undefined : 'none' }, on ? { f: `dist:${i}:8` } : { s: `dist:${i}:8`, sa: 0.3 });
+    }
+    for (let p = 0; p < 4; p++) L(td, 'rect', { x: c.x + p * 5.5, y: 800, width: 4, height: 4 }, p < c.pips ? { f: 'Advanced:x214|y214|z214', b: 'Advanced:w214' } : { f: 'Advanced:x122|y122|z122|w122' });
+    T(td, c.x + 10, 820, c.lab, 12, 'text', { 'text-anchor': 'middle' }, { fa: 0.8 });
+  });
+  L(td, 'rect', { x: 1274, y: 826, width: 28, height: 14, 'stroke-width': 1.2, fill: 'none' }, { s: 'Advanced:x230|y230|z230', b: 'Advanced:w230' });
+  T(td, 1288, 837, 'RST', 11, 'text', { 'text-anchor': 'middle' });
+  L(td, 'rect', { x: 1272, y: 843, width: 32, height: 3 }, { f: 'Advanced:x227|y227|z227', b: 'Advanced:w227' });
+  const tf = rot(7, 1370, 770);
+  L(tf, 'line', { x1: 1366, y1: 748, x2: 1548, y2: 748, 'stroke-width': 1.6 }, { s: LOW });
+  T(tf, 1370, 766, 'FUEL', 15, 'text', { 'letter-spacing': 1 });
+  T(tf, 1544, 766, '1.31/h', 15, 'text', { 'text-anchor': 'end' });
+  L(tf, 'rect', { x: 1368, y: 772, width: 176, height: 7, 'stroke-width': 1, fill: 'none' }, { s: 'Advanced:x216|y216|z216', sa: 0.5 });
+  L(tf, 'rect', { x: 1368, y: 772, width: 150, height: 7 }, { f: 'Advanced:x216|y216|z216', b: 'Advanced:w216' });
+  L(tf, 'rect', { x: 1518, y: 772, width: 16, height: 7 }, { f: 'Advanced:x94|y94|z94', b: 'Advanced:w94' });
+  ['MASS LOCKED', 'LANDING GEAR', 'CARGO SCOOP'].forEach((s, i) => {
+    L(tf, 'rect', { x: 1372, y: 788 + i * 20, width: 10, height: 10 }, { f: i === 0 ? 'Advanced:x218|y218|z218|w218' : 'Advanced:x217|y217|z217|w217' });
+    T(tf, 1390, 798 + i * 20, s, 14, 'text', { 'letter-spacing': 1 });
+  });
+
+  // everything above is the cockpit page; the other pages are built beside it and shown one at a time
+  const vc = sv('g', { 'data-view': 'drawn', display: 'none' }, svg);
+  [...svg.childNodes].filter(n => n !== vc && n.nodeName !== 'defs').forEach(n => vc.appendChild(n));
+  buildPhoto(sv('g', { 'data-view': 'cockpit' }, svg));
+  buildStation(sv('g', { 'data-view': 'station', display: 'none' }, svg));
+  buildGalaxy(sv('g', { 'data-view': 'galaxy', display: 'none' }, svg));
+  buildFoot(sv('g', { 'data-view': 'foot', display: 'none' }, svg));
+  buildFss(sv('g', { 'data-view': 'fss', display: 'none' }, svg));
+  buildNavPanel(sv('g', { 'data-view': 'nav', display: 'none' }, svg));
+  buildSystemsPanel(sv('g', { 'data-view': 'systems', display: 'none' }, svg));
+}
+
+// --- Station menu (commodity market). Text here is Elite's own grey; the panels around it can be recolored.
+function buildStation(v) {
+  const FIX = '#d6d6d6', PANEL = 'Advanced:x90|y90|z90', PB = 'Advanced:w90', X = 'xml:' + ORANGE;
+  sv('rect', { width: 1600, height: 900, fill: '#0b0c10' }, v);
+  const g = sv('g', { filter: 'url(#glow)' }, v);
+  T(g, 150, 70, 'COMMODITIES MARKET', 30, 'fixed:#f2f2f2', { 'letter-spacing': 1 });
+  T(g, 150, 104, 'GREENLAND LEGACY', 24, 'xml:#ffb070');
+  T(g, 150, 132, 'ECONOMY: MILITARY', 17, 'xml:#ff9a40');
+  const tabs = [['BUY', true], ['SELL', false], ['COMPARE', false]];
+  tabs.forEach(([name, on], i) => {
+    const y = 160 + i * 132;
+    L(g, 'rect', { x: 110, y, width: 150, height: 112 }, on ? { f: 'selbar:' + ORANGE, fa: 0.9 } : { f: 'shadow:' + PANEL, fa: 0.55, b: PB });
+    L(g, 'rect', { x: 162, y: y + 22, width: 46, height: 40, rx: 6, 'stroke-width': 3, fill: 'none' }, { s: 'Advanced:x92|y92|z92|w92' });
+    T(g, 185, y + 92, name, 19, on ? 'Advanced:x143|y143|z143|w143' : 'fixed:#bcbcbc', { 'text-anchor': 'middle' });
+  });
+  T(g, 330, 186, 'BUY FROM MARKET', 24, 'fixed:#f2f2f2');
+  T(g, 1210, 186, 'PROFIT IF SOLD AT', 15, 'fixed:#ffd23c', { 'text-anchor': 'end' });
+  L(g, 'line', { x1: 330, y1: 162, x2: 1210, y2: 162, 'stroke-width': 2 }, { s: X });
+  L(g, 'line', { x1: 330, y1: 226, x2: 1210, y2: 226, 'stroke-width': 2 }, { s: X });
+  [['GOODS - FILTERED', 450], ['SUPPLY', 900], ['BUY', 1030], ['GALACTIC AVERAGE', 1210]].forEach(([t, x], i) =>
+    T(g, x, 214, t, 15, i === 3 ? 'fixed:#ffd23c' : 'fixed:#bcbcbc', { 'text-anchor': i ? 'end' : 'start' }));
+  const rows = [['CHEMICALS'], ['AGRONOMIC TREATMENT', '1,202', '5,679 CR', '-2,610 CR'], ['HYDROGEN FUEL', '1,764,640', '85 CR', '30 CR'],
+    ['PESTICIDES', '80,494', '172 CR', '240 CR'], ['CONSUMER ITEMS'], ['CLOTHING', '244,858', '610 CR', '-90 CR'],
+    ['DOMESTIC APPLIANCES', '177,368', '336 CR', '380 CR'], ['EVACUATION SHELTER', '2,160', '205 CR', '300 CR'], ['FOODS'],
+    ['FOOD CARTRIDGES', '1,686,267', '32 CR', '220 CR'], ['SYNTHETIC MEAT', '662,446', '117 CR', '300 CR']];
+  rows.forEach((r, i) => {
+    const y = 240 + i * 50;
+    if (r.length === 1) { T(g, 450, y + 30, r[0], 17, 'fixed:#f2f2f2'); return; }
+    L(g, 'rect', { x: 330, y, width: 880, height: 40 }, { f: 'shadow:' + PANEL, fa: 0.55, b: PB });
+    T(g, 450, y + 27, r[0], 16, 'fixed:' + FIX);
+    T(g, 900, y + 27, r[1], 16, 'fixed:' + FIX, { 'text-anchor': 'end' });
+    T(g, 1030, y + 27, r[2], 16, 'fixed:' + FIX, { 'text-anchor': 'end' });
+    T(g, 1210, y + 27, r[3], 16, r[3].startsWith('-') ? 'fixed:#ff5a4a' : 'fixed:#5ee07a', { 'text-anchor': 'end' });
+  });
+  L(g, 'line', { x1: 440, y1: 230, x2: 440, y2: 790, 'stroke-width': 1.5 }, { s: X, sa: 0.6 });
+  L(g, 'line', { x1: 1250, y1: 162, x2: 1500, y2: 162, 'stroke-width': 2 }, { s: X });
+  T(g, 1375, 450, 'SELECT A COMMODITY', 18, 'fixed:#f2f2f2', { 'text-anchor': 'middle' });
+  L(g, 'line', { x1: 1250, y1: 740, x2: 1500, y2: 740, 'stroke-width': 2 }, { s: X });
+  T(g, 1265, 775, 'BALANCE', 16, 'fixed:#f2f2f2');
+  L(g, 'rect', { x: 1265, y: 800, width: 235, height: 10 }, { f: X, fa: 0.8 });
+  [['EXIT', 110], ['HELP', 300]].forEach(([t, x]) => { L(g, 'rect', { x, y: 830, width: 170, height: 44 }, { f: 'shadow:' + PANEL, fa: 0.55, b: PB }); T(g, x + 12, 859, t, 17, 'fixed:' + FIX); });
+}
+
+// --- Galaxy map, laid out from a real screenshot (allegiance view with the Add to Bookmarks window open).
+// Panels use Panel Shadows (drawn dark), headings use Main Text, lit-up buttons use the selection bar.
+// Allegiance colours (blue Federation systems etc.), pins and the green button are Elite's own.
+function buildGalaxy(v) {
+  // Window backgrounds are Elite's dark grey run through the XML matrix: a matrix that tints white also tints them
+  // (e.g. white -> pink makes these windows purple). They are NOT Ship Panel Shadows.
+  const SH = 'xmlw:#2b2b2b', TXT = 'text', LINE = 'xml:' + ORANGE, WHITE = 'fixed:#e9edf2', GREY = 'fixed:#9aa4b1';
+  v.insertAdjacentHTML('beforeend', `<defs><radialGradient id="gmbg" cx="45%" cy="40%" r="80%"><stop offset="0" stop-color="#4b4f57"/><stop offset=".6" stop-color="#3a3e45"/><stop offset="1" stop-color="#23262b"/></radialGradient></defs>`);
+  sv('rect', { width: 1600, height: 900, fill: 'url(#gmbg)' }, v);
+  // the grey is the galaxy's own dust haze; the only control for it is GalMap Fog (reduction = darker)
+  L(v, 'rect', { width: 1600, height: 900 }, { f: 'galfog' });
+  const g = sv('g', { filter: 'url(#glow)' }, v);
+  // galaxy grid lines, radiating from the current system, plus long straight grid lines
+  const cx = 421, cy = 232;
+  for (let i = 0; i < 26; i++) { const a = (i / 26) * Math.PI * 2 + 0.2; L(g, 'line', { x1: cx, y1: cy, x2: cx + Math.cos(a) * 1500, y2: cy + Math.sin(a) * 900, 'stroke-width': 1 }, { s: 'Advanced:x191|y191|z191', sa: 0.18 }); }
+  for (const [x1, y1, x2, y2] of [[0, 120, 1600, 520], [0, 700, 1600, 180], [300, 900, 900, 0], [1100, 900, 700, 0], [0, 420, 1600, 820]]) L(g, 'line', { x1, y1, x2, y2, 'stroke-width': 1 }, { s: 'Advanced:x191|y191|z191', sa: 0.15 });
+  // system connector lines (dashed) and the travel / route line
+  for (const [a, b] of [[[421, 232], [589, 86]], [[421, 232], [422, 148]], [[589, 86], [986, 120]]]) L(g, 'line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], 'stroke-width': 1.4, 'stroke-dasharray': '6 5' }, { s: 'Advanced:x179|y179|z179|w179' });
+  L(g, 'path', { d: 'M428 222 Q480 150 580 124', 'stroke-width': 2.4, fill: 'none' }, { s: 'Advanced:x85|y85|z85|w85' });
+  // systems: allegiance-coloured squares (Elite's own), pins with Z-axis stems and coasters
+  for (const [x, y] of [[589, 86], [422, 148]]) {
+    L(g, 'rect', { x: x - 14, y: y - 14, width: 28, height: 28, 'stroke-width': 2.4, fill: 'none' }, { s: 'fixed:#3aa0ff' });
+    L(g, 'circle', { cx: x, cy: y, r: 8, 'stroke-width': 1.6, fill: 'none' }, { s: 'fixed:#3aa0ff' });
+  }
+  L(g, 'circle', { cx, cy, r: 20 }, { f: 'fixed:#33d6e8', fa: 0.35 });
+  L(g, 'circle', { cx, cy, r: 6 }, { f: 'fixed:#ff5a7a' });
+  T(g, 360, 276, 'ERLAZA', 15, TXT);
+  for (const [x, y, h2] of [[421, 205, 20], [985, 110, 34]]) {
+    L(g, 'line', { x1: x, y1: y, x2: x, y2: y + h2, 'stroke-width': 1.2 }, { s: 'Advanced:x192|y192|z192' });
+    L(g, 'ellipse', { cx: x, cy: y + h2, rx: 8, ry: 3, 'stroke-width': 1.2, fill: 'none' }, { s: 'Advanced:x191|y191|z191' });
+    L(g, 'path', { d: `M${x - 10} ${y - 22} L${x + 10} ${y - 22} L${x} ${y} Z` }, { f: 'fixed:#f1e9ff' });
+  }
+  T(g, 998, 128, 'CRUCIS SECTOR FM-V B2-4', 13, WHITE);
+  L(g, 'circle', { cx: 697, cy: 85, r: 4 }, { f: 'fixed:#e0223a' });
+  // engineering and repair icons (galaxy map icon settings)
+  L(g, 'circle', { cx: 250, cy: 500, r: 10, 'stroke-width': 3, fill: 'none', 'stroke-dasharray': '4 3' }, { s: 'Advanced:x86|y86|z86|w86' });
+  L(g, 'path', { d: 'M330 560 h18 v18 h-18 Z M339 564 v10 M334 569 h10', 'stroke-width': 2.4, fill: 'none' }, { s: 'Advanced:x110|y110|z110|w110' });
+
+  // title and clock
+  T(g, 646, 42, 'GALAXY MAP', 20, TXT, { 'letter-spacing': 1 });
+  T(g, 778, 42, '|  ALLEGIANCE VIEW', 20, WHITE, { 'letter-spacing': 1 });
+  T(g, 705, 62, 'REGION : INNER ORION SPUR', 13, GREY);
+  L(g, 'line', { x1: 66, y1: 20, x2: 385, y2: 20, 'stroke-width': 1 }, { s: GREY, sa: 0.6 });
+  L(g, 'line', { x1: 66, y1: 75, x2: 385, y2: 75, 'stroke-width': 1 }, { s: GREY, sa: 0.6 });
+  T(g, 110, 60, 'CARTOGRAPHICS', 18, WHITE, { 'letter-spacing': 1 });
+  T(g, 290, 45, '21:51:00', 18, WHITE); T(g, 296, 63, '30 SEP 3312', 12, GREY);
+
+  // left and right button columns (matched to screenshots):
+  //  plain = Elite's dark orange through the XML matrix (slate blue on a blue XML) with XML-orange icons;
+  //  'sel' = the button you're pointing at: lit-up bar with a DARK icon. Elite draws that icon black, and the XML matrix
+  //  can't recolor black, so it isn't Highlighted Text and has no setting;
+  //  'on' = a switched-on filter (teal with cyan icon) and 'route' = route button (green, yellow icon): settings not found yet
+  const col = (x, list) => list.forEach(([y, kind, count]) => {
+    const f = kind === 'sel' ? { f: SEL, fa: 0.95 } : kind === 'on' ? { f: 'unknown:#0f4f5f' } : kind === 'route' ? { f: 'unknown:#3f9a2f' } : { f: 'xml:#5a2800', fa: 0.9 };
+    const icon = kind === 'sel' ? 'fixed:#121826' : kind === 'on' ? 'unknown:#3fd0ff' : kind === 'route' ? 'unknown:#e6ff4a' : LINE;
+    L(g, 'rect', { x, y, width: 40, height: 40 }, f);
+    L(g, 'circle', { cx: x + 20, cy: y + 21, r: 9, 'stroke-width': 2.4, fill: 'none' }, { s: icon });
+    if (count) T(g, x + 3, y + 13, count, 12, WHITE);
+  });
+  col(62, [[140], [188], [236, 0, '6'], [282, 'on', '13'], [342], [390, 'sel'], [438], [486], [534], [592], [640], [690], [740], [818]]);
+  col(1494, [[140, 'sel'], [188], [236], [284], [380], [424], [482, 'route'], [530], [578], [628], [676], [732], [778]]);
+  // group dividers and the pointer bar beside the lit button (Elite's orange through the XML)
+  for (const y of [332, 584]) L(g, 'line', { x1: 62, y1: y, x2: 102, y2: y, 'stroke-width': 2.5 }, { s: LINE });
+  L(g, 'rect', { x: 55, y: 390, width: 3, height: 40 }, { f: SEL });
+  // tooltip for the button you're pointing at: black box (black can't be recolored), XML-orange edge, white title
+  L(g, 'rect', { x: 110, y: 390, width: 218, height: 44, 'stroke-width': 1.5 }, { f: 'fixed:#07080b', fa: 0.92 });
+  L(g, 'rect', { x: 110, y: 390, width: 218, height: 44, 'stroke-width': 1.5, fill: 'none' }, { s: LINE });
+  T(g, 119, 408, 'PILOTS’ FEDERATION', 15, WHITE); T(g, 119, 426, 'MAP MODE', 12, GREY);
+
+  // System Information panel (right)
+  L(g, 'rect', { x: 1143, y: 140, width: 342, height: 458 }, { f: SH, fa: 0.9 });
+  T(g, 1157, 170, 'SYSTEM INFORMATION', 16, TXT);
+  T(g, 1157, 196, 'NUENETS', 20, WHITE);
+  T(g, 1157, 218, 'DISTANCE: 20.46LY', 13, WHITE);
+  L(g, 'line', { x1: 1157, y1: 232, x2: 1471, y2: 232, 'stroke-width': 1.5 }, { s: LINE, sa: 0.8 });
+  T(g, 1157, 268, 'SYSTEM INFORMATION', 16, TXT);
+  L(g, 'line', { x1: 1157, y1: 278, x2: 1471, y2: 278, 'stroke-width': 1 }, { s: LINE, sa: 0.6 });
+  [['ALLEGIANCE:', 'FEDERATION'], ['POPULATION:', '70.1 MILLION'], ['GOVERNMENT:', 'CORPORATE'], ['STATE:', 'BOOM'], ['ECONOMIES:', 'INDUSTRIAL'], ['SECURITY:', 'MEDIUM SECURITY']].forEach(([a, b], i) => {
+    T(g, 1157, 306 + i * 27, a, 13, WHITE); T(g, 1297, 306 + i * 27, b, 13, WHITE);
+  });
+  T(g, 1157, 492, 'ASTRONOMICAL INFORMATION', 16, TXT);
+  L(g, 'line', { x1: 1157, y1: 502, x2: 1471, y2: 502, 'stroke-width': 1 }, { s: LINE, sa: 0.6 });
+  [['STAR TYPES:', 'G0 VB, M1 VA, L1 V'], ['STAR CLASS:', 'G (WHITE-YELLOW)']].forEach(([a, b], i) => { T(g, 1157, 530 + i * 27, a, 13, WHITE); T(g, 1297, 530 + i * 27, b, 13, WHITE); });
+
+  // Add to Bookmarks window (centre)
+  L(g, 'rect', { x: 467, y: 204, width: 666, height: 489 }, { f: SH, fa: 0.9 });
+  L(g, 'rect', { x: 477, y: 216, width: 48, height: 48, 'stroke-width': 1.5, fill: 'none' }, { s: LINE, sa: 0.8 });
+  L(g, 'path', { d: 'M491 226 h20 v28 l-10 -8 l-10 8 Z' }, { f: WHITE });
+  T(g, 543, 248, 'ADD TO BOOKMARKS', 20, WHITE, { 'letter-spacing': 1 });
+  L(g, 'line', { x1: 477, y1: 272, x2: 1123, y2: 272, 'stroke-width': 1.2 }, { s: LINE, sa: 0.6 });
+  T(g, 479, 300, 'NAME', 15, TXT);
+  L(g, 'rect', { x: 477, y: 316, width: 646, height: 30, 'stroke-width': 1.5, fill: 'none' }, { s: LINE, sa: 0.8 });
+  T(g, 487, 337, 'NUENETS', 15, TXT);
+  T(g, 479, 398, 'OPTIONS', 15, TXT);
+  ['SHARE WITH SQUADRON', 'ADD TO FAVOURITES'].forEach((s, i) => {
+    L(g, 'rect', { x: 481, y: 418 + i * 40, width: 20, height: 20, 'stroke-width': 1.5, fill: 'none' }, { s: GREY });
+    T(g, 513, 434 + i * 40, s, 14, GREY, { 'letter-spacing': 0.5 });
+  });
+  L(g, 'rect', { x: 477, y: 516, width: 646, height: 58, 'stroke-width': 1.5, fill: 'none' }, { s: LINE, sa: 0.8 });
+  T(g, 483, 538, 'LOCATION DETAILS', 14, WHITE); T(g, 483, 562, 'SYSTEM', 13, WHITE); T(g, 722, 562, 'NUENETS', 13, TXT);
+  T(g, 479, 624, 'Once a bookmark has been created, you may change the details in the Manage Bookmarks section.', 13, GREY);
+  L(g, 'rect', { x: 477, y: 652, width: 315, height: 32 }, { f: SEL, fa: 0.95 });
+  T(g, 483, 674, 'CANCEL', 16, SEL_TEXT);
+  L(g, 'rect', { x: 808, y: 652, width: 315, height: 32 }, { f: SH, fa: 0.9 });
+  T(g, 814, 674, 'SAVE', 16, TXT);
+
+  // current-system bar and key hints (bottom)
+  L(g, 'rect', { x: 242, y: 775, width: 1116, height: 63 }, { f: SH, fa: 0.9 });
+  L(g, 'path', { d: 'M254 785 l6 12 l6 -12 Z' }, { f: 'fixed:#c77dff' });
+  T(g, 272, 798, 'CURRENT SYSTEM', 14, WHITE); T(g, 254, 824, 'ERLAZA', 17, TXT);
+  T(g, 958, 812, 'NO ROUTE SET', 18, WHITE, { 'text-anchor': 'middle' });
+  ['PITCH UP [T]', 'PITCH DOWN [G]', 'YAW LEFT [Q]', 'YAW RIGHT [E]', 'FORWARD [W]', 'BACKWARD [S]', 'ZOOM IN [Z]', 'ZOOM OUT [X]'].forEach((s, i) => {
+    L(g, 'rect', { x: 186 + i * 154, y: 852, width: 150, height: 20 }, { f: SH, fa: 0.85 });
+    T(g, 192 + i * 154, 867, s, 12, GREY);
+  });
+}
+
+// --- On-foot suit HUD
+function buildFoot(v) {
+  sv('rect', { width: 1600, height: 900, fill: '#141821' }, v);
+  sv('rect', { y: 560, width: 1600, height: 340, fill: '#0d1016' }, v);
+  const g = sv('g', { filter: 'url(#glow)' }, v);
+  const PANEL = 'SuitHud:x31|y31|z31', TXT = 'SuitHud:x37|y37|z37|w37', HI = 'SuitHud:x38|y38|z38|w38';
+  sv('circle', { cx: 800, cy: 450, r: 3, fill: '#ffffff' }, g);
+  [['SuitHud:x34|y34|z34|w34', 70], ['SuitHud:x33|y33|z33|w33', 58], ['SuitHud:x32|y32|z32|w32', 46]].forEach(([s, r]) =>
+    L(g, 'path', { d: `M${160 - r} 800 A${r} ${r} 0 1 1 ${160 + r} 800`, 'stroke-width': 7, fill: 'none', 'stroke-linecap': 'round' }, { s }));
+  L(g, 'path', { d: 'M110 806 A50 50 0 0 0 130 840', 'stroke-width': 7, fill: 'none', 'stroke-linecap': 'round' }, { s: 'SuitHud:x35|y35|z35|w35' });
+  T(g, 160, 812, '100%', 20, TXT, { 'text-anchor': 'middle' });
+  [['O2', 'SuitHud:x126|y126|z126', 0.8], ['ENERGY', 'SuitHud:x127|y127|z127', 0.55]].forEach(([t, s, f], i) => {
+    const y = 760 + i * 40;
+    T(g, 260, y + 12, t, 15, TXT);
+    L(g, 'rect', { x: 340, y, width: 220, height: 14, 'stroke-width': 1.5, fill: 'none' }, { s, sa: 0.6 });
+    L(g, 'rect', { x: 340, y, width: 220 * f, height: 14 }, { f: s });
+  });
+  const pd = 'M1120 60 H1540 V250 H1140 L1120 230 Z';
+  L(g, 'path', { d: pd, stroke: 'none' }, { f: 'shadow:' + PANEL, fa: 0.12 });
+  L(g, 'path', { d: pd, 'stroke-width': 2, fill: 'none' }, { s: PANEL });
+  T(g, 1150, 100, 'OBJECTIVE', 16, TXT, { 'letter-spacing': 2 });
+  T(g, 1150, 140, 'Retrieve data from terminal', 18, TXT);
+  T(g, 1150, 172, 'Settlement: Tiwari Horizons', 15, TXT, null, { fa: 0.75 });
+  ['PISTOL', 'RIFLE', 'TOOL'].forEach((t, i) => {
+    const x = 1150 + i * 130, on = i === 1;
+    L(g, 'rect', { x, y: 780, width: 118, height: 50 }, on ? { f: HI } : { f: 'shadow:' + PANEL, fa: 0.15 });
+    L(g, 'rect', { x, y: 780, width: 118, height: 50, 'stroke-width': 1.5, fill: 'none' }, { s: PANEL });
+    T(g, x + 59, 811, t, 16, on ? 'fixed:#101010' : TXT, { 'text-anchor': 'middle' });
+  });
+}
+
+// --- Full Spectrum Scanner
+function buildFss(v) {
+  sv('rect', { width: 1600, height: 900, fill: '#020306' }, v);
+  const g = sv('g', { filter: 'url(#glow)' }, v);
+  const RET = 'Advanced:x200|y200|z200|w200', CEN = 'Advanced:x198|y198|z198|w198', BLOB = 'Advanced:x199|y199|z199|w199', TXT = 'Advanced:x197|y197|z197|w197';
+  L(g, 'circle', { cx: 800, cy: 400, r: 190, 'stroke-width': 2, fill: 'none' }, { s: RET });
+  L(g, 'circle', { cx: 800, cy: 400, r: 120, 'stroke-width': 1.2, fill: 'none', 'stroke-dasharray': '3 6' }, { s: RET, sa: 0.7 });
+  L(g, 'circle', { cx: 800, cy: 400, r: 16, 'stroke-width': 3, fill: 'none' }, { s: CEN });
+  [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dx, dy]) => L(g, 'line', { x1: 800 + dx * 200, y1: 400 + dy * 200, x2: 800 + dx * 240, y2: 400 + dy * 240, 'stroke-width': 3 }, { s: RET }));
+  [[520, 300, 30], [1090, 520, 22], [640, 610, 16]].forEach(([x, y, r]) => L(g, 'circle', { cx: x, cy: y, r }, { f: BLOB, fa: 0.5 }));
+  T(g, 60, 80, 'FULL SPECTRUM SYSTEM SCANNER', 24, TXT, { 'letter-spacing': 2 });
+  T(g, 60, 112, 'Bodies found 7/12', 17, TXT, null, { fa: 0.8 });
+  L(g, 'rect', { x: 200, y: 780, width: 1200, height: 60, 'stroke-width': 2, fill: 'none' }, { s: RET });
+  for (let i = 0; i < 60; i++) { const hh = 6 + Math.abs(Math.sin(i * 0.7)) * 40; L(g, 'rect', { x: 210 + i * 19.7, y: 835 - hh, width: 10, height: hh }, { f: BLOB, fa: 0.7 }); }
+  L(g, 'line', { x1: 760, y1: 770, x2: 760, y2: 850, 'stroke-width': 3 }, { s: CEN });
+}
+// --- Side panels. Shared frame: the pink edge lines are "Side Panels / Main Lines"; the lit-up tab or row is
+// Elite's orange through the XML matrix; its text is "Highlighted Text"; the rows and tabs are Elite's dark orange through the same matrix (NOT Ship Panel Shadows).
+const ROW_BG = 'xml:#5a2800';   // rows, tabs and buttons: Elite's dark orange through the XML matrix (seen in game: mint Panel Shadows, pink matrix -> dark pink rows)
+const SIDE_LINES = 'Advanced:x76|y76|z76', SEL = 'selbar:' + ORANGE, SEL_TEXT = 'Advanced:x143|y143|z143|w143', ICONS = 'Advanced:x53|y53|z53';
+function sidePanelFrame(v, tabs, selected) {
+  sv('rect', { width: 1600, height: 900, fill: '#050608' }, v);
+  const rnd = mulberry32(11);
+  for (let i = 0; i < 90; i++) sv('circle', { cx: (rnd() * 1600).toFixed(1), cy: (rnd() * 260).toFixed(1), r: (rnd() * 1.1 + 0.3).toFixed(2), fill: '#ffffff', 'fill-opacity': (0.2 + rnd() * 0.5).toFixed(2) }, v);
+  sv('path', { d: 'M0 150 L1600 110 V180 L0 230 Z', fill: '#2a2320' }, v);
+  sv('path', { d: 'M0 820 L1600 790 V900 H0 Z', fill: '#2b1b12' }, v);
+  const g = sv('g', { filter: 'url(#glow)' }, v);
+  L(g, 'rect', { x: 150, y: 170, width: 1300, height: 640 }, { f: ROW_BG, fa: 0.22 });
+  L(g, 'line', { x1: 150, y1: 166, x2: 1450, y2: 166, 'stroke-width': 2 }, { s: SIDE_LINES, b: 'Advanced:w76' });
+  L(g, 'line', { x1: 150, y1: 812, x2: 1450, y2: 812, 'stroke-width': 2 }, { s: SIDE_LINES, b: 'Advanced:w76' });
+  const w = 1300 / tabs.length;
+  tabs.forEach((t, i) => {
+    const on = i === selected, x = 150 + i * w;
+    L(g, 'rect', { x: x + 2, y: 174, width: w - 4, height: 44 }, on ? { f: SEL, fa: 0.9 } : { f: ROW_BG, fa: 0.85 });
+    T(g, x + w / 2, 203, t, 18, on ? SEL_TEXT : 'text', { 'text-anchor': 'middle', 'letter-spacing': 1 });
+  });
+  L(g, 'line', { x1: 150, y1: 222, x2: 1450, y2: 222, 'stroke-width': 1.5 }, { s: SIDE_LINES, sa: 0.7, b: 'Advanced:w76' });
+  return g;
+}
+function buildNavPanel(v) {
+  const g = sidePanelFrame(v, ['NAVIGATION', 'TRANSACTIONS', 'CONTACTS'], 0);
+  T(g, 176, 262, 'SYSTEM', 15, 'text');
+  L(g, 'path', { d: 'M160 250 l6 12 l6 -12 Z' }, { f: 'fixed:#e0223a' });
+  T(g, 176, 288, 'ERLAZA SYSTEM', 21, 'text');
+  T(g, 800, 262, 'NO ROUTE SET', 16, 'fixed:#aab2bd', { 'text-anchor': 'middle' });
+  L(g, 'line', { x1: 176, y1: 312, x2: 1420, y2: 312, 'stroke-width': 1.5 }, { s: SEL, sa: 0.8 });
+  T(g, 360, 340, 'LOCATION | FILTERS ACTIVE', 17, 'text');
+  T(g, 1410, 340, 'DISTANCE', 15, 'text', { 'text-anchor': 'end' });
+  T(g, 176, 352, 'SET FILTERS', 13, 'text');
+  L(g, 'rect', { x: 176, y: 364, width: 110, height: 60 }, { f: ROW_BG, fa: 0.85 });
+  for (let i = 0; i < 3; i++) L(g, 'line', { x1: 206, y1: 380 + i * 14, x2: 258, y2: 380 + i * 14, 'stroke-width': 4 }, { s: ICONS, b: 'Advanced:w53' });
+  [['GALAXY MAP', 560], ['SYSTEM MAP', 680]].forEach(([t, y]) => {
+    T(g, 231, y - 12, t, 13, 'text', { 'text-anchor': 'middle' });
+    L(g, 'rect', { x: 176, y, width: 110, height: 70 }, { f: ROW_BG, fa: 0.85 });
+    L(g, 'circle', { cx: 231, cy: y + 35, r: 18, 'stroke-width': 3, fill: 'none' }, { s: ICONS, b: 'Advanced:w53' });
+  });
+  const rows = [['GAGARIN VISTA', '2.30km', 'sel'], ['PICCARD’S FOLLY', '3.42Ls'], ['VOLYNOV PLATFORM', '4.42Ls'], ['GORDON LABORATORY', '7.57Ls'],
+    ['ORBITAL CONSTRUCTION SITE: FUGLESANG VISTA', '7.57Ls'], ['ITO LANDING', '10.5Ls', 'blue'], ['COMPROMISED NAVIGATION BEACON', '12,292Ls'],
+    ['ORBITAL CONSTRUCTION SITE: LORRAH HUB', '12,292Ls'], ['LORRAH HUB', '12,303Ls'], ['KOTZEBUE TERMINAL', '12,303Ls']];
+  rows.forEach(([name, dist, kind], i) => {
+    const y = 356 + i * 43;
+    const sel = kind === 'sel';
+    L(g, 'rect', { x: 306, y, width: 110, height: 38 }, sel ? { f: SEL, fa: 0.9 } : { f: ROW_BG, fa: 0.85 });
+    L(g, 'rect', { x: 420, y, width: 1000, height: 38 }, sel ? { f: SEL, fa: 0.9 } : { f: ROW_BG, fa: 0.85 });
+    L(g, 'path', { d: `M322 ${y + 19} h14 m-4 -5 l5 5 l-5 5`, 'stroke-width': 2, fill: 'none' }, { s: sel ? SEL_TEXT : ICONS, b: 'Advanced:w53' });
+    if (i % 3 !== 2) L(g, 'circle', { cx: 372, cy: y + 19, r: 8, 'stroke-width': 2.4, fill: 'none' }, { s: 'fixed:#e0223a' });
+    L(g, 'rect', { x: 436, y: y + 11, width: 16, height: 16, rx: 2, 'stroke-width': 2, fill: 'none' }, { s: sel ? SEL_TEXT : ICONS, b: 'Advanced:w53' });
+    const tsrc = sel ? SEL_TEXT : 'text';   // in game the list text follows Main Text (seen with a cyan Main Text)
+    T(g, 470, y + 26, name, 17, tsrc, { 'letter-spacing': 0.5 });
+    T(g, 1404, y + 26, dist, 17, tsrc, { 'text-anchor': 'end' });
+  });
+  L(g, 'rect', { x: 1426, y: 356, width: 6, height: 150 }, { f: SEL, fa: 0.8 });
+}
+function buildSystemsPanel(v) {
+  const g = sidePanelFrame(v, ['⌂', 'MODULES', 'FIRE GROUPS', 'SHIP', 'INVENTORY', 'STORAGE', 'STATUS'], 0);
+  L(g, 'rect', { x: 176, y: 240, width: 90, height: 90, 'stroke-width': 1.5 }, { s: SIDE_LINES, f: 'fixed:#3a3f47', sa: 0.6 });
+  T(g, 286, 268, 'CMDR', 16, 'fixed:#aab2bd');
+  T(g, 286, 300, 'XXXXXXX', 26, 'fixed:#eef1f5', { 'letter-spacing': 1 });
+  L(g, 'line', { x1: 286, y1: 314, x2: 780, y2: 314, 'stroke-width': 1.2 }, { s: SEL, sa: 0.7 });
+  const ranks = [['COMBAT RANK', 'COMPETENT'], ['EXPLORER RANK', 'TRAILBLAZER'], ['TRADE RANK', 'TYCOON'], ['CQC RANK', 'HELPLESS'], ['MERCENARY RANK', 'DEFENCELESS'], ['EXOBIOLOGIST RANK', 'DIRECTIONLESS']];
+  ranks.forEach(([t, r], i) => {
+    const x = 176 + (i % 2) * 310, y = 340 + Math.floor(i / 2) * 118;
+    L(g, 'rect', { x, y, width: 296, height: 104, rx: 6 }, { f: ROW_BG, fa: 0.85 });
+    L(g, 'rect', { x, y, width: 296, height: 104, rx: 6, 'stroke-width': 2.5, fill: 'none' }, { s: 'Advanced:x155|y155|z155|w155' });
+    L(g, 'path', { d: `M${x + 22} ${y + 40} l22 -16 l22 16 l-22 28 Z`, 'stroke-width': 2, fill: 'none' }, { s: 'fixed:#d9dfe8' });
+    T(g, x + 180, y + 36, t, 15, 'fixed:#aab2bd', { 'text-anchor': 'middle' });
+    L(g, 'line', { x1: x + 96, y1: y + 50, x2: x + 270, y2: y + 50, 'stroke-width': 3 }, { s: SEL, sa: 0.8 });
+    T(g, x + 180, y + 80, r, 17, 'fixed:#eef1f5', { 'text-anchor': 'middle', 'letter-spacing': 0.5 });
+  });
+  [['BALANCE', '28,822,258 CR'], ['REBUY COST', '1,888,101 CR'], ['NOTORIETY', '0']].forEach(([a, b], i) => {
+    const y = 712 + i * 30;
+    L(g, 'line', { x1: 176, y1: y - 20, x2: 782, y2: y - 20, 'stroke-width': 1 }, { s: SEL, sa: 0.4 });
+    T(g, 180, y, a, 14, 'fixed:#aab2bd'); T(g, 780, y, b, 15, 'fixed:#e8ecf2', { 'text-anchor': 'end' });
+  });
+  L(g, 'rect', { x: 820, y: 240, width: 90, height: 90, 'stroke-width': 2, fill: 'none' }, { s: 'fixed:#e0e4ea' });
+  T(g, 865, 294, 'CORE', 18, 'fixed:#d94fc0', { 'text-anchor': 'middle' });
+  T(g, 930, 286, 'KESTREL MK II', 28, 'fixed:#eef1f5', { 'letter-spacing': 1 });
+  T(g, 930, 312, 'SE-30S', 16, 'fixed:#c9ced6');
+  const tiles = ['SQUADRONS [ FERO ]', 'POWERPLAY', 'OPERATIONS', 'SQUADRON CARRIER', 'HOLO-ME', '', 'GALNET NEWS', 'ENGINEERS', 'CODEX'];
+  tiles.forEach((t, i) => {
+    if (!t) return;
+    const x = 820 + (i % 3) * 206, y = 350 + Math.floor(i / 3) * 128, on = i === 0;
+    L(g, 'rect', { x, y, width: 200, height: 120 }, on ? { f: SEL, fa: 0.9 } : { f: ROW_BG, fa: 0.85 });
+    L(g, 'circle', { cx: x + 100, cy: y + 42, r: 16, 'stroke-width': 2.5, fill: 'none' }, { s: on ? SEL_TEXT : ICONS, b: 'Advanced:w53' });
+    T(g, x + 100, y + 92, t, 16, on ? SEL_TEXT : 'fixed:#e8ecf2', { 'text-anchor': 'middle', 'letter-spacing': 0.5 });
+  });
+  L(g, 'rect', { x: 820, y: 736, width: 612, height: 56 }, { f: ROW_BG, fa: 0.85 });
+  L(g, 'circle', { cx: 1126, cy: 764, r: 16, 'stroke-width': 2.5, fill: 'none' }, { s: 'fixed:#e8ecf2' });
+}
+// --- Cockpit (photo). Two real screenshots (HUD on / HUD off) were split into a greyscale cockpit (img/cockpit-bg.jpg)
+// and a HUD-only layer (img/cockpit-hud.png, white with the HUD's brightness as alpha). Each zone below is a plain shape
+// in a setting's color, shown only where the HUD layer has pixels, so the game's own lines and text are recolored.
+// Coordinates are screenshot pixels (2000x1125), scaled to the 1600x900 preview.
+function buildPhoto(v) {
+  const W = 2000, H = 1125;
+  const defs = $('#hud defs');
+  const m = sv('mask', { id: 'hudmask', maskUnits: 'userSpaceOnUse', x: 0, y: 0, width: W, height: H, style: 'mask-type:alpha' }, defs);
+  sv('image', { href: 'img/cockpit-hud.png', width: W, height: H }, m);
+  const root = sv('g', { transform: 'scale(0.8)' }, v);
+  sv('rect', { width: W, height: H, fill: '#020305' }, root);
+  sv('image', { href: 'img/cockpit-bg.jpg', width: W, height: H, opacity: 0.9 }, root);
+  const g = sv('g', { mask: 'url(#hudmask)' }, root);
+  const Z = (shape, src, b) => {
+    const o = { f: src, b };
+    if (Array.isArray(shape)) return L(g, 'polygon', { points: shape.join(' '), stroke: 'none' }, o);
+    if (shape.rx) return L(g, 'ellipse', Object.assign({ stroke: 'none' }, shape), o);
+    return L(g, 'rect', { x: shape.x, y: shape.y, width: shape.w, height: shape.h, stroke: 'none' }, o);
+  };
+  const R = (x, y, x2, y2) => ({ x, y, w: x2 - x, h: y2 - y });
+  // comms panel (top left): the two lines, then the icons between them
+  Z([80, 28, 635, 122, 635, 176, 80, 86], 'Advanced:x232|y232|z232|w232');
+  Z([100, 46, 620, 134, 620, 158, 100, 72], 'Advanced:x233|y233|z233|w233');
+  // info panel (top right): lines, INFO and the clock
+  Z([1325, 150, 1995, 28, 1995, 62, 1325, 172], 'Advanced:x208|y208|z208|w208');
+  Z(R(1325, 124, 1400, 162), 'text');
+  Z(R(1750, 26, 1915, 82), 'text');
+  // right side: fire-group arc, target marker, weapon name and ammo
+  Z(R(1628, 385, 1685, 728), 'unknown:#8a86ff');
+  Z(R(1470, 540, 1640, 580), 'unknown:#19b4ff');
+  Z(R(1628, 722, 1662, 782), 'unknown:#e0409a');
+  Z(R(1660, 728, 1875, 752), 'text');
+  Z(R(1662, 752, 1795, 761), 'Advanced:x45|y45|z45', 'Advanced:w45');
+  Z(R(1662, 761, 1760, 782), 'text');
+  // wing mate
+  Z(R(1515, 808, 1590, 876), 'unknown:#3fd6c8');
+  Z(R(1595, 820, 1680, 874), 'text');
+  // lower left: target information, target hologram and its base rings
+  Z(R(78, 892, 310, 1034), 'text');
+  Z(R(450, 820, 640, 958), 'Advanced:x72|y72|z72', 'Advanced:y73');
+  Z(R(400, 945, 640, 1090), 'Advanced:x226|y226|z226', 'Advanced:w226');
+  // radar: heat and speed arcs around it, the disc, your ship, a friendly contact, the readouts
+  Z(R(735, 900, 815, 1080), 'Advanced:x221|y221|z221', 'Advanced:w221');
+  Z(R(1185, 905, 1280, 1080), 'Advanced:x222|y222|z222');
+  Z({ cx: 1000, cy: 957, rx: 200, ry: 100 }, 'Advanced:x236|y236|z236', 'Advanced:w236');
+  Z(R(980, 925, 1020, 948), 'Advanced:x239|y239|z239|w239');
+  Z(R(1098, 956, 1146, 984), 'Advanced:x246|y246|z246|w246');
+  Z(R(800, 855, 895, 905), 'text');
+  Z(R(1178, 878, 1212, 908), 'text');
+  Z(R(895, 1045, 920, 1075), 'Advanced:x240|y240|z240', 'Advanced:w240');
+  // lower right: shield rings with your ship hologram inside, shield %, hull ring and hull %
+  Z({ cx: 1470, cy: 915, rx: 126, ry: 76, transform: 'rotate(9 1470 915)' }, 'shield:middle', 'Advanced:w228');
+  Z({ cx: 1468, cy: 912, rx: 92, ry: 42, transform: 'rotate(9 1468 912)' }, 'Advanced:x248|y248|z248', 'Advanced:z101');
+  Z(R(1455, 962, 1535, 992), 'Advanced:x88|y88|z88', 'Advanced:w88');
+  Z([1355, 992, 1455, 992, 1455, 998, 1600, 998, 1600, 1090, 1355, 1090], 'Advanced:x226|y226|z226', 'Advanced:w226');
+  Z(R(1382, 1022, 1432, 1058), 'Advanced:x212|y212|z212', 'Advanced:w212');
+  // power distributor: three columns of bars (bottom to top), then the labels
+  [[1638, 978], [1680, 968], [1723, 986]].forEach(([x, base]) => {
+    for (let i = 0; i < 8; i++) Z(R(x, base - (i + 1) * 10.5, x + 30, base - i * 10.5), `dist:${i}:8`);
+  });
+  Z(R(1632, 988, 1672, 1006), 'text'); Z(R(1676, 972, 1714, 1016), 'text'); Z(R(1718, 996, 1760, 1016), 'text');
+  // fuel and status lights
+  Z([1772, 928, 1955, 938, 1955, 960, 1772, 950], 'text');
+  Z([1772, 950, 1955, 960, 1955, 972, 1772, 962], 'Advanced:x216|y216|z216', 'Advanced:w216');
+  Z(R(1800, 968, 1955, 1036), 'text');
+}
+const VIEW_HINTS = {
+  cockpit: 'Your real cockpit: the HUD is recolored live from your settings · point at a part to see what it is, click it to edit',
+  drawn: 'Drawn cockpit: shows parts that are not in the photo (reticle, markers, frame shift bar) · point at a part, click it to edit',
+  station: 'Station menus: grey text is Elite’s own · row bars = Ship Panel Shadows · orange-based parts = XML matrix',
+  galaxy: 'Galaxy map: windows = Elite’s grey tinted by XML “White becomes…”, buttons and lines = XML “Orange becomes…”, headings = Main Text · icon on a lit button is Elite’s black (not adjustable) · point at a part, click to edit',
+  foot: 'On-foot suit HUD: panels, text, shields, O2 and energy · point at a part, click to edit',
+  fss: 'Full Spectrum Scanner: reticle, centre circle, signal blobs and text',
+  nav: 'Navigation panel (1): edge lines, lit-up selection, its text, list and heading text (Main Text), icons · rows and tabs = the dark shade of the XML matrix color · Transactions tab green/yellow claims are Elite’s own',
+  systems: 'Systems panel (4): edge lines, rank box glow, selected tile and its text, icons · point at a part',
+};
+function showView(name) {
+  for (const n of $$('#hud [data-view]')) n.setAttribute('display', n.dataset.view === name ? 'inline' : 'none');
+  for (const b of $$('#views button')) b.classList.toggle('active', b.dataset.view === name);
+  $('#hover-label').textContent = VIEW_HINTS[name] || VIEW_HINTS.cockpit;
+}
+function holoShip(parent, cx, cy, s, src, kind) {
+  const g2 = sv('g', { transform: `translate(${cx} ${cy}) scale(${s})` }, parent);
+  const body = kind === 'own'
+    ? 'M0 -52 L12 -22 L34 -8 L50 18 L34 26 L16 18 L11 34 L-11 34 L-16 18 L-34 26 L-50 18 L-34 -8 L-12 -22 Z'
+    : 'M0 -48 L24 -12 L44 22 L22 36 L-22 36 L-44 22 L-24 -12 Z';
+  const inner = kind === 'own' ? 'M0 -52 V34 M-34 -8 L-16 18 M34 -8 L16 18 M-11 34 L-6 44 M11 34 L6 44' : 'M0 -48 V36 M-24 -12 L-22 36 M24 -12 L22 36';
+  const bright = kind === 'own' ? 'Advanced:z101' : 'Advanced:y73';
+  L(g2, 'path', { d: body }, { f: src, fa: 0.18, b: bright });
+  L(g2, 'path', { d: body, 'stroke-width': 1.8, fill: 'none', 'vector-effect': 'non-scaling-stroke' }, { s: src, b: bright });
+  L(g2, 'path', { d: inner, 'stroke-width': 1, fill: 'none', 'vector-effect': 'non-scaling-stroke' }, { s: src, sa: 0.6, b: bright });
+}
+function brightness(key) {
+  if (!key) return 1;
+  const [file, k] = key.split(':');
+  const v = val(file, k);
+  return Number.isFinite(v) ? Math.max(0.15, Math.min(1, v)) : 1;
+}
+function renderPreview() {
+  const cache = new Map();
+  const get = src => { let c = cache.get(src); if (!c) { c = sourceColor(src); cache.set(src, c); } return c; };
+  for (const p of paintNodes) {
+    const b = brightness(p.b);
+    if (p.s) { const c = get(p.s); p.n.setAttribute('stroke', c.hex); p.n.setAttribute('stroke-opacity', (c.a * (p.sa == null ? 1 : p.sa) * b).toFixed(3)); }
+    if (p.f) { const c = get(p.f); p.n.setAttribute('fill', c.hex); p.n.setAttribute('fill-opacity', (c.a * (p.fa == null ? 1 : p.fa) * b).toFixed(3)); }
+  }
+  const acc = sourceColor('Advanced:x236|y236|z236').hex;
+  const root = document.documentElement.style;
+  const lum = luminance(acc);
+  const accent = lum < 0.05 ? mix(acc, '#ffffff', 0.35) : acc;
+  root.setProperty('--accent', accent);
+  root.setProperty('--accent-ink', luminance(accent) > 0.22 ? '#0b0d10' : '#ffffff');
+  const [r, g2, b2] = hexToRgb(accent);
+  root.setProperty('--accent-soft', `rgba(${r},${g2},${b2},.14)`);
+  root.setProperty('--accent-line', `rgba(${r},${g2},${b2},.45)`);
+}
+function queueRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; renderPreview(); updateTopbar(); refreshRowStates(); });
+}
+function describe(id) {
+  if (id === 'XML') return 'Elite’s orange, recolored by the XML matrix (“Orange becomes…”): lit-up bars, selected tabs, galaxy map buttons and lines';
+  if (id === 'XMLW') return 'Window background: Elite’s dark grey, tinted by the XML matrix (“White becomes…” tints all of Elite’s greys and whites)';
+  if (id === 'FIXED') return 'Elite’s own color (no setting can change this part)';
+  if (id === 'UNKNOWN') return 'Not identified yet: the setting that colors this part hasn’t been found';
+  if (id === 'TRIM') return 'Canopy trim: Elite’s own bright reflections. No color setting dims it; the LightNight add-on (F5 in game) turns reflections off';
+  if (id === ID.galFog) return 'Galaxy map background haze: GalMap Fog (Elite default = full grey haze; Fog Reduction 1 or 2 = darker map)';
+  const e = S.byId.get(id); if (!e) return id;
+  const g = S.groups.find(x => x.id === e.group);
+  const name = /^(Custom Colou?r|Colou?r)$/i.test(e.title) ? e.cat : `${e.cat} › ${e.title}`;
+  return `${WHERE[id] || (g ? groupName(g) : '')} — ${name}`;
+}
+function setupPreviewEvents() {
+  const svg = $('#hud'), label = $('#hover-label');
+  let cur = null;
+  const clear = () => { if (!cur) return; for (const n of nodesById.get(cur) || []) n.classList.remove('hl'); svg.classList.remove('focus'); cur = null; label.textContent = VIEW_HINTS[S.view] || VIEW_HINTS.cockpit; };
+  for (const b of $$('#views button')) b.addEventListener('click', () => { clear(); S.view = b.dataset.view; store.set('view', S.view); showView(S.view); });
+  S.view = store.get('view', 'cockpit');
+  showView(S.view);
+  svg.addEventListener('pointerover', e => {
+    const t = e.target.closest('[data-id]');
+    if (!t) { clear(); return; }
+    const id = t.dataset.id;
+    if (id === cur) return;
+    clear();
+    cur = id;
+    for (const n of nodesById.get(id) || []) n.classList.add('hl');
+    if (id !== ID.galFog) svg.classList.add('focus');   // pointing at the empty map background shouldn't dim everything
+    label.innerHTML = '';
+    label.append(h('b', null, describe(id)), ' · click to edit');
+  });
+  svg.addEventListener('pointerleave', clear);
+  svg.addEventListener('click', e => { const t = e.target.closest('[data-id]'); if (t) openElement(t.dataset.id); });
+  const btn = $('#btn-compare');
+  const on = () => { S.compare = true; $('#compare-note').hidden = false; renderPreview(); };
+  const off = () => { if (!S.compare) return; S.compare = false; $('#compare-note').hidden = true; renderPreview(); };
+  btn.addEventListener('pointerdown', on);
+  btn.addEventListener('pointerup', off);
+  btn.addEventListener('pointerleave', off);
+  btn.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') on(); });
+  btn.addEventListener('keyup', off);
+}
+
+// ============================================================ tabs
+function showTab(name) {
+  S.tab = name;
+  for (const b of $$('#tabs button')) b.classList.toggle('active', b.dataset.tab === name);
+  for (const t of ['quick', 'all', 'themes', 'backups', 'edhm']) $('#tab-' + t).hidden = t !== name;
+  if (name === 'quick') renderQuick();
+  if (name === 'all') renderAll();
+  if (name === 'themes') renderThemes();
+  if (name === 'backups') renderBackups();
+  if (name === 'edhm') renderEdhm();
+}
+function afterBulkChange() {
+  renderPreview();
+  updateTopbar();
+  if (S.tab === 'all') renderAllList();
+  if (S.tab === 'quick') renderQuick();
+}
+
+// ============================================================ Quick Theme
+function quickOpts() { const q = store.get('quick', { force: true, xml: true, lights: false, side: true }); if (q.side === undefined) q.side = true; return q; }
+// Side panels 1 (navigation) and 4 (systems): parts that follow your colors when "Side panels match my HUD" is on.
+const SIDE_ROLES = { 'Advanced:x76|y76|z76': 'primary', 'Advanced:x53|y53|z53': 'text', 'Advanced:x178|y178|z178': 'accent', 'Advanced:x155|y155|z155|w155': 'accent' };
+function effectiveRoleMap(o) {
+  const map = Object.assign({}, ROLE_MAP);
+  for (const [id, role] of Object.entries(SIDE_ROLES)) { if (o.side) map[id] = role; else delete map[id]; }
+  return map;
+}
+function readRoles() { for (const r of ROLES) S.roles[r.id] = sourceColor(ROLE_SAMPLE[r.id]).hex; }
+function roleCounts() {
+  const n = {};
+  for (const [id, role] of Object.entries(effectiveRoleMap(quickOpts()))) { const e = S.byId.get(id); if (e && e.available) n[ROLE_BASE[role]] = (n[ROLE_BASE[role]] || 0) + 1; }
+  return n;
+}
+// The lit-up selection bar (selected tab / row / tile) is Elite's orange through the XML matrix, and Elite draws it
+// noticeably brighter than the matrix color (checked against in-game screenshots), so lighten it for previews and checks.
+function selectionBarColor() { return mix(applyXml(ORANGE), '#ffffff', 0.35); }
+// Text on the selection bar must contrast with the bar: dark text on a light bar, white on a dark one.
+function readableSelectionText() { const bar = selectionBarColor(); return luminance(bar) > 0.3 ? mix(bar, '#000000', 0.78) : '#ffffff'; }
+function matchHighlightText() {
+  const el = S.byId.get('Advanced:x143|y143|z143|w143'), m = S.byId.get('Startup-Profile:z87');
+  if (!el || !el.available) return;
+  writeColor(el, readableSelectionText(), 1);
+  if (m && m.available) setValue(m.file, m.keys[0], 100);
+}
+function selectionReadability() {
+  const bar = selectionBarColor(), txt = sourceColor('Advanced:x143|y143|z143|w143'), main = sourceColor(ID.text);
+  const shadow = applyXml('#5a2800');
+  const r1 = contrast(txt.hex, bar) * (txt.a < 0.95 ? txt.a : 1), r2 = contrast(main.hex, mix('#05070b', shadow, 0.9));
+  const row = (a, b, r, label) => [h('span', null, h('span', { class: 'swatch', style: `background:${a}` }), ' on ', h('span', { class: 'swatch', style: `background:${b}` })),
+    h('span', { class: 'badge ' + (r >= 4.5 ? 'good' : 'warn') }, r.toFixed(1) + ':1'), h('span', { class: 'muted' }, label)];
+  const ok = r1 >= 4.5;
+  return h('div', { class: 'card ' + (ok ? '' : 'note') },
+    h('b', null, 'Menu readability (side panels, station menus)'),
+    h('div', { style: 'display:grid;grid-template-columns:auto auto 1fr;gap:4px 10px;align-items:center;font-size:12.5px;margin:8px 0' },
+      row(txt.hex, bar, r1, 'Highlighted Text on the lit-up selection bar (XML “Orange becomes…”)'),
+      row(main.hex, mix('#05070b', shadow, 0.9), r2, 'Main Text on the rows (the dark shade of XML “Orange becomes…”)')),
+    h('p', { class: 'muted small', style: 'margin:0 0 8px' }, 'The selection bar shows brighter in game than its color swatch, so it usually needs dark highlighted text. 4.5:1 or more reads well.'),
+    ok ? null : h('div', { class: 'row-actions' },
+      h('button', { class: 'btn small', onclick: () => { matchHighlightText(); commit('Readable highlighted text'); afterBulkChange(); toast('Highlighted text set to a dark shade that reads on your selection bar. Save to game to use it.', 'good'); } }, 'Fix: readable highlighted text')));
+}
+function applyRoles(bases) {
+  const o = quickOpts();
+  for (const [id, role] of Object.entries(effectiveRoleMap(o))) {
+    const base = ROLE_BASE[role];
+    if (!bases.has(base) || (base === 'lights' && !o.lights)) continue;
+    const el = S.byId.get(id);
+    if (!el || !el.available) continue;
+    writeColor(el, roleColor(role, S.roles), null);
+    if (o.force) {
+      const m = S.modeFor.get(id);
+      // panel backgrounds keep Elite's dark default unless you change them yourself (colored backgrounds hurt text contrast)
+      if (m && m.available && m.type !== 'ShipPanelOpacity') {
+        const st = modeState(m, valW(m.file, m.keys[0]));
+        if (st === 'default' || st === 'xml') setValue(m.file, m.keys[0], m.type === 'RankBoxesMode' ? 101 : customValueFor(m));   // 101 = all rank boxes
+      }
+    }
+  }
+  if (o.xml && bases.has('primary') && S.baseline['XML-Profile'] && S.baseline['XML-Profile'].size) writeXml(xmlForColor(S.roles.primary));
+  if (o.side && bases.has('primary')) matchHighlightText();
+}
+function renderQuick() {
+  const box = $('#tab-quick');
+  box.innerHTML = '';
+  readRoles();
+  const st = S.status || {};
+  if (!st.edhm || !st.edhm.installed) box.append(h('div', { class: 'card bad' }, h('b', null, 'HUD color files not found in your game. '), 'The HUD mod needs to be in Elite before your colors can be saved: the ', h('a', { href: '#', onclick: ev => { ev.preventDefault(); showTab('edhm'); } }, 'Setup tab'), ' can install it. You can still design colors and save themes now.'));
+  box.append(h('div', { class: 'steps' },
+    h('div', null, h('b', null, '1 · Pick colors'), 'Here, or click any part of the HUD'),
+    h('div', null, h('b', null, '2 · Save to game'), 'Top-right button (Ctrl+S)'),
+    h('div', null, h('b', null, '3 · Press F11'), 'In Elite to reload, or just launch it')));
+  box.append(h('h2', null, 'Start from a palette'));
+  const pals = h('div', { class: 'palettes' });
+  for (const p of PALETTES) {
+    pals.append(h('button', { class: 'pal', onclick: () => {
+      Object.assign(S.roles, p.c);
+      applyRoles(new Set(ROLES.map(r => r.id)));
+      commit('Palette: ' + p.name);
+      afterBulkChange();
+      toast(`Applied “${p.name}”. Tweak any color below, then Save to game.`);
+    } }, h('span', { class: 'sw' }, ['primary', 'accent', 'shields', 'hostile'].map(k => h('i', { style: `background:${p.c[k]}` }))), p.name));
+  }
+  box.append(pals);
+  box.append(h('h3', null, 'Your colors'));
+  const counts = roleCounts();
+  const card = h('div', { class: 'card' });
+  for (const r of ROLES) {
+    const input = h('input', { type: 'color', value: S.roles[r.id], 'aria-label': r.name });
+    input.addEventListener('input', () => { S.roles[r.id] = input.value; applyRoles(new Set([r.id])); queueRender(); scheduleCommit('Quick theme: ' + r.name); });
+    input.addEventListener('change', () => { commit('Quick theme: ' + r.name); });
+    card.append(h('div', { class: 'role' }, input, h('div', null, h('div', { class: 'name' }, r.name), h('div', { class: 'desc' }, r.desc)), h('div', { class: 'n' }, `${counts[r.id] || 0} parts`)));
+  }
+  box.append(card);
+  const o = quickOpts();
+  const chk = (key, text) => h('label', null, h('input', { type: 'checkbox', checked: !!o[key], onchange: e => { const q = quickOpts(); q[key] = e.target.checked; store.set('quick', q); } }), h('span', null, text));
+  box.append(h('div', { class: 'checks' },
+    chk('force', 'Switch parts that still use Elite’s orange (or the XML matrix) over to your colors'),
+    chk('xml', 'Also set the XML color matrix to match your Main HUD color (used by parts left in “XML” mode)'),
+    chk('lights', 'Also recolor the cockpit cabin lighting'),
+    chk('side', 'Side panels (1 and 4) match my HUD: edge lines, icons and rank boxes follow your colors, and the text on the selected tab or row stays readable')));
+  box.append(h('div', { class: 'row-actions' },
+    h('button', { class: 'btn', onclick: () => {
+      Object.assign(S.roles, harmonyFrom(S.roles.primary));
+      applyRoles(new Set(ROLES.map(r => r.id)));
+      commit('Build from Main HUD color');
+      afterBulkChange();
+      toast('Built a matching set of colors from your Main HUD color.');
+    } }, 'Build the rest from Main HUD color'),
+    h('button', { class: 'btn', onclick: () => showTab('all') }, 'Fine-tune every part…'),
+    h('button', { class: 'btn', title: 'Something looks wrong? Put settings back to their defaults', onclick: openResetDialog }, '↺ Start over (defaults)…')));
+  box.append(h('p', { class: 'muted small', style: 'margin-top:14px' }, 'Changes show in the preview right away. Nothing is written to the game until you click Save to game, and every change can be undone with Ctrl+Z.'));
+}
+
+// ============================================================ plain-English guide
+// Friendly names for the setting groups, and where you see them in game.
+const GROUP_INFO = {
+  Panel_UP: { name: 'Top panels (comms & info)', where: 'The two panels across the top of the cockpit: comms/chat on the left, ship name and info on the right, plus your wing-mate icons.' },
+  Reticle: { name: 'Aiming & targets', where: 'The circle and bars in the middle of the screen, and the markers drawn around ships, stations and destinations out in space.' },
+  Settings: { name: 'HUD text', where: 'The color of most words on the HUD and in menus. “Highlighted text” is the text on a selected (lit-up) line. Also the mouse cursor.' },
+  Panel_Lower: { name: 'Ship panels & menus', where: 'The lower-left target panel, side panels 1 (left) and 4 (right), the navigation list, mission and carrier panels, and the background behind panel text (“Ship Panel Shadows”).' },
+  Lighting: { name: 'Cockpit lighting', where: 'The light inside your cockpit, not the HUD itself.' },
+  SpecialFX: { name: 'Space, maps & scanners', where: 'Orbit lines, the galaxy map, FSS/DSS scanners, night vision, mining, cargo scoop and supercruise effects.' },
+  CHUD_AHUD: { name: 'Combat & analysis modes', where: 'Extra HUD pieces that only appear in combat mode and in analysis (exploration/mining) mode.' },
+  ShieldsHolo: { name: 'Shields & holograms', where: 'Your shield rings, the 3-D hologram of your ship and your target, hull bars, and the landing and terrain holograms.' },
+  RadarHUD: { name: 'Radar, bars & compass', where: 'The radar disc and its markers, the speed and heat bars beside it, the compass, and warnings like speeding and FSD charging.' },
+  Power_Distributor: { name: 'Power distributor', where: 'The three stacked SYS / ENG / WEP bars on the lower-right panel, with their pips.' },
+  FuelBars: { name: 'Fuel, heat & status lights', where: 'The fuel bar, the heat-signature bar, and the small lights for landing gear, cargo scoop and mass lock.' },
+  Foot_HUD: { name: 'On-foot suit HUD', where: 'The HUD while walking around: suit shields, O2, energy and suit text.' },
+  Prefs: { name: 'Personal preferences', where: 'Space dust, canopy effects and similar. Themes never change these. Colour Protection keeps some of Elite’s own colors (yellow, green, red…) out of the XML matrix. Tested in game: turning it off does NOT recolor the green rows and yellow text on the Transactions tab (claims); Elite draws those itself, so leave protection on.' },
+};
+const groupName = g => (GROUP_INFO[g.id] || {}).name || g.title;
+// Where a part sits on screen, shown when you point at it in the preview.
+const WHERE = {
+  'Advanced:x232|y232|z232|w232': 'Top-left comms panel', 'Advanced:x233|y233|z233|w233': 'Top-left comms panel',
+  'Advanced:x208|y208|z208|w208': 'Top-right info panel', 'Advanced:x235|y235|z235': 'Top-right info panel', 'Advanced:x183|y183|z183': 'Top-right info panel',
+  'Advanced:x204|y204|z204|w204': 'Outline of the lower panels (target left, your ship right)',
+  'Advanced:x90|y90|z90': 'Shadow behind panel text (side panel rows 1 and 4 follow the XML matrix instead)',
+  'Advanced:x79|y79|z79': 'Target panel (lower left)', 'Advanced:x51|y51|z51': 'Target panel (lower left)', 'Advanced:x52|y52|z52': 'Target panel (lower left)',
+  'Advanced:x125|y125|z125|w125': 'Target panel (lower left)', 'Advanced:x72|y72|z72': 'Target panel (lower left)', 'Advanced:x53|y53|z53': 'Target & navigation panels',
+  'Advanced:x76|y76|z76': 'Side panels 1 and 4 (look left / right)',
+  'Advanced:x248|y248|z248': 'Your ship panel (lower right)', 'Advanced:x88|y88|z88': 'Your ship panel (lower right)',
+  'Advanced:x128|y128|z128|w128': 'Under the comms panel',
+  'Advanced:x45|y45|z45': 'Weapon panel on the right (ammo bar, best guess)',
+  'Advanced:x226|y226|z226': 'Rings under the holograms', 'Advanced:x205|y205|z205|w205': 'Thin rings under the holograms',
+  'Advanced:x155|y155|z155|w155': 'Systems panel 4: glow around the rank boxes',
+  'Advanced:x143|y143|z143|w143': 'Text on the selected (lit-up) tab or row',
+  'Advanced:x178|y178|z178': 'Navigation panel: second icon color',
+  'Advanced:x69|y69|z69': 'Cabin lighting: tint on the left side of the cockpit (not the white trim)',
+  'Advanced:x70|y70|z70': 'Cabin lighting (second color): tint on the right side of the cockpit',
+  'Advanced:x190|y190|z190': 'Cabin lighting: background glow around the centre console',
+};
+function glossaryCard() {
+  const d = h('details', { class: 'card', style: 'padding:10px 14px' });
+  d.open = store.get('glossaryOpen', true);
+  d.addEventListener('toggle', () => store.set('glossaryOpen', d.open));
+  const item = (t, x) => h('div', { style: 'margin:6px 0' }, h('b', null, t + ': '), h('span', { class: 'muted' }, x));
+  d.append(h('summary', { style: 'cursor:pointer;font-weight:600' }, 'What the words mean'),
+    item('Mode (the dropdown above a color)', 'Decides which color a part uses. “Custom Color” uses the color below it. “Elite Default” keeps Elite’s own orange, so your color is ignored. “XML” uses Elite’s orange run through your XML matrix.'),
+    item('Panel lines', 'The thin outline frame around a panel.'),
+    item('Divider lines', 'The thin lines that split a panel into sections.'),
+    item('Panel shadows / background', 'The dark fill behind the text inside panels and menus. Keep it dark so text stays readable.'),
+    item('Brightness', '1 is normal, 0 turns the part off, above 1 makes it glow brighter.'),
+    item('Opacity / alpha', '100% is solid, 0% is invisible.'),
+    item('Bloom / glow', 'The soft light around lines and holograms.'),
+    item('One color = one setting', 'A color is stored as three numbers (red, green, blue), plus one for opacity. The Save button counts it as one change.'));
+  return d;
+}
+async function loadDefaults() {
+  S.defaults = null;
+  try {
+    const r = await fetch('defaults.json', { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    S.defaults = {}; S.defaultsVer = d.edhm;
+    for (const f of FILES) S.defaults[f] = new Map(Object.entries((d.files || {})[f] || {}));
+  } catch (e) { S.defaults = null; }
+}
+const defVal = (f, k) => (S.defaults && S.defaults[f] ? S.defaults[f].get(k) : undefined);
+function isElDefault(e) {
+  return e.keys.every(k => { const d = defVal(e.file, k), v = S.working[e.file] && S.working[e.file].get(k); return d == null || v == null || Math.abs(parseFloat(d) - parseFloat(v)) <= 0.00006; });
+}
+function openResetDialog() {
+  if (!S.defaults) { toast('The defaults file (defaults.json) is missing, so Studio UI can’t reset to defaults.', 'bad'); return; }
+  const grp = S.groups.find(g => g.id === S.group);
+  const grpName = S.group === 'XML' ? 'XML Colour Matrix' : grp ? groupName(grp) : null;
+  const m = h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true' });
+  const radio = (v, label, note, checked) => h('label', { style: 'display:flex;gap:10px;align-items:flex-start;margin:10px 0;cursor:pointer' },
+    h('input', { type: 'radio', name: 'rscope', value: v, checked, style: 'margin-top:4px;accent-color:var(--accent)' }),
+    h('span', null, h('b', { style: 'color:var(--text)' }, label), h('div', { class: 'small' }, note)));
+  const prefs = h('input', { type: 'checkbox', style: 'accent-color:var(--accent)' });
+  const onKey = ev => { if (ev.key === 'Escape') done(); };
+  const done = () => { m.remove(); document.removeEventListener('keydown', onKey); };
+  const apply = () => {
+    const scope = $('input[name=rscope]:checked', m).value;
+    const incPrefs = prefs.checked || (scope === 'group' && S.group === 'Prefs');
+    const touched = new Set();
+    const doKeys = (file, ks) => {
+      for (const k of ks) {
+        const d = defVal(file, k);
+        if (d == null || (!incPrefs && S.prefKeys.has(file + ':' + k))) continue;
+        if (setValue(file, k, parseFloat(d))) touched.add((S.keyEl.get(file + ':' + k) || { id: file }).id);
+      }
+    };
+    if (scope === 'all') for (const f of FILES) doKeys(f, [...(S.working[f] || new Map()).keys()]);
+    else if (scope === 'bright') for (const e of S.els) { if (!e.available) continue; if (e.kind === 'range' || e.kind === 'toggle') doKeys(e.file, e.keys); else if (e.kind === 'color' && e.keys[3]) doKeys(e.file, [e.keys[3]]); }
+    else if (S.group === 'XML') doKeys('XML-Profile', XML_KEYS.flat());
+    else if (grp) for (const e of grp.els) if (e.available) doKeys(e.file, e.keys);
+    done();
+    commit('Reset to defaults');
+    afterBulkChange();
+    toast(touched.size ? `${touched.size} setting(s) set back to their defaults. Check the preview, then Save to game. Ctrl+Z undoes it.` : 'Everything you picked already matches the defaults.', 'good');
+  };
+  m.append(h('div', { class: 'box' }, h('h2', null, 'Reset to defaults'),
+    h('div', { class: 'body' },
+      h('p', null, 'Puts settings back to their original defaults. Use it when something looks wrong and you’re not sure what changed it.'),
+      radio('all', 'Everything', 'All colors, modes, brightness and opacity.', true),
+      radio('bright', 'Only brightness & opacity', 'Keeps your colors. Fixes parts that got too dim, too bright, see-through or invisible.', false),
+      grpName ? radio('group', `Only “${grpName}”`, 'Just the settings group you’re looking at now.', false) : null,
+      h('label', { style: 'display:flex;gap:10px;align-items:center;margin-top:12px;cursor:pointer' }, prefs, h('span', { class: 'small' }, 'Also reset my personal preferences (space dust, canopy effects…)')),
+      h('p', { class: 'small', style: 'margin-top:12px' }, 'Only the editor changes. Your game changes when you click Save to game, and Ctrl+Z undoes this.')),
+    h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: done }, 'Cancel'), h('button', { class: 'btn primary', onclick: apply }, 'Reset'))));
+  m.addEventListener('click', ev => { if (ev.target === m) done(); });
+  document.addEventListener('keydown', onKey);
+  document.body.append(m);
+}
+// The lower-left target panel has no dark backing in game. Its text sits partly on dark space, partly on the
+// cabin-lit dashboard, and partly on the white canopy trim (Elite's own reflections; tested: colour settings don't dim it).
+function readableTextColor(hex) { const [hh] = rgbToHsl(hexToRgb(hex)); return hslToHex(hh, 1, 0.6); }   // same hue, strong mid-tone
+function applyReadableTargetPanel() {
+  const el = S.byId.get(ID.text);
+  if (el && el.available) writeColor(el, readableTextColor(sourceColor(ID.text).hex), 1);
+  const w = valW('Advanced', 'w69');
+  if (!(w <= 0.3)) setValue('Advanced', 'w69', 0.3);
+  commit('Readable target panel');
+  afterBulkChange();
+  toast('Applied: solid main text in a strong mid-tone of your color, cabin lighting dimmed to 30%. Save to game, then check in Elite.', 'good');
+}
+function targetPanelReadability() {
+  const text = sourceColor(ID.text), light = sourceColor('Advanced:x69|y69|z69');
+  const bright = brightness('Advanced:w69');
+  const onDash = mix('#2a1a10', light.hex, Math.min(1, bright * 1.5));
+  const alpha = text.a < 0.95 ? text.a : 1;
+  const rows = [['Dark space', '#05070b'], ['Cabin-lit dashboard', onDash], ['White canopy trim', '#f4f1ea']].map(([n, bg]) => ({ n, bg, r: contrast(text.hex, bg) * alpha }));
+  const worstFixable = Math.min(rows[0].r, rows[1].r);
+  const ok = worstFixable >= 4.5 && alpha >= 0.95;
+  const card = h('div', { class: 'card ' + (ok ? '' : 'note') },
+    h('b', null, 'Target panel readability (lower-left cockpit panel)'),
+    h('p', { class: 'muted small', style: 'margin:6px 0' }, 'That panel has no dark background. Its text sits on three different things. 4.5:1 or more reads well.'),
+    h('div', { style: 'display:grid;grid-template-columns:auto auto 1fr;gap:4px 10px;align-items:center;font-size:12.5px;margin-bottom:8px' },
+      rows.map(x => [h('span', null, h('span', { class: 'swatch', style: `background:${text.hex}` }), ' on ', h('span', { class: 'swatch', style: `background:${x.bg}` })),
+        h('span', { class: 'badge ' + (x.r >= 4.5 ? 'good' : x.n === 'White canopy trim' ? '' : 'warn') }, x.r.toFixed(1) + ':1'),
+        h('span', { class: 'muted' }, x.n + (x.n === 'White canopy trim' ? ': Elite’s own reflections, no color setting fixes this' : ''))])),
+    h('p', { class: 'muted small', style: 'margin:0 0 8px' }, 'Best results: solid text in a strong mid-tone (not near-white), dim cabin lighting. For the white trim, use the LightNight add-on (F5 in game turns reflections off) and turn Bloom off in Elite’s graphics options.'),
+    h('div', { class: 'row-actions' },
+      h('button', { class: 'btn small', onclick: applyReadableTargetPanel, title: 'Solid main text in a strong mid-tone of your current color, cabin lighting at 30%' }, 'Apply readable target panel fix'),
+      h('button', { class: 'btn small', onclick: () => showTab('edhm') }, 'Graphics tips…')));
+  return card;
+}
+// Under a colour: say so when its mode means the colour isn't used in game.
+function updateModeNote(row, e) {
+  const note = $('.modenote', row);
+  if (!note) return;
+  const m = S.modeFor.get(e.id);
+  const v = m && m.available ? valW(m.file, m.keys[0]) : NaN;
+  const st = m && m.available ? modeState(m, v) : 'custom';
+  if (st === 'custom') { note.hidden = true; return; }
+  const name = ((S.presets[m.type] || []).find(o => o.v === v) || {}).name || String(v);
+  const modeName = /^(colou?r )?mode$/i.test(m.title.trim()) ? `${m.cat} mode` : m.title;
+  note.hidden = false;
+  note.innerHTML = '';
+  if (st === 'text') { note.append(`Not used right now: “${modeName}” is set to “${name}”, so this part uses the main text color.`); return; }
+  note.append(`Not shown in game right now: “${modeName}” is set to “${name}”. `,
+    h('button', { class: 'linkbtn', onclick: () => { setValue(m.file, m.keys[0], customValueFor(m)); commit(m.title + ': Custom Color'); renderAllList(); } }, 'Use my color'));
+}
+
+// ============================================================ All Settings
+const RANGE ={ '1X': [0, 1], '2X': [0, 2], '4X': [0, 4], '4X_Min': [0, 4], 'Brightness': [0, 1] };
+function groupCount(g) { return g.els.filter(e => e.available).length; }
+function renderAll() {
+  const box = $('#tab-all');
+  box.innerHTML = '';
+  const search = h('input', { class: 'search', type: 'search', placeholder: 'Search all settings (e.g. radar, shield, text)…', value: S.search });
+  search.addEventListener('input', () => { S.search = search.value; renderAllList(); });
+  const only = h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: S.onlyChanged, onchange: e => { S.onlyChanged = e.target.checked; renderAllList(); } }), 'Changed only');
+  box.append(h('div', { class: 'toolrow' }, search, only));
+  box.append(h('div', { class: 'row-actions', style: 'margin:-2px 0 12px' },
+    h('button', { class: 'btn small', title: 'Put settings back to their defaults', onclick: openResetDialog }, '↺ Reset to defaults…')));
+  const chips = h('div', { class: 'groups', id: 'group-chips' });
+  const addChip = (id, title, n, tip) => chips.append(h('button', { class: S.group === id ? 'active' : '', title: tip || title, onclick: () => { S.group = id; S.search = ''; search.value = ''; renderAll(); } }, title, n != null ? h('span', { class: 'c' }, n) : null));
+  for (const g of S.groups) { const n = groupCount(g); if (n) addChip(g.id, groupName(g), n, `Original name: ${g.title}`); }
+  if (S.baseline['XML-Profile'] && S.baseline['XML-Profile'].size) addChip('XML', 'XML Matrix', null);
+  if (S.others.length) addChip('Other', 'Other', S.others.length);
+  box.append(chips);
+  box.append(h('div', { id: 'all-list' }));
+  renderAllList();
+}
+function renderAllList() {
+  const list = $('#all-list');
+  if (!list) return;
+  list.innerHTML = '';
+  const q = S.search.trim().toLowerCase();
+  if (!q && S.group === 'XML') { list.append(xmlEditor()); return; }
+  if (!q && S.group === 'Other') { list.append(othersEditor()); return; }
+  let els;
+  if (q) els = S.els.filter(e => e.available && (e.title + ' ' + e.cat + ' ' + e.desc + ' ' + e.keys.join(' ')).toLowerCase().includes(q));
+  else { const g = S.groups.find(x => x.id === S.group) || S.groups[0]; els = g.els.filter(e => e.available); }
+  if (S.onlyChanged) els = els.filter(isElDirty);
+  if (!els.length) { list.append(h('p', { class: 'muted' }, S.onlyChanged ? 'No unsaved changes here.' : 'Nothing matches that search.')); return; }
+  if (!q) {
+    const info = GROUP_INFO[S.group];
+    if (info) list.append(h('p', { class: 'small', style: 'margin:0 0 10px' }, h('b', null, 'Where you see this: '), h('span', { class: 'muted' }, info.where)));
+    if (S.group === 'Settings' || S.group === 'Panel_Lower' || S.group === 'XML') list.append(selectionReadability());
+    if (S.group === 'Lighting' || S.group === 'Settings') list.append(targetPanelReadability());
+    list.append(glossaryCard());
+  }
+  const cats = new Map();
+  for (const e of els) { const key = (q ? groupName(S.groups.find(g => g.id === e.group) || { id: '', title: '' }) + ' › ' : '') + e.cat; if (!cats.has(key)) cats.set(key, []); cats.get(key).push(e); }
+  for (const [cat, items] of cats) {
+    const c = h('section', { class: 'cat' }, h('header', null, cat, h('span', null, items.length + (items.length === 1 ? ' setting' : ' settings'))));
+    for (const e of items) c.append(elRow(e));
+    list.append(c);
+  }
+}
+function elRow(e) {
+  const row = h('div', { class: 'el', 'data-id': e.id });
+  const title = h('div', { class: 't' }, e.title);
+  const ctl = h('div', { class: 'ctl' });
+  const reset = h('button', { class: 'reset', title: 'Undo my unsaved change (back to what is in the game now)', 'aria-label': 'Undo change to ' + e.title, html: '&#8634;' });
+  reset.addEventListener('click', () => { for (const k of e.keys) { const b = S.baseline[e.file].get(k); if (b != null) setValue(e.file, k, parseFloat(b)); } commit('Reset: ' + e.title); queueRender(); row.replaceWith(elRow(e)); });
+  const def = h('button', { class: 'reset def', title: 'Set to the default value', 'aria-label': 'Set ' + e.title + ' to its default' }, 'Default');
+  def.addEventListener('click', () => { for (const k of e.keys) { const d = defVal(e.file, k); if (d != null) setValue(e.file, k, parseFloat(d)); } commit('Default: ' + e.title); queueRender(); row.replaceWith(elRow(e)); });
+  row.append(h('div', { class: 'top' }, title, ctl, def, reset));
+  let alphaRow = null;
+  if (e.kind === 'color') {
+    const c = readColorW(e);
+    const pick = h('input', { type: 'color', value: c.hex, 'aria-label': e.title });
+    const hex = h('input', { class: 'hex', value: c.hex.toUpperCase(), maxlength: 7, spellcheck: 'false', 'aria-label': e.title + ' hex code' });
+    pick.addEventListener('input', () => { writeColor(e, pick.value, null); hex.value = pick.value.toUpperCase(); scheduleCommit('Color: ' + e.title); });
+    pick.addEventListener('change', () => commit('Color: ' + e.title));
+    hex.addEventListener('change', () => {
+      let v = hex.value.trim(); if (!v.startsWith('#')) v = '#' + v;
+      if (/^#[0-9a-f]{6}$/i.test(v)) { writeColor(e, v.toLowerCase(), null); pick.value = v.toLowerCase(); commit('Color: ' + e.title); }
+      hex.value = pick.value.toUpperCase();
+    });
+    ctl.append(pick, hex);
+    if (e.keys[3]) {
+      const a = h('input', { type: 'range', min: 0, max: 100, step: 1, value: Math.round((c.a == null ? 1 : c.a) * 100), 'aria-label': e.title + ' opacity' });
+      const out = h('span', null, a.value + '%');
+      a.addEventListener('input', () => { setValue(e.file, e.keys[3], a.value / 100); out.textContent = a.value + '%'; scheduleCommit('Opacity: ' + e.title); });
+      a.addEventListener('change', () => commit('Opacity: ' + e.title));
+      alphaRow = h('div', { class: 'alpha' }, 'Opacity', a, out);
+    }
+  } else if (e.kind === 'mode') {
+    const v = valW(e.file, e.keys[0]);
+    const opts = S.presets[e.type] || [];
+    const sel = h('select', { 'aria-label': e.title });
+    let found = false;
+    for (const o of opts) { const opt = h('option', { value: String(o.v) }, o.name); if (o.v === v) { opt.selected = true; found = true; } sel.append(opt); }
+    if (!found) sel.append(h('option', { value: String(v), selected: true }, `Other (${v})`));
+    sel.addEventListener('change', () => { setValue(e.file, e.keys[0], parseFloat(sel.value)); commit(e.title + ': ' + sel.options[sel.selectedIndex].text); });
+    ctl.append(sel);
+  } else if (e.kind === 'range') {
+    const v = valW(e.file, e.keys[0]);
+    const [mn0, mx0] = RANGE[e.type] || [0, 2];
+    const mn = Math.min(mn0, v), mx = Math.max(mx0, v);
+    const r = h('input', { type: 'range', min: mn, max: mx, step: 0.01, value: v, 'aria-label': e.title });
+    const n = h('input', { class: 'num', type: 'number', step: 0.05, value: fmt(v), 'aria-label': e.title + ' value' });
+    r.addEventListener('input', () => { setValue(e.file, e.keys[0], parseFloat(r.value)); n.value = fmt(parseFloat(r.value)); scheduleCommit(e.title); });
+    r.addEventListener('change', () => commit(e.title));
+    n.addEventListener('change', () => { const x = parseFloat(n.value); if (Number.isFinite(x)) { setValue(e.file, e.keys[0], x); r.value = x; commit(e.title); } else n.value = fmt(valW(e.file, e.keys[0])); });
+    ctl.append(r, n);
+  } else if (e.kind === 'toggle') {
+    const v = valW(e.file, e.keys[0]);
+    const cb = h('input', { type: 'checkbox', checked: v >= 0.5, 'aria-label': e.title });
+    cb.addEventListener('change', () => { setValue(e.file, e.keys[0], cb.checked ? 1 : 0); commit(e.title + (cb.checked ? ': on' : ': off')); });
+    ctl.append(h('label', { class: 'switch' }, cb, v >= 0.5 ? '' : ''));
+  }
+  if (alphaRow) row.append(alphaRow);
+  if (e.kind === 'color' && S.modeFor.has(e.id)) row.append(h('div', { class: 'modenote', hidden: true }));
+  if (e.desc && e.desc.trim().toLowerCase() !== e.title.trim().toLowerCase()) {
+    const d = h('div', { class: 'd clamp', title: 'Click to show more' }, e.desc);
+    d.addEventListener('click', () => d.classList.toggle('clamp'));
+    row.append(d);
+  }
+  refreshRow(row, e);
+  return row;
+}
+function readColorW(e) { const c = S.compare; S.compare = false; const r = readColor(e); S.compare = c; return r; }
+function refreshRow(row, e) {
+  const dirty = isElDirty(e);
+  const t = $('.t', row);
+  let dot = $('.dirty', t);
+  if (dirty && !dot) t.append(h('span', { class: 'dirty', title: 'Changed, not saved yet' }));
+  if (!dirty && dot) dot.remove();
+  $('.reset:not(.def)', row).classList.toggle('off', !dirty);
+  const def = $('.reset.def', row);
+  if (def) def.classList.toggle('off', !S.defaults || isElDefault(e));
+  updateModeNote(row, e);
+}
+function refreshRowStates() {
+  if (S.tab !== 'all') return;
+  for (const row of $$('#all-list .el[data-id]')) { const e = S.byId.get(row.dataset.id); if (e) refreshRow(row, e); }
+}
+function openElement(id) {
+  if (id === 'FIXED') { toast('That part keeps Elite’s own color. No setting can change it.'); return; }
+  if (id === 'UNKNOWN') { toast('The setting for this part hasn’t been identified yet. If you find what changes it in game, report it on Elite Studio's GitHub page so the preview can be wired up.'); return; }
+  if (id === 'TRIM') { toast('The white canopy trim is Elite’s own and reflects starlight. No color setting dims it. The optional LightNight add-on turns reflections off (F5 in game), and turning Bloom off in Elite helps too.'); return; }
+  if (id === 'XMLW') {
+    S.group = 'XML'; S.search = ''; S.onlyChanged = false; showTab('all');
+    const row = $('#xml-white-row');
+    if (row) { row.scrollIntoView({ block: 'center', behavior: 'smooth' }); row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); }
+    toast('Galaxy map windows are Elite’s dark grey, tinted by the XML matrix. “White becomes…” sets the tint: pure white keeps them neutral grey.');
+    return;
+  }
+  if (id === 'XML') {
+    S.group = 'XML'; S.search = ''; S.onlyChanged = false; showTab('all');
+    // lit-up bars / selected tabs are Elite's orange through the XML matrix: go straight to "Orange becomes…"
+    const row = $('#xml-orange-row');
+    if (row) {
+      row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+      const inp = $('input', row); if (inp) inp.focus({ preventScroll: true });
+    }
+    toast('Lit-up bars and selected tabs use Elite’s orange, recolored by the XML matrix. Change “Orange becomes…” to recolor them.');
+    return;
+  }
+  const e = S.byId.get(id);
+  if (!e) return;
+  S.group = e.group; S.search = ''; S.onlyChanged = false;
+  showTab('all');
+  const row = $(`#all-list .el[data-id="${CSS.escape(id)}"]`);
+  if (row) { row.scrollIntoView({ block: 'center', behavior: 'smooth' }); row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); const inp = $('input,select', row); if (inp) inp.focus({ preventScroll: true }); }
+}
+// ---- XML matrix helpers ------------------------------------------------------
+// Rows of the matrix say what the red, green and blue parts of an original colour turn into:
+// new colour = R*row1 + G*row2 + B*row3 (colours as 0..1).
+const XML_STOCK = [   // Elite's own colours that the matrix recolours
+  { hex: ORANGE, name: 'Main HUD orange', note: 'Most panels, lines and icons' },
+  { hex: '#5a2800', name: 'Dark orange', note: 'Menu row and panel backgrounds' },
+  { hex: '#ffb347', name: 'Light orange', note: 'Highlights and selected items' },
+  { hex: '#ffd23c', name: 'Yellow', note: 'Warnings, profit markers' },
+  { hex: '#ffffff', name: 'White', note: 'Bright text and markers' },
+  { hex: '#ff2a1a', name: 'Red', note: 'Hostile, danger' },
+  { hex: '#35d435', name: 'Green', note: 'Friendly, good' },
+  { hex: '#3fa9ff', name: 'Blue', note: 'Shields, secondary info' },
+];
+const XML_SRC = { orange: hex01(ORANGE), white: [1, 1, 1], blue: [0.1, 0.45, 1] };   // anchors for the colour-pick solver
+const XML_PRESETS = [
+  { name: 'Stock (no change)', identity: true },
+  { name: 'Ice Blue', o: '#3fa9ff', b: '#ffb347' }, { name: 'Emerald', o: '#19d27a', b: '#36e0d0' },
+  { name: 'Violet', o: '#9b6bff', b: '#6de3ff' }, { name: 'Crimson', o: '#e0203a', b: '#ffb020' },
+  { name: 'Gold', o: '#ffc234', b: '#7fd4ff' }, { name: 'Cyan', o: '#00d4e0', b: '#b6a0ff' },
+  { name: 'Monochrome', o: '#d8dde3', b: '#9fb8cc' },
+];
+const IDENTITY = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+function inv3(m) {
+  const [a, b, c] = m[0], [d, e, f] = m[1], [g, hh, i] = m[2];
+  const A = e * i - f * hh, B = -(d * i - f * g), C = d * hh - e * g, det = a * A + b * B + c * C;
+  if (Math.abs(det) < 1e-9) return null;
+  return [[A / det, -(b * i - c * hh) / det, (b * f - c * e) / det], [B / det, (a * i - c * g) / det, -(a * f - c * d) / det], [C / det, -(a * hh - b * g) / det, (a * e - b * d) / det]];
+}
+const mul3 = (A, B) => A.map(row => [0, 1, 2].map(j => row[0] * B[0][j] + row[1] * B[1][j] + row[2] * B[2][j]));
+const tidyMatrix = X => X.map(r => r.map(v => Math.round(Math.max(-4, Math.min(4, v)) * 100) / 100));
+// Exact matrix so that orange, white and blue become the three chosen colours.
+function xmlFromPicks(o, w, b) {
+  const Si = inv3([XML_SRC.orange, XML_SRC.white, XML_SRC.blue]);
+  return tidyMatrix(mul3(Si, [hex01(o), hex01(w), hex01(b)]));
+}
+// Matrix from simple sliders: hue shift (degrees), saturation (1 = normal), brightness (1 = normal).
+function xmlFromSliders(hueDeg, sat, bright) {
+  const t = hueDeg * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+  const Hc = [[0.213 + c * 0.787 - s * 0.213, 0.715 - c * 0.715 - s * 0.715, 0.072 - c * 0.072 + s * 0.928],
+    [0.213 - c * 0.213 + s * 0.143, 0.715 + c * 0.285 + s * 0.140, 0.072 - c * 0.072 - s * 0.283],
+    [0.213 - c * 0.213 - s * 0.787, 0.715 - c * 0.715 + s * 0.715, 0.072 + c * 0.928 + s * 0.072]];
+  const Hx = [0, 1, 2].map(i => [0, 1, 2].map(j => Hc[j][i]));
+  const lum = [0.2126, 0.7152, 0.0722];
+  const Sx = [0, 1, 2].map(i => [0, 1, 2].map(j => (1 - sat) * lum[i] + (i === j ? sat : 0)));
+  return tidyMatrix(mul3(Hx, Sx).map(r => r.map(v => v * bright)));
+}
+function contrast(a, b) { const L1 = luminance(a) + 0.05, L2 = luminance(b) + 0.05; return Math.max(L1, L2) / Math.min(L1, L2); }
+function highlightId(id) {
+  const svg = $('#hud');
+  for (const n of $$('#hud .hl')) n.classList.remove('hl');
+  svg.classList.toggle('focus', !!id);
+  if (id) for (const n of nodesById.get(id) || []) n.classList.add('hl');
+}
+
+function xmlEditor() {
+  const wrap = h('div', null);
+  const card = h('section', { class: 'cat' }, h('header', null, 'XML Colour Matrix', h('span', null, 'recolors Elite’s own orange')));
+  const body = h('div', { style: 'padding:12px' });
+  card.append(body);
+  wrap.append(card);
+  body.append(h('p', { class: 'muted small' }, 'Elite draws its interface in orange. This matrix turns that orange (and Elite’s other stock colors) into new ones. It colors everything that can’t be colored part by part, like station menus, plus any part set to “XML” mode. Tip: switch the preview to “Station menu” to see it.'));
+
+  // 1) before -> after strip
+  const strip = h('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin:10px 0 4px' });
+  const cells = XML_STOCK.map(s => {
+    const after = h('span', { class: 'swatch' });
+    const row = h('div', { style: 'display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:default', title: s.note },
+      h('span', { class: 'swatch', style: `background:${s.hex}` }), '→', after, h('span', null, s.name, h('span', { class: 'muted' }, ' · ' + s.note)));
+    row.addEventListener('mouseenter', () => highlightId('XML'));
+    row.addEventListener('mouseleave', () => highlightId(null));
+    strip.append(row);
+    return { s, after };
+  });
+  body.append(h('h3', { style: 'margin-top:6px' }, 'What each stock color turns into'), strip);
+  const warn = h('p', { class: 'small', style: 'margin:8px 0 0' });
+  body.append(warn);
+
+  // 2a) colour picks (exact solver)
+  const cur = { o: applyXml(ORANGE), w: applyXml('#ffffff'), b: applyXml(from01(...XML_SRC.blue)) };
+  const picks = {};
+  const pickRow = (key, label, note) => {
+    const inp = h('input', { type: 'color', value: cur[key], 'aria-label': label });
+    picks[key] = inp;
+    inp.addEventListener('input', () => { writeXml(xmlFromPicks(picks.o.value, picks.w.value, picks.b.value)); refresh(); queueRender(); scheduleCommit('XML colors'); });
+    inp.addEventListener('change', () => commit('XML colors'));
+    return h('div', { class: 'role', id: key === 'o' ? 'xml-orange-row' : key === 'w' ? 'xml-white-row' : null, style: 'grid-template-columns:44px 1fr' }, inp, h('div', null, h('div', { class: 'name' }, label), h('div', { class: 'desc' }, note)));
+  };
+  body.append(h('h3', null, 'Pick the colors'),
+    h('div', { class: 'card', style: 'padding:4px 12px;margin-bottom:8px' },
+      pickRow('o', 'Orange becomes…', 'The main color of menus and stock HUD parts'),
+      pickRow('w', 'White becomes…', 'Tints Elite’s whites and greys, like the galaxy map window backgrounds. Pure white keeps them neutral'),
+      pickRow('b', 'Blue becomes…', 'Shields and secondary info on XML parts')));
+
+  // 2b) presets
+  const pre = h('div', { class: 'palettes' });
+  for (const p of XML_PRESETS) {
+    const X = p.identity ? IDENTITY : xmlFromPicks(p.o, '#ffffff', p.b);
+    const sw = p.identity ? [ORANGE, '#3fa9ff'] : [p.o, p.b];
+    pre.append(h('button', { class: 'pal', onclick: () => { writeXml(X); commit('XML preset: ' + p.name); afterBulkChange(); } },
+      h('span', { class: 'sw' }, sw.map(c => h('i', { style: `background:${c}` }))), p.name));
+  }
+  body.append(h('h3', null, 'Or start from a preset'), pre);
+
+  // 2c) sliders: they adjust the matrix that was there when you started, so putting them back to
+  // 0 / 100% / 100% gives that matrix back exactly.
+  const sl = { hue: 0, sat: 1, bright: 1 }, slUi = {};
+  let slBase = xmlMatrix(), slLast = slBase;
+  const sameMatrix = (A, B) => A.every((r, i) => r.every((v, j) => Math.abs(v - B[i][j]) < 0.006));
+  const slNeutral = () => sl.hue === 0 && sl.sat === 1 && sl.bright === 1;
+  const slSet = (key, v) => {
+    // the matrix was changed some other way (color pick, raw numbers, undo, theme): start again from it
+    if (!sameMatrix(xmlMatrix(), slLast)) { slBase = xmlMatrix(); sl.hue = 0; sl.sat = 1; sl.bright = 1; }
+    sl[key] = v;
+    for (const k in slUi) slUi[k].show();
+    slLast = slNeutral() ? slBase : tidyMatrix(mul3(slBase, xmlFromSliders(sl.hue, sl.sat, sl.bright)));
+    writeXml(slLast); slLast = xmlMatrix(); refresh(); queueRender();
+  };
+  const slider = (key, label, min, max, step, scale, unit) => {
+    const r = h('input', { type: 'range', min, max, step, value: sl[key], style: 'flex:1;accent-color:var(--accent)', 'aria-label': label });
+    const box = h('input', { class: 'num', type: 'number', min: Math.round(min * scale), max: Math.round(max * scale), step: 1, style: 'width:64px', 'aria-label': label + ' (type a number)', title: 'Type a number and press Enter' });
+    slUi[key] = { show: () => { r.value = sl[key]; if (document.activeElement !== box) box.value = Math.round(sl[key] * scale); } };
+    r.addEventListener('input', () => { slSet(key, parseFloat(r.value)); scheduleCommit('XML sliders'); });
+    r.addEventListener('change', () => commit('XML sliders'));
+    box.addEventListener('change', () => {
+      const x = parseFloat(box.value);
+      if (Number.isFinite(x)) { slSet(key, Math.max(min, Math.min(max, x / scale))); commit('XML sliders'); }
+      box.value = Math.round(sl[key] * scale);
+    });
+    box.addEventListener('keydown', e => { if (e.key === 'Enter') box.blur(); });
+    slUi[key].show();
+    return h('div', { style: 'display:flex;align-items:center;gap:10px;margin:6px 0;font-size:13px' }, h('span', { style: 'width:84px' }, label), r, box, h('span', { class: 'muted', style: 'width:14px' }, unit));
+  };
+  body.append(h('h3', null, 'Or adjust by feel'),
+    h('p', { class: 'muted small', style: 'margin:0 0 4px' }, 'Adjusts the colors you have now. Drag a slider or type a number. Put all three back to 0 / 100 / 100 to get your colors back exactly.'),
+    slider('hue', 'Hue shift', -180, 180, 1, 1, '°'),
+    slider('sat', 'Saturation', 0, 2, 0.01, 100, '%'),
+    slider('bright', 'Brightness', 0.3, 1.5, 0.01, 100, '%'),
+    h('div', { class: 'row-actions', style: 'margin-top:4px' }, h('button', { class: 'btn small', onclick: () => { slSet('hue', 0); slSet('sat', 1); slSet('bright', 1); commit('XML sliders'); } }, 'Put sliders back (0 / 100 / 100)')));
+
+  // 3) advanced raw numbers
+  const grid = h('div', { class: 'matrix' }, h('span'), h('span', { class: 'muted' }, 'Red out'), h('span', { class: 'muted' }, 'Green out'), h('span', { class: 'muted' }, 'Blue out'));
+  const nums = [];
+  ['Red in', 'Green in', 'Blue in'].forEach((lab, i) => {
+    grid.append(h('span', { class: 'muted' }, lab));
+    XML_KEYS[i].forEach((k, j) => {
+      const n = h('input', { class: 'num', type: 'number', step: 0.05, 'aria-label': `${lab} to ${['red', 'green', 'blue'][j]}` });
+      n.addEventListener('change', () => { const x = parseFloat(n.value); if (Number.isFinite(x)) { setValue('XML-Profile', k, x); commit('XML matrix'); refresh(); queueRender(); } });
+      nums.push({ n, k });
+      grid.append(n);
+    });
+  });
+  body.append(h('details', { style: 'margin-top:14px' }, h('summary', { style: 'cursor:pointer;color:var(--muted);font-size:13px' }, 'Advanced: raw numbers'),
+    h('p', { class: 'muted small', style: 'margin:8px 0 0' }, 'Each row is what that part of the original color turns into. Values usually stay between -2 and 2.'), grid));
+  body.append(h('div', { class: 'row-actions', style: 'margin-top:12px' },
+    h('button', { class: 'btn small', onclick: () => { writeXml(IDENTITY); commit('XML matrix reset'); afterBulkChange(); } }, 'Reset to stock (no change)')));
+
+  function refresh() {
+    for (const c of cells) c.after.style.background = applyXml(c.s.hex);
+    for (const { n, k } of nums) if (document.activeElement !== n) n.value = fmt(valW('XML-Profile', k));
+    // menu rows are dark orange behind Elite's light grey text
+    const bg = applyXml('#5a2800'), ratio = contrast('#d6d6d6', mix('#0b0c10', bg, 0.55));
+    warn.innerHTML = '';
+    warn.append(ratio >= 4.5 ? h('span', { class: 'badge good' }, 'Menu text readable') : h('span', { class: 'badge warn' }, 'Menu text may be hard to read'),
+      h('span', { class: 'muted' }, ratio >= 4.5 ? ` contrast ${ratio.toFixed(1)}:1 against the recolored rows.` : ` contrast only ${ratio.toFixed(1)}:1. Choose a darker or less bright “Orange becomes” color.`));
+  }
+  refresh();
+  return wrap;
+}
+function othersEditor() {
+  const card = h('section', { class: 'cat' }, h('header', null, 'Other settings', h('span', null, 'found in your color files')));
+  card.append(h('div', { class: 'el' }, h('div', { class: 'd' }, 'These settings are in your color files but Studio UI doesn’t have a description for them yet (usually because they were added recently).')));
+  for (const o of S.others) {
+    const n = h('input', { class: 'num', type: 'number', step: 0.05, value: fmt(valW(o.file, o.key)) });
+    n.addEventListener('change', () => { const x = parseFloat(n.value); if (Number.isFinite(x)) { setValue(o.file, o.key, x); commit(o.label); } });
+    card.append(h('div', { class: 'el' }, h('div', { class: 'top' }, h('div', { class: 't' }, o.label, h('div', { class: 'd' }, `${o.file}.ini · ${o.key}`)), h('div', { class: 'ctl' }, n))));
+  }
+  return card;
+}
+
+// ============================================================ themes
+function applyValues(values, label, includePrefs) {
+  let n = 0;
+  for (const f of FILES) {
+    const src = values && values[f];
+    if (!src) continue;
+    const m = S.working[f];
+    for (const [k, v] of Object.entries(src)) {
+      if (!m || !m.has(k) || (!includePrefs && S.prefKeys.has(f + ':' + k))) continue;
+      const num = parseFloat(v);
+      if (Number.isFinite(num) && setValue(f, k, num)) n++;
+    }
+  }
+  commit(label);
+  afterBulkChange();
+  return n;
+}
+function valuesFromTexts(files) { const v = {}; for (const f of FILES) if (files && files[f]) v[f] = Object.fromEntries(parseIni(files[f])); return v; }
+function currentValues() {
+  const v = {};
+  for (const f of FILES) { const m = S.working[f]; if (!m) continue; v[f] = {}; for (const [k, x] of m) if (!S.prefKeys.has(f + ':' + k)) v[f][k] = x; }
+  return v;
+}
+async function loadTheme(src, id, name) {
+  const ok = await confirmBox({ title: `Load “${name}”?`, body: [
+    'This replaces the colors in the editor with the theme’s colors. Your personal preferences (space dust, canopy effects…) are kept.',
+    'Nothing changes in the game until you click Save to game, and Ctrl+Z undoes it.'], ok: 'Load theme' });
+  if (!ok) return;
+  try {
+    const r = await api('GET', `${API}/theme?src=${encodeURIComponent(src)}&id=${encodeURIComponent(id)}`);
+    const n = applyValues(r.files ? valuesFromTexts(r.files) : r.values, 'Load theme: ' + name);
+    toast(n ? `Loaded “${name}” (${n} settings changed). Click Save to game to use it.` : `“${name}” matches what you already have.`, 'good');
+  } catch (e) { toast('Could not load the theme: ' + e.message, 'bad'); }
+}
+async function renderThemes(force) {
+  const box = $('#tab-themes');
+  box.innerHTML = '';
+  const nameIn = h('input', { placeholder: 'Theme name', maxlength: 80, 'aria-label': 'Theme name' });
+  const saveBtn = h('button', { class: 'btn', onclick: async () => {
+    const name = nameIn.value.trim();
+    if (!name) { nameIn.focus(); toast('Give your theme a name first.'); return; }
+    try {
+      await api('POST', API + '/mythemes', { name, author: store.get('author', ''), colors: [sourceColor('Advanced:x236|y236|z236').hex.slice(1), sourceColor(ID.middle).hex.slice(1)], values: currentValues() });
+      toast(`Saved “${name}” to My Themes.`, 'good'); nameIn.value = ''; S.themes = null; renderThemes(true);
+    } catch (e) { toast('Could not save the theme: ' + e.message, 'bad'); }
+  } }, 'Save theme');
+  const fileIn = h('input', { type: 'file', accept: '.json,application/json', hidden: true });
+  fileIn.addEventListener('change', async () => {
+    const f = fileIn.files[0]; fileIn.value = '';
+    if (!f) return;
+    try {
+      const t = JSON.parse(await f.text());
+      if (!t || !t.values) throw new Error('This file is not a Studio UI theme.');
+      const n = applyValues(t.values, 'Import theme: ' + (t.name || f.name));
+      toast(`Imported “${t.name || f.name}” (${n} settings changed). Click Save to game to use it.`, 'good');
+    } catch (e) { toast('Could not import: ' + e.message, 'bad'); }
+  });
+  box.append(h('div', { class: 'card' },
+    h('h2', null, 'Save your current colors'),
+    h('p', { class: 'muted small' }, 'Keeps a copy in Elite Studio’s “My Themes” folder so you can come back to it any time.'),
+    h('div', { class: 'field' }, nameIn, saveBtn),
+    h('div', { class: 'row-actions', style: 'margin-top:10px' },
+      h('button', { class: 'btn small', onclick: exportTheme }, 'Export to a file…'),
+      h('button', { class: 'btn small', onclick: () => fileIn.click() }, 'Import a file…'),
+      h('button', { class: 'btn small', onclick: () => openFolder('mythemes') }, 'Open My Themes folder')), fileIn));
+  const holder = h('div', null, h('p', { class: 'muted' }, h('span', { class: 'spin' }), ' Loading themes…'));
+  box.append(holder);
+  try {
+    if (!S.themes || force) S.themes = await api('GET', API + '/themes');
+  } catch (e) { holder.innerHTML = ''; holder.append(h('p', { class: 'muted' }, 'Could not list themes: ' + e.message)); return; }
+  holder.innerHTML = '';
+  const T0 = S.themes;
+  holder.append(h('h3', null, `My themes (${T0.mine.length})`));
+  if (!T0.mine.length) holder.append(h('p', { class: 'muted small' }, 'Themes you save appear here.'));
+  const ml = h('div', { class: 'list' });
+  for (const t of T0.mine) {
+    ml.append(h('div', { class: 'item' },
+      h('div', { class: 'dots', style: 'margin:0' }, (t.colors || []).filter(Boolean).map(c => h('i', { style: `background:#${c}` }))),
+      h('div', { class: 'grow' }, h('div', { class: 'nm' }, t.name), h('div', { class: 'muted small' }, t.created ? new Date(t.created).toLocaleString() : '')),
+      h('button', { class: 'btn small', onclick: () => loadTheme('mine', t.id, t.name) }, 'Load'),
+      h('button', { class: 'btn small danger', title: 'Moves the theme file to the Recycle Bin', onclick: async () => {
+        if (!await confirmBox({ title: `Delete “${t.name}”?`, body: ['The theme file goes to the Windows Recycle Bin, so you can still get it back.'], ok: 'Delete' })) return;
+        try { await api('POST', API + '/mythemes/delete', { id: t.id }); S.themes = null; renderThemes(true); } catch (e) { toast(e.message, 'bad'); }
+      } }, 'Delete')));
+  }
+  holder.append(ml);
+}
+function exportTheme() {
+  const name = (prompt('Name for the exported theme:', 'My HUD theme') || '').trim();
+  if (!name) return;
+  const data = { app: 'hud-studio', version: 1, name, created: new Date().toISOString(), colors: [sourceColor('Advanced:x236|y236|z236').hex.slice(1), sourceColor(ID.middle).hex.slice(1)], values: currentValues() };
+  const a = h('a', { href: URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' })), download: name.replace(/[\\/:*?"<>|]/g, '-') + '.hudtheme.json' });
+  document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+// ============================================================ backups
+async function renderBackups() {
+  const box = $('#tab-backups');
+  box.innerHTML = '';
+  box.append(h('div', { class: 'card' },
+    h('h2', null, 'Backups'),
+    h('p', { class: 'muted small' }, 'Studio UI backs up your HUD color files the first time you save in each session. Loading a backup puts its colors in the editor. Nothing changes in the game until you click Save to game.'),
+    h('div', { class: 'row-actions' },
+      h('button', { class: 'btn small', onclick: async () => { try { const r = await api('POST', API + '/backup', { reason: 'Manual backup' }); toast('Backup made: ' + r.name, 'good'); renderBackups(); } catch (e) { toast(e.message, 'bad'); } } }, 'Make a backup now'),
+      h('button', { class: 'btn small', onclick: () => openFolder('backups') }, 'Open backups folder'))));
+  const holder = h('div', { class: 'list' }, h('p', { class: 'muted' }, h('span', { class: 'spin' }), ' Loading…'));
+  box.append(holder);
+  let r;
+  try { r = await api('GET', API + '/backups'); } catch (e) { holder.innerHTML = ''; holder.append(h('p', { class: 'muted' }, e.message)); return; }
+  holder.innerHTML = '';
+  if (!r.items.length) { holder.append(h('p', { class: 'muted small' }, 'No backups yet.')); return; }
+  for (const b of r.items) {
+    const when = b.time ? new Date(b.time).toLocaleString() : b.name;
+    if (b.kind === 'incomplete') {
+      holder.append(h('div', { class: 'item' }, h('div', { class: 'grow' }, h('div', { class: 'nm' }, 'Incomplete backup'), h('div', { class: 'muted small' }, b.name)),
+        h('span', { class: 'badge warn', title: 'Something stopped this backup part-way, so Studio UI will not restore from it.' }, 'not usable')));
+      continue;
+    }
+    holder.append(h('div', { class: 'item' },
+      h('div', { class: 'grow' },
+        h('div', { class: 'nm' }, b.reason || 'Backup'),
+        h('div', { class: 'muted small' }, when)),
+      h('button', { class: 'btn small', onclick: async () => {
+        try {
+          const x = await api('GET', API + '/backup?name=' + encodeURIComponent(b.name));
+          const n = applyValues(valuesFromTexts(x.files), 'Load backup: ' + when, true);
+          toast(n ? `Loaded the backup's colors (${n} settings). Click Save to game to put them back.` : 'That backup matches your current colors.', 'good');
+        } catch (e) { toast(e.message, 'bad'); }
+      } }, 'Load colors')));
+  }
+}
+
+// ============================================================ Setup tab (game folder, color files found or not, tips)
+// What of the HUD mod this game folder lacks, in words.
+function missingWords(st) {
+  const names = { 'd3dx.ini': 'its settings file (d3dx.ini)', 'd3d11.dll': 'its loader (d3d11.dll)', 'EDHM-ini': 'the color files folder (EDHM-ini)' };
+  const missing = (st.edhm || {}).missing || [];
+  let words = missing.length < 3 && missing.length ? 'Part of it is missing here: ' + missing.map(m => names[m] || m).join(' and ') + '. Antivirus programs and game updates sometimes remove the mod’s files.' : 'It is not installed in this folder.';
+  if ((st.games || []).some(g => g.edhm && g.path !== st.game.path)) words += ' Another copy of Elite on this PC has it: choose that one under “Game installs found”.';
+  return words;
+}
+// The button on the Setup tab: for when Studio's own try did not work (no internet then, or the game was running).
+async function installMod(ev) {
+  const st = S.status || {};
+  if (st.running) { toast('Close Elite Dangerous first, then install the HUD mod.', 'bad'); return; }
+  ev.target.disabled = true;
+  if (!await fetchMod()) ev.target.disabled = false;
+}
+// Downloads the HUD mod from its author's page and unpacks it into the game folder. True when the app did it.
+async function fetchMod() {
+  toast('Downloading the HUD mod (about 4 MB) from its author’s page…');
+  try {
+    const d = await api('POST', API + '/install-mod', {});
+    S.status = d.status;
+    await loadFromGame(false); afterBulkChange(); updateTopbar(); renderEdhm();
+    if (d.status.edhm.installed) toast('Elite Studio installed the HUD mod (EDHM ' + d.version + ') into your game folder. Your colors can be saved now.', 'good');
+    else toast('The HUD mod was unpacked, but part of it is gone again. An antivirus program may have removed it.', 'bad');
+    return true;
+  } catch (x) { toast(x.message, 'bad'); return false; }
+}
+// Studio cannot save a color without the HUD mod, so it fetches the mod by itself (the owner, 10 October 2026): once
+// per start of Studio, as soon as the player has said which game is theirs, that game lacks the mod, and the game is
+// closed. Not when another copy of Elite on this PC has the mod: then the player picks that copy on the Setup tab.
+let modTried = false;
+function autoInstallMod() {
+  const st = S.status || {}, e = st.edhm || {};
+  if (modTried || !st.game || !st.gameConfirmed || e.installed || st.running) return;
+  if ((st.games || []).some(g => g.edhm && g.path !== st.game.path)) return;
+  modTried = true;
+  fetchMod();
+}
+async function renderEdhm() {
+  const box = $('#tab-edhm');
+  box.innerHTML = '';
+  const st = S.status || {}, e = st.edhm || {}, game = st.game;
+  if (!game) {
+    const inp = h('input', { placeholder: 'e.g. D:\\Games\\Elite Dangerous\\Products\\elite-dangerous-odyssey-64' });
+    box.append(h('div', { class: 'card bad' }, h('h2', null, 'Elite Dangerous not found'),
+      h('p', { class: 'muted small' }, 'Paste the folder that contains EliteDangerous64.exe (…\\Products\\elite-dangerous-odyssey-64).'),
+      h('div', { class: 'row-actions', style: 'margin-bottom:10px' }, h('button', { class: 'btn primary', onclick: browseForGame }, 'Browse for the game folder…')),
+      h('div', { class: 'field' }, inp, h('button', { class: 'btn', onclick: async () => { try { S.status = await api('POST', API + '/select-game', { path: inp.value.trim() }); await loadFromGame(false); afterBulkChange(); renderEdhm(); } catch (x) { toast(x.message, 'bad'); } } }, 'Use this folder'))));
+    return;
+  }
+  box.append(h('div', { class: 'card' }, h('h2', null, 'Your setup'),
+    h('dl', { class: 'kv' },
+      h('dt', null, 'Color files'), h('dd', null, e.installed ? h('span', { class: 'badge good' }, 'found') : h('span', { class: 'badge bad' }, 'not found')),
+      h('dt', null, 'Game'), h('dd', null, `${game.store} · build ${game.version || '?'} · `, st.running ? h('span', { class: 'badge good' }, 'running') : h('span', { class: 'badge' }, 'closed')),
+      h('dt', null, 'Folder'), h('dd', { class: 'small muted' }, game.path),
+      e.linkTarget ? [h('dt', null, 'Colors stored in'), h('dd', { class: 'small muted' }, e.linkTarget)] : null),
+    h('div', { class: 'row-actions' }, h('button', { class: 'btn small', onclick: browseForGame }, 'Use a different game folder…'))));
+  // Studio carries no copy of the HUD mod (its licence lets no other program do that): it fetches it from its author's page by itself (autoInstallMod), and the button tries again.
+  if (!e.installed) box.append(h('div', { class: 'card bad' }, h('h2', null, 'HUD color files not found'),
+    h('p', { class: 'small' }, 'Studio UI edits the color files of the HUD mod (EDHM), so the mod needs to be in this game before colors can be saved. ', missingWords(st)),
+    h('div', { class: 'row-actions' }, h('button', { class: 'btn primary', onclick: installMod }, 'Install the HUD mod now')),
+    h('p', { class: 'muted small' }, 'EDHM is a free mod by Fred89210 and psychicEgg. Studio downloads it (about 4 MB) from ', h('a', { href: 'https://github.com/psychicEgg/EDHM/tree/main/Odyssey', target: '_blank', rel: 'noopener' }, 'its own page'), ' by itself once Elite is closed; this button tries again. It adds its own files and changes none of Elite’s, and colors already in the folder are kept. To remove the mod, run EDHM-Uninstall.bat in the game folder.')));
+  const x = st.xml || {};
+  box.append(h('div', { class: 'card' }, h('h2', null, 'Elite’s built-in color file'),
+    h('p', { class: 'muted small' }, 'Elite has its own HUD color matrix (GraphicsConfigurationOverride.xml). Your HUD colors look right when it is left at default.'),
+    h('p', null, x.exists === false ? h('span', { class: 'badge good' }, 'not present (default)') : x.isDefault ? h('span', { class: 'badge good' }, 'default — good') : h('span', { class: 'badge warn' }, 'custom colors set — your HUD colors may look different'))));
+  box.append(h('div', { class: 'card' }, h('h2', null, 'Folders'),
+    h('div', { class: 'row-actions' },
+      h('button', { class: 'btn small', onclick: () => openFolder('game') }, 'Game folder'),
+      e.iniDir ? h('button', { class: 'btn small', onclick: () => openFolder('edhm') }, 'Color files') : null,
+      h('button', { class: 'btn small', onclick: () => openFolder('tool') }, 'Elite Studio folder'))));
+  if (st.games && st.games.length > 1) {
+    const sel = h('select', { class: 'search' });
+    for (const g of st.games) sel.append(h('option', { value: g.path, selected: g.path === game.path }, `${g.store}: ${g.path}${g.edhm ? ' (has the HUD mod)' : ''}`));
+    sel.addEventListener('change', async () => { try { S.status = await api('POST', API + '/select-game', { path: sel.value }); await loadFromGame(false); afterBulkChange(); renderEdhm(); } catch (x2) { toast(x2.message, 'bad'); } });
+    box.append(h('div', { class: 'card' }, h('h2', null, 'Game installs found'), sel));
+  }
+  box.append(h('div', { class: 'card' }, h('h2', null, 'Readability: Elite’s own graphics options'),
+    h('p', { class: 'muted small' }, 'These are in Elite (Options → Graphics), so Studio UI can’t change them. They make a big difference to how sharp and readable HUD text is.'),
+    h('ul', { class: 'small', style: 'margin:0;padding-left:18px;line-height:1.7' },
+      h('li', null, h('b', null, 'Resolution: '), 'your monitor’s native size (1920×1080 or higher). Lower sizes blur text.'),
+      h('li', null, h('b', null, 'Bloom: '), 'Off. Bloom spreads glow from bright trim and stars over the text.'),
+      h('li', null, h('b', null, 'Upscaling: '), 'Off. Upscaling softens text.'),
+      h('li', null, h('b', null, 'Gamma: '), 'about 1.0. Higher values wash everything toward white.'),
+      h('li', null, h('b', null, 'Blur: '), 'Off.')),
+    h('p', { class: 'muted small', style: 'margin:8px 0 0' }, 'Bright white canopy trim that reflects starlight can’t be recolored. The optional LightNight add-on turns those reflections off (toggle with F5 in game).')));
+  box.append(h('div', { class: 'card' }, h('h2', null, 'Something not working?'),
+    h('p', { class: 'muted small' }, 'Save a diagnostic report: what Elite Studio sees on this PC (game, color files, screen) plus recent errors and logs. Nothing personal is included. Send the file when asking for help.'),
+    h('div', { class: 'row-actions' }, h('button', { class: 'btn small', onclick: saveReport }, 'Save a diagnostic report'))));
+}
+async function openFolder(what) { try { await api('POST', API + '/open', { what }); } catch (e) { toast(e.message, 'bad'); } }
+
+// ============================================================ saving & top bar
+// A colour is stored as 3-4 numbers (red, green, blue, opacity) but counts as ONE setting here.
+function dirtySettingsCount() {
+  const seen = new Set();
+  let n = 0, xml = false;
+  for (const e of S.els) if (e.available && isElDirty(e)) { n++; for (const k of e.keys) seen.add(e.file + ':' + k); }
+  for (const f of FILES) {
+    const m = S.working[f]; if (!m) continue;
+    for (const k of m.keys()) if (isKeyDirty(f, k) && !seen.has(f + ':' + k)) { if (f === 'XML-Profile') xml = true; else n++; }
+  }
+  return n + (xml ? 1 : 0);
+}
+async function save(opts) {
+  opts = opts || {};
+  commit();
+  const changes = collectChanges();
+  const count = Object.values(changes).reduce((a, o) => a + Object.keys(o).length, 0);
+  const settings = dirtySettingsCount();
+  if (!count) { if (!opts.silent) toast('Nothing to save: the game already has these colors.'); return; }
+  if (!S.status || !S.status.edhm || !S.status.edhm.installed) { toast('HUD color files weren’t found in this game, so there’s nowhere to save yet (see the Setup tab).', 'bad'); return; }
+  S.saving = true; updateTopbar();
+  try {
+    const r = await api('POST', API + '/save', { changes });
+    await loadFromGame(true);
+    refreshRowStates();
+    const what = settings === 1 ? '1 setting' : `${settings} settings`;
+    const msg = !r.running ? `Saved ${what}. They’ll show the next time you start Elite.`
+      : (r.reload && r.reload.sent) ? `Saved ${what} and reloaded Elite (F11 sent).`
+      : `Saved ${what}. In Elite, press F11 to reload your HUD colors.`;
+    if (r.missing && r.missing.length) toast(`Saved, but ${r.missing.length} setting(s) weren’t found in your color files.`, 'bad');
+    else if (!opts.silent || opts.announce) toast(msg, 'good');
+    $('#hover-label').textContent = (r.running ? 'Saved to game · press F11 in Elite · ' : 'Saved to game · ') + new Date().toLocaleTimeString();
+  } catch (e) {
+    toast('Could not save: ' + e.message, 'bad');
+  } finally { S.saving = false; updateTopbar(); }
+}
+function scheduleAutosave() {
+  if (!$('#auto-save').checked) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => { if (dirtyCount() && !S.saving) save({ silent: true }); }, 900);
+}
+function updateTopbar() {
+  const n = dirtyCount();
+  window.parent.postMessage({ studio: 'dirty', count: n }, location.origin);   // so the shell can mark this tab and the app can warn before closing
+  $('#dirty-count').textContent = n ? dirtySettingsCount() : 0;
+  const sb = $('#btn-save');
+  sb.title = n ? `${dirtySettingsCount()} changed setting(s) to write into Elite (Ctrl+S)` : 'Nothing to save';
+  sb.disabled = S.saving || !n;
+  sb.firstChild.textContent = S.saving ? 'Saving… ' : 'Save to game ';
+  $('#btn-discard').disabled = !n;
+  $('#btn-undo').disabled = !history.undo.length && !pending;
+  $('#btn-redo').disabled = !history.redo.length;
+  const chips = $('#chips');
+  chips.innerHTML = '';
+  const st = S.status;
+  if (!st) return;
+  if (!st.game) chips.append(h('span', { class: 'chip bad' }, h('span', { class: 'dot' }), 'Elite not found'));
+  else if (st.running) chips.append(h('span', { class: 'chip on', title: 'After saving, press F11 in Elite to reload the colors' }, h('span', { class: 'dot' }), 'Elite running · save, then press F11'));
+  else chips.append(h('span', { class: 'chip', title: 'Saved colors show the next time you start Elite' }, h('span', { class: 'dot' }), 'Elite closed'));
+  const e = st.edhm;
+  if (st.game && (!e || !e.installed)) chips.append(h('span', { class: 'chip bad', onclick: () => showTab('edhm'), style: 'cursor:pointer' }, h('span', { class: 'dot' }), 'Color files not found'));
+  if (st.testMode) chips.append(h('span', { class: 'chip warn' }, h('span', { class: 'dot' }), 'TEST MODE'));
+}
+async function refreshStatus() {
+  try {
+    const prev = S.status;
+    S.status = await api('GET', API + '/status');
+    updateTopbar();
+    autoInstallMod();
+    if (S.tab === 'edhm' && prev && (prev.running !== S.status.running || (prev.edhm || {}).version !== (S.status.edhm || {}).version || (prev.edhm || {}).installed !== (S.status.edhm || {}).installed)) renderEdhm();
+  } catch (e) {}
+}
+function pollStatus() { refreshStatus().finally(() => setTimeout(pollStatus, document.hidden ? 30000 : 4000)); }
+
+// ============================================================ little UI helpers
+let toastTimer = 0;
+function toast(msg, kind) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = 'show' + (kind ? ' ' + kind : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ''; }, kind === 'bad' ? 7000 : 4500);
+}
+function confirmBox({ title, body, ok, cancel }) {
+  return new Promise(resolve => {
+    const m = h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true' });
+    const done = v => { m.remove(); document.removeEventListener('keydown', onKey); resolve(v); };
+    const onKey = e => { if (e.key === 'Escape') done(false); };
+    const okBtn = h('button', { class: 'btn primary', onclick: () => done(true) }, ok || 'OK');
+    m.append(h('div', { class: 'box' }, h('h2', null, title), h('div', { class: 'body' }, [].concat(body).map(p => h('p', null, p))),
+      h('div', { class: 'foot' }, h('button', { class: 'btn', onclick: () => done(false) }, cancel || 'Cancel'), okBtn)));
+    m.addEventListener('click', e => { if (e.target === m) done(false); });
+    document.addEventListener('keydown', onKey);
+    document.body.append(m);
+    okBtn.focus();
+  });
+}
+
+// ============================================================ diagnostic report
+function buildReport() {
+  const st = S.status || {}, g = st.game || {}, e = st.edhm || {};
+  const lines = [
+    'Browser engine: ' + navigator.userAgent,
+    'Window: ' + innerWidth + 'x' + innerHeight + ' page pixels, display scaling ' + Math.round(devicePixelRatio * 100) + '%',
+    'Elite Studio connected: ' + (S.helperOk ? 'yes' : 'no'),
+    '',
+    '--- game & color files ---',
+    'Game found: ' + (st.game ? 'yes (' + g.store + ', build ' + (g.version || '?') + ')' : 'no'),
+    'Game folder: ' + (g.path || '-'),
+    'Other installs found: ' + ((st.games || []).length),
+    'Elite running: ' + (st.running ? 'yes' : 'no'),
+    'Color files: ' + (e.installed ? 'found (version ' + (e.version || '?') + ')' : 'not found' + (e.missing ? ' (missing: ' + e.missing.join(', ') + ')' : '')),
+    'Color files folder: ' + (e.iniDir || '-'),
+    "Elite's own color file: " + ((st.xml || {}).exists === false ? 'not present (default)' : (st.xml || {}).isDefault ? 'default' : 'custom'),
+    '',
+    '--- editor ---',
+    'Settings loaded: ' + (S.els ? S.els.length : 0) + ', unsaved changes: ' + dirtyCount(),
+    'Color files read: ' + FILES.map(f => f + (S.texts && S.texts[f] ? ' ok' : ' MISSING')).join(', '),
+    '',
+    '--- recent errors on the page ---',
+    ERRORS.length ? ERRORS.join('\n') : '(none)'
+  ];
+  return lines.join('\n');
+}
+async function saveReport() {
+  const text = buildReport();
+  try { const d = await api('POST', '/api/app/report', { text }); toast('Report saved: ' + d.path + '. Send that file when asking for help.', 'good'); } catch (e) { toast('Could not save the report: ' + e.message, 'bad'); }
+}
+
+// ============================================================ desktop app window
+// The page can ask the app for a real folder picker (it opens on this PC, also when the page is in a browser).
+function pickGameFolder() {
+  return api('POST', '/api/app/pick-folder', {}).then(d => d.path || null, e => { toast(e.message, 'bad'); return null; });
+}
+async function useGameFolder(path) {
+  if (!path) return false;
+  if (path[0] === '?') { toast('That folder doesn’t contain Elite Dangerous (EliteDangerous64.exe). Choose the “Elite Dangerous” folder or …\\Products\\elite-dangerous-odyssey-64.', 'bad'); return false; }
+  try {
+    S.status = await api('POST', API + '/select-game', { path });
+    await loadFromGame(false); afterBulkChange(); updateTopbar();
+    if (S.tab === 'edhm') renderEdhm();
+    toast('Using Elite Dangerous in ' + path, 'good');   // the app saves this choice in settings.json
+    return true;
+  } catch (x) { toast(x.message, 'bad'); return false; }
+}
+async function browseForGame() { return useGameFolder(await pickGameFolder()); }
+// First start: confirm the game Elite Studio found, or help find it. The answer is kept in Studio's
+// settings.json (by the app), so it's asked once, not every launch.
+async function firstRunGameCheck() {
+  const st = S.status || {}, g = st.game;
+  if (g && st.gameConfirmed) return;
+  if (g) {
+    const ok = await confirmBox({ title: 'Is this your Elite Dangerous?', body: [`Elite Studio found the game (${g.store}) here:`, g.path, 'Your colors are saved into this game’s HUD color files.'], ok: 'Yes, use it', cancel: 'Choose another folder…' });
+    if (ok) { try { S.status = await api('POST', API + '/confirm-game', {}); autoInstallMod(); } catch (e) { toast(e.message, 'bad'); } return; }
+    await browseForGame();
+  } else {
+    const ok = await confirmBox({ title: 'Find Elite Dangerous', body: ['Elite Studio couldn’t find Elite Dangerous on this PC.', 'Click Browse and choose your Elite Dangerous folder.', 'You can still design colors and save themes without it.'], ok: 'Browse…', cancel: 'Later' });
+    if (!ok) return;
+    await browseForGame();
+  }
+}
+
+// ============================================================ start-up
+function wireTopbar() {
+  $('#btn-save').addEventListener('click', () => save({ announce: true }));
+  $('#btn-undo').addEventListener('click', undo);
+  $('#btn-redo').addEventListener('click', redo);
+  $('#btn-discard').addEventListener('click', async () => {
+    const n = dirtyCount();
+    if (!n || !await confirmBox({ title: 'Discard unsaved changes?', body: [`${n} setting(s) go back to what is in the game now. You can still undo this with Ctrl+Z.`], ok: 'Discard' })) return;
+    for (const f of FILES) for (const [k, v] of S.baseline[f]) setValue(f, k, parseFloat(v));
+    commit('Discard changes');
+    afterBulkChange();
+  });
+  const auto = $('#auto-save');
+  auto.checked = store.get('autosave', false);
+  auto.addEventListener('change', () => { store.set('autosave', auto.checked); if (auto.checked) { toast('Auto-save is on: every change goes straight to the game. Press F11 in Elite to see it.'); scheduleAutosave(); } });
+  for (const b of $$('#tabs button')) b.addEventListener('click', () => showTab(b.dataset.tab));
+  document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const k = e.key.toLowerCase();
+    const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName) && !/^(color|range|checkbox)$/.test(document.activeElement.type);
+    if (k === 's') { e.preventDefault(); save({ announce: true }); }
+    else if (k === 'z' && !typing) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
+    else if (k === 'y' && !typing) { e.preventDefault(); redo(); }
+  });
+  window.addEventListener('beforeunload', e => { if (dirtyCount()) { e.preventDefault(); e.returnValue = ''; } });
+  // Coming back from the game: if the color files were changed by something else and you have no
+  // unsaved edits, show what is really in the game. Any edit made while checking wins.
+  // (Not before start-up has read the color files once: the shell page gives this page the focus as soon as it loads.)
+  window.addEventListener('focus', async () => {
+    if (!S.baseline[FILES[0]] || !S.helperOk || S.saving || dirtyCount() || pending) return;
+    const gen = S.editGen;
+    try {
+      const r = await api('GET', API + '/ini');
+      if (gen !== S.editGen || S.saving || dirtyCount() || pending) return;
+      const files = r.files || {};
+      if (FILES.every(f => (files[f] || '') === (S.texts[f] || ''))) return;
+      applyIni(files, false);
+      afterBulkChange();
+      toast('Your HUD color files changed outside Studio UI, so the editor was refreshed.');
+    } catch (e) {}
+  });
+}
+async function init() {
+  if (!IN_APP) { $('#cover-nohelper').hidden = false; return; }
+  buildHud();
+  setupPreviewEvents();
+  wireTopbar();
+  try {
+    const [cat, st] = await Promise.all([fetch('catalog.json', { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('catalog.json is missing'); return r.json(); }), api('GET', API + '/status')]);
+    S.status = st;
+    setupCatalog(cat);
+    await loadDefaults();
+    await loadFromGame(false);
+  } catch (e) {
+    toast('Could not start: ' + e.message, 'bad');
+    return;
+  }
+  renderPreview();
+  updateTopbar();
+  showTab('quick');
+  setTimeout(pollStatus, 4000);
+  firstRunGameCheck();
+}
+init();
+})();
+</script>
+</body>
+</html>
