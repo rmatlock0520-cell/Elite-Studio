@@ -53,7 +53,11 @@ sealed partial class Finder
         string? Name, string? SystemName, long? SystemId64, double? SystemX, double? SystemY, double? SystemZ, string? Type, double? Distance, double? DistanceToArrival,
         double? LargePads, double? MediumPads, double? SmallPads, string? MaterialTrader, string? TechnologyBroker,
         string? UpdatedAt, string? OutfittingUpdatedAt, string? ShipyardUpdatedAt,
-        List<Entry?>? Services, List<Entry?>? Modules, List<Entry?>? Ships);
+        List<Entry?>? Services, List<Entry?>? Modules, List<Entry?>? Ships,
+        long? MarketId = null, string? MarketUpdatedAt = null, List<Good?>? Market = null);
+
+    /// <summary>One line of a station's price list as Spansh sends it: the commodity by its name in words.</summary>
+    sealed record Good(string? Commodity, double? BuyPrice, double? SellPrice, double? Supply, double? Demand);
 
     /// <summary>A module or a ship on sale, or a service by its name.</summary>
     /// <param name="EdSymbol">Modules: the game's own code for it.</param>

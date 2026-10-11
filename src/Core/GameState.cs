@@ -168,6 +168,9 @@ public sealed class GameState
     /// </summary>
     public StationMarket? Market => Docked && MarketId != 0 && market?.MarketId == MarketId ? market : null;
 
+    /// <summary>The price list the game wrote last, whichever station it belongs to and wherever the player is now; null before the first one.</summary>
+    public StationMarket? LastMarket => market;
+
     /// <summary>
     /// What the player is doing this second (Status.json). The game rewrites that file about once a
     /// second in flight, so <see cref="Changed"/> is raised for it only when what the snapshot shows

@@ -198,7 +198,9 @@ public sealed record CargoItem(string Id, string Name, int Count)
 /// <see cref="GameState.Market"/> hands it out only while the player is docked at that station.
 /// </summary>
 /// <param name="Items">By commodity code in lower case, e.g. "platinum".</param>
-public sealed record StationMarket(long MarketId, string StationName, string StarSystem, IReadOnlyDictionary<string, MarketItem> Items)
+/// <param name="Type">The kind of station as the journal spells it ("Coriolis"); "" when the file does not say.</param>
+/// <param name="Seen">When the game wrote the list (UTC); null when the file does not say.</param>
+public sealed record StationMarket(long MarketId, string StationName, string StarSystem, IReadOnlyDictionary<string, MarketItem> Items, string Type = "", DateTime? Seen = null)
 {
     internal static StationMarket Parse(JsonElement e)
     {
@@ -213,7 +215,9 @@ public sealed record StationMarket(long MarketId, string StationName, string Sta
             if (id.Length > 0)
                 items[id] = new MarketItem(id, i.Text("Name_Localised"), (int)i.Whole("BuyPrice"), (int)i.Whole("SellPrice"), (int)i.Whole("Stock"), (int)i.Whole("Demand"));
         }
-        return new(e.Whole("MarketID"), e.Text("StationName"), e.Text("StarSystem"), items);
+        DateTime? seen = DateTime.TryParse(e.Text("timestamp"), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out DateTime written)
+            ? written : null;
+        return new(e.Whole("MarketID"), e.Text("StationName"), e.Text("StarSystem"), items, e.Text("StationType"), seen);
     }
 }
 

@@ -9,7 +9,10 @@
 <link rel="stylesheet" href="../studio.css">
 <!--
   STUDIO MARKET, FIND BY NAME: the nearest places that have a commodity, a ship module or a ship, and the
-  nearest of each kind of service.
+  nearest of each kind of service. A station is found by its own name too: the stations with a name like
+  the one typed, and under them the price list of the one picked (GET /api/market/find/prices), the player's
+  own from their last visit where that is the newer one, with what a ton makes carried there and back from
+  the station they are docked at.
   On top: what to find, its name (picked from the services' own lists, so nobody has to guess a spelling),
   where to measure from, the station filters, and a quick button for each service. Below: the places as a
   table, nearest first, each with a button that copies its system for the galaxy map. While the service has
@@ -41,6 +44,12 @@
 #rows th:first-child{width:99%}   /* the station takes the room to spare, so the copy button stays beside its system */
 #rows td:first-child{font-weight:600}
 #rows .btn{height:24px}   /* keeps a row as low as its text */
+#places tr.picked td{background:var(--accent-soft)}
+/* A station found by name: the stations on top, the price list of the one picked under them with the room to spare. */
+.found.two #rows{flex:0 1 auto;max-height:34%}
+#prices{flex:1;min-height:150px;display:flex;flex-direction:column;gap:8px}
+#prices-box{flex:1;min-height:0}
+#prices-box th:first-child{width:99%}
 .found .credit{margin-top:auto}   /* at the foot of the page, whatever is above it */
 </style>
 </head>
@@ -54,6 +63,7 @@
       <button type="button" data-kind="commodity">Commodity</button>
       <button type="button" data-kind="module">Module</button>
       <button type="button" data-kind="ship">Ship</button>
+      <button type="button" data-kind="station" title="Find a station by its own name and see its price list">Station</button>
     </div>
     <div class="field name">
       <label>Name<input id="name" list="names" autocomplete="off" spellcheck="false" placeholder="Type a few letters, then pick from the list"></label>
@@ -109,8 +119,19 @@
       <tbody id="places"></tbody>
     </table>
   </div>
+  <section id="prices" hidden>
+    <h2 id="prices-what"></h2>
+    <p class="muted small" id="prices-about"></p>
+    <p class="card bad" id="prices-problem" hidden></p>
+    <div class="tablebox" id="prices-box">
+      <table>
+        <thead><tr id="prices-heads"></tr></thead>
+        <tbody id="prices-rows"></tbody>
+      </table>
+    </div>
+  </section>
   <p id="pager" hidden><button type="button" class="btn small" id="prev">◄ The 5 before</button> <span class="muted small" id="pager-text"></span> <button type="button" class="btn small" id="next">The next 5 ►</button></p>
-  <p class="muted small credit">Commodity prices come from <a href="https://ardent-insight.com/" target="_blank" rel="noopener">Ardent Insight</a>; modules, ships and services from <a href="https://spansh.co.uk/" target="_blank" rel="noopener">Spansh</a>. Both are free services that volunteers run for all of us, fed by what players' tools report: an answer is as fresh as the last visit by one of them. Please search for what you mean to fly to.</p>
+  <p class="muted small credit">Commodity prices come from <a href="https://ardent-insight.com/" target="_blank" rel="noopener">Ardent Insight</a>; modules, ships, services and stations by name from <a href="https://spansh.co.uk/" target="_blank" rel="noopener">Spansh</a>. Both are free services that volunteers run for all of us, fed by what players' tools report: an answer is as fresh as the last visit by one of them. Please search for what you mean to fly to.</p>
 </main>
 
 <script src="../studio.js"></script>
@@ -126,7 +147,10 @@ const names = {};           // the lists of names already fetched, by kind
 const typed = {};           // what was typed in the name box, by kind
 let busy = false, problem = '';
 let shown = null;           // the search on screen: { kind, side, body, answer }; body is what was asked, for "Show more" to ask again
-let sort = { key: 'ly', down: false };
+let sort = { key: 'ly', down: false };   // key null: as the service sent them (stations by name, its best match first)
+let prices = null;          // the price list on show, of a station found by name
+let pricesProblem = '';
+let priceSort = { key: 'name', down: false };
 
 // ============================================================ what to find
 function setKind(k) {
@@ -137,6 +161,8 @@ function setKind(k) {
   $('#sides').hidden = $('#age-label').hidden = $('#volume-label').hidden = k !== 'commodity';
   $('#sniff').hidden = k !== 'commodity' || Studio.boxed;   // the overlay's box has no tabs to come back by
   $('#grades').hidden = k !== 'module';
+  $('.filters').hidden = k === 'station';   // a station asked for by name is listed whatever its pad and wherever it is
+  $('#name').placeholder = k === 'station' ? 'A station\u2019s name, or a part of it' : 'Type a few letters, then pick from the list';
   loadNames(k);
 }
 
@@ -150,7 +176,7 @@ function setSide(s) {
 async function loadNames(k) {
   $('#names').replaceChildren();
   $('#names-problem').hidden = true;
-  if (!names[k]) {
+  if (!names[k] || k === 'station') {   // (the stations to pick from are the ones whose market you opened: one more with every visit)
     try { names[k] = await Studio.api('GET', '/api/market/find/names?kind=' + k); }
     catch (e) {
       if (kind !== k) return;
@@ -216,16 +242,82 @@ async function send(search) {
   busy = true;
   if (!before) shown = null;
   problem = '';
-  $('#busy-text').textContent = search.kind === 'commodity' ? 'Asking Ardent Insight…' : 'Asking Spansh… Its answers are long, so this takes a few seconds.';
+  $('#busy-text').textContent = search.kind === 'commodity' ? 'Asking Ardent Insight…' : search.kind === 'station' ? 'Asking Spansh…' : 'Asking Spansh… Its answers are long, so this takes a few seconds.';
   render();
   try {
     const answer = await Studio.api('POST', '/api/market/find/' + search.kind, search.body);
     // The note and whether there is still more are the newest answer's; the rest stays as the first answer said it.
     shown = { ...search, answer: before ? { ...before, rows: [...before.rows, ...answer.rows], note: answer.note, more: answer.more } : answer };
-    if (!before) sort = { key: 'ly', down: false };
+    if (!before) sort = { key: search.kind === 'station' ? null : 'ly', down: false };
   } catch (e) { problem = e.message; }
   busy = false;
+  prices = null;
+  pricesProblem = '';
   render();
+  // A station found by name: the price list of the best match is shown at once.
+  const first = shown && shown.kind === 'station' && shown.answer.rows.find(r => r.marketId);
+  if (first) showPrices(first.marketId, true);
+}
+
+// ============================================================ a station's price list
+// fresh: another station was picked, so the list starts sorted by what pays best. Otherwise it is the same list read again.
+async function showPrices(id, fresh) {
+  try {
+    const list = await Studio.api('GET', '/api/market/find/prices?id=' + id);
+    if (!shown || shown.kind !== 'station') return;   // another search took its place while waiting
+    prices = list;
+    pricesProblem = '';
+    if (fresh) {
+      const pays = key => list.rows.some(r => r[key] != null);
+      priceSort = pays('takeThere') ? { key: 'takeThere', down: true } : pays('bringBack') ? { key: 'bringBack', down: true } : { key: 'name', down: false };
+    }
+  } catch (e) {
+    if (!fresh) return;   // the list on show stands
+    prices = null;
+    pricesProblem = e.message;
+  }
+  render();
+}
+
+const amount = n => n ? whole(n) : '';
+const priceColumns = {
+  name: { title: 'Commodity', value: r => r.name },
+  buy: { title: 'You buy at (cr)', num: true, value: r => r.buy || null, text: r => amount(r.buy), hint: 'What a ton costs you there. Empty: the station does not sell it' },
+  supply: { title: 'Supply (t)', num: true, value: r => r.supply || null, text: r => amount(r.supply) },
+  sell: { title: 'You sell at (cr)', num: true, value: r => r.sell || null, text: r => amount(r.sell), hint: 'What the station pays you for a ton' },
+  demand: { title: 'Demand (t)', num: true, value: r => r.demand || null, text: r => amount(r.demand) },
+  takeThere: { title: 'Take there (cr/t)', num: true, value: r => r.takeThere, text: r => amount(r.takeThere) },
+  bringBack: { title: 'Bring back (cr/t)', num: true, value: r => r.bringBack, text: r => amount(r.bringBack) },
+};
+
+function renderPrices() {
+  const on = !!shown && shown.kind === 'station' && (!!prices || !!pricesProblem);
+  $('#prices').hidden = !on;
+  document.querySelector('.found').classList.toggle('two', on);
+  if (!on) return;
+  $('#prices-problem').hidden = !pricesProblem;
+  $('#prices-problem').textContent = pricesProblem;
+  $('#prices-what').hidden = $('#prices-about').hidden = $('#prices-box').hidden = !prices;
+  if (!prices) return;
+  $('#prices-what').textContent = 'Prices at ' + prices.station + ', ' + prices.system;
+  $('#prices-about').textContent = (prices.mine ? 'The prices you saw there yourself' : 'Prices from Spansh, reported') + (prices.updated ? ' ' + ago(prices.updated) : '') + '. '
+    + (prices.here ? 'The last two columns say what a ton makes carried between there and ' + prices.here + ', where you are docked.'
+      : 'Dock somewhere and open its commodities market, and Studio shows here what a ton makes carried between the two.');
+  priceColumns.takeThere.hint = 'Profit a ton: bought at ' + prices.here + ', sold at ' + prices.station;
+  priceColumns.bringBack.hint = 'Profit a ton: bought at ' + prices.station + ', sold at ' + prices.here;
+  const keys = Object.keys(priceColumns).filter(key => prices.here || (key !== 'takeThere' && key !== 'bringBack'));
+  $('#prices-heads').replaceChildren(...keys.map(key => h('th', {
+      class: 'sort' + (priceColumns[key].num ? ' r' : '') + (priceSort.key === key ? priceSort.down ? ' down' : ' up' : ''), title: priceColumns[key].hint,
+      onclick: () => { priceSort = { key, down: priceSort.key === key ? !priceSort.down : !!priceColumns[key].num }; render(); },   // a number starts at its largest
+    }, priceColumns[key].title)));
+  const by = priceColumns[priceSort.key].value;
+  const rows = [...prices.rows].sort((x, y) => {
+    const p = by(x), q = by(y);
+    if (p == null || q == null) return (p == null) - (q == null) || x.name.localeCompare(y.name);   // what is not there comes last
+    return (typeof p === 'string' ? p.localeCompare(q) : p - q) * (priceSort.down ? -1 : 1);
+  });
+  $('#prices-rows').replaceChildren(...rows.map(r => h('tr', null,
+    keys.map(key => h('td', { class: priceColumns[key].num && 'r' }, priceColumns[key].text ? priceColumns[key].text(r) : priceColumns[key].value(r))))));
 }
 
 // ============================================================ drawing the answer
@@ -239,13 +331,14 @@ const columns = {
   copy: { title: '', text: r => [
     h('button', { class: 'btn small', title: 'Then paste it into the galaxy map\'s search box with Ctrl+V', onclick: () => Studio.copyName(r.system) }, 'Copy system'), ' ',
     h('button', { class: 'btn small', title: 'Opens Studio Nav with this system under To, ready to plot', onclick: () => Studio.open('nav', '?to=' + encodeURIComponent(r.system)) }, 'Route')] },
-  ly: { title: 'Distance (ly)', num: true, value: r => r.distanceLy, text: r => r.distanceLy.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+  ly: { title: 'Distance (ly)', num: true, value: r => r.distanceLy, text: r => r.distanceLy == null ? '' : r.distanceLy.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
   ls: { title: 'From star (ls)', num: true, value: r => r.starLs, text: r => r.starLs == null ? '' : whole(r.starLs), hint: 'Light seconds from the star you arrive at' },
   pad: { title: 'Pad', value: r => r.pad ? 'SML'.indexOf(r.pad) : null, text: r => r.pad || '?', hint: 'The largest landing pad' },
   type: { title: 'Station type', value: r => r.type },
   item: { title: 'On sale', value: r => r.item, hint: 'Class and rating, as on the outfitting screen: 5A is class 5, rating A' },
   price: { title: 'Price (cr)', num: true, value: r => r.price, text: r => r.price == null ? '' : whole(r.price) },
   tons: { title: '', num: true, value: r => r.tons, text: r => whole(r.tons) },
+  prices: { title: '', text: r => h('button', { class: 'btn small', disabled: !r.marketId, title: 'Shows below what this station sells and buys', onclick: () => showPrices(r.marketId, true) }, 'Prices') },
   age: { title: 'Reported', value: r => r.updated ? -Date.parse(r.updated) : null, text: r => r.updated ? ago(r.updated) : '', hint: 'When a player\'s tool last reported this' },
 };
 const shownColumns = {
@@ -253,6 +346,7 @@ const shownColumns = {
   module: ['station', 'system', 'copy', 'ly', 'ls', 'pad', 'type', 'item', 'price', 'age'],
   ship: ['station', 'system', 'copy', 'ly', 'ls', 'pad', 'type', 'price', 'age'],
   services: ['station', 'system', 'copy', 'ly', 'ls', 'pad', 'type', 'age'],
+  station: ['station', 'system', 'copy', 'ly', 'ls', 'pad', 'type', 'prices', 'age'],
 };
 
 function render() {
@@ -264,6 +358,7 @@ function render() {
   $('#what').hidden = $('#about').hidden = !shown;
   $('#note').hidden = !shown || !shown.answer.note;   // (an answer with more to come always has a note that says so)
   $('#rows').hidden = !shown || !shown.answer.rows.length;
+  renderPrices();
   if (!shown) return;
   const a = shown.answer;
   $('#what').textContent = a.what;
@@ -278,8 +373,8 @@ function render() {
       class: 'sort' + (columns[key].num ? ' r' : '') + (sort.key === key ? sort.down ? ' down' : ' up' : ''), title: columns[key].hint,
       onclick: () => { sort = { key, down: sort.key === key && !sort.down }; render(); },
     }, columns[key].title)));
-  const by = columns[sort.key].value;
-  const rows = [...a.rows].sort((x, y) => {
+  const by = sort.key && columns[sort.key].value;
+  const rows = !by ? [...a.rows] : [...a.rows].sort((x, y) => {
     const p = by(x), q = by(y);
     if (p == null || q == null) return (p == null) - (q == null);   // what is not known comes last, whichever way the rest is sorted
     return (typeof p === 'string' ? p.localeCompare(q) : p - q) * (sort.down ? -1 : 1);
@@ -292,7 +387,7 @@ function render() {
   $('#pager-text').textContent = 'Places ' + (pageAt + 1) + ' to ' + (pageAt + onShow.length) + ' of ' + rows.length;
   $('#prev').disabled = pageAt === 0;
   $('#next').disabled = pageAt + pageRows >= rows.length;
-  $('#places').replaceChildren(...onShow.map(r => h('tr', null,
+  $('#places').replaceChildren(...onShow.map(r => h('tr', { class: prices && r.marketId === prices.marketId && 'picked' },
     keys.map(key => h('td', { class: columns[key].num && 'r' }, columns[key].text ? columns[key].text(r) : columns[key].value(r))))));
 }
 const pageRows = 5;
@@ -341,7 +436,8 @@ if (askedHere) find(askedKind, askedName);
 Studio.api('GET', '/api/market/find/names?kind=services').then(list =>
   $('.quick').append(...list.names.map(name => h('button', { type: 'button', class: 'btn small', disabled: busy, onclick: () => find('services', name) }, name))), () => {});
 setInterval(showAsked, 30000);
-Studio.follow('state', '/api/state', s => from.show(s.starSystem));
+// The game moved on: docked somewhere else, or a market opened. The price list on show is compared with the new station.
+Studio.follow('state', '/api/state', s => { from.show(s.starSystem); if (prices) showPrices(prices.marketId, false); });
 // The player's settings changed somewhere else (the Trades page, the overlay's menu), or they fly another ship: the untouched filters follow.
 Studio.follow('market', '/api/market/hauling', showMine);
 })();

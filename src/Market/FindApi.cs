@@ -9,7 +9,7 @@ using WebResponse = EliteStudio.App.WebResponse;   // System.Net has an older ty
 namespace EliteStudio.Market;
 
 /// <summary>One place a "Find by name" search found.</summary>
-/// <param name="DistanceLy">Light years from the system the search started in.</param>
+/// <param name="DistanceLy">Light years from the system the search started in; null only for a station found by name whose place is not known.</param>
 /// <param name="StarLs">Light seconds from the arrival star; null when not known.</param>
 /// <param name="Pad">The largest landing pad: "S", "M" or "L"; "" when not known.</param>
 /// <param name="Type">The kind of station, in words.</param>
@@ -17,8 +17,9 @@ namespace EliteStudio.Market;
 /// <param name="Price">Credits, per ton for a commodity. Null when the service does not say, or when what matched is sold there at several prices.</param>
 /// <param name="Tons">Commodities: tons on sale, or tons wanted; null for everything else.</param>
 /// <param name="Updated">When this was last reported (UTC): the price, the outfitting or shipyard list, or for a service the station itself. Null when not known.</param>
+/// <param name="MarketId">Stations found by name: the game's number for the station, by which its price list is asked for; 0 for everything else.</param>
 public sealed record FoundPlace(
-    string Station, string System, double DistanceLy, double? StarLs, string Pad, string Type, string Item, long? Price, int? Tons, DateTime? Updated);
+    string Station, string System, double? DistanceLy, double? StarLs, string Pad, string Type, string Item, long? Price, int? Tons, DateTime? Updated, long MarketId = 0);
 
 /// <summary>What one "Find by name" search found.</summary>
 /// <param name="What">The search in words, as a heading: "Where to buy Gold".</param>
@@ -43,6 +44,8 @@ public sealed record NameList(IReadOnlyList<string> Names, IReadOnlyList<string>
 ///   POST module         {"name":"Frame Shift Drive","class":"5","rating":"A"}; class and rating may be left out
 ///   POST ship           {"name":"Python MkII"}
 ///   POST services       {"name":"Raw material trader"}
+///   POST station        {"name":"Jameson Memorial"}: the stations with a name like that, the best match first
+///   GET  prices?id=     the price list of a station found by name (a <see cref="StationPrices"/>), by its market id
 /// Every search may add "from" (a system other than the one the player is in) and "filters" (pad,
 /// maxStarLs, surface, carriers, and for commodities maxAgeHours, minSupply and minDemand, named
 /// and valued as in settings.json), which replace the player's own for that one search and are not
@@ -66,10 +69,13 @@ public static class FindApi
     /// <param name="data">The app's one client for the data services, which the trade search asks through as well.</param>
     /// <param name="utcNow">The clock, in UTC; tests pass their own.</param>
     /// <returns>The searches themselves, for whoever else needs a station found (Studio Loadouts, for a shopping trip).</returns>
-    internal static Finder Map(WebServer web, GameState game, Hauling hauling, MarketData data, Func<DateTime>? utcNow = null)
+    /// <param name="book">The price lists the player has seen themselves; without it only the services' lists are known.</param>
+    internal static Finder Map(WebServer web, GameState game, Hauling hauling, MarketData data, Func<DateTime>? utcNow = null, StationBook? book = null)
     {
         // One for as long as the app runs, so what it remembers lasts the session.
-        var finder = new Finder(game, hauling, data, utcNow ?? (() => DateTime.UtcNow));
+        var finder = new Finder(game, hauling, data, utcNow ?? (() => DateTime.UtcNow), book);
+        web.Map("GET", "/api/market/find/prices", request => Answered(() => Task.FromResult(finder.Prices(
+            long.TryParse(request.Query.GetValueOrDefault("id"), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long id) ? id : 0))));
         web.Map("GET", "/api/market/find/names", request => Answered(() => finder.Names(request.Query.GetValueOrDefault("kind") ?? "")));
         foreach (string kind in Finder.Kinds)
             web.Map("POST", "/api/market/find/" + kind, request => Answered(() => finder.Find(kind, request.Read<FindRequest>())));
@@ -107,9 +113,9 @@ sealed class FindProblem(string message, int status = 400) : Exception(message)
 /// to pick from, the commodity search (Ardent Insight) and what every search shares. The searches
 /// that ask Spansh about stations are in FindStations.cs.
 /// </summary>
-sealed partial class Finder(GameState game, Hauling hauling, MarketData data, Func<DateTime> utcNow)
+sealed partial class Finder(GameState game, Hauling hauling, MarketData data, Func<DateTime> utcNow, StationBook? book = null)
 {
-    public static readonly string[] Kinds = ["commodity", "module", "ship", "services"];
+    public static readonly string[] Kinds = ["commodity", "module", "ship", "services", "station"];
 
     const string ArdentName = "Ardent Insight", SpanshName = "Spansh";   // as the player reads them; MarketData.Ardent is the address
     const int ReachLy = 500;                // as far around a system as Ardent Insight looks
@@ -141,6 +147,8 @@ sealed partial class Finder(GameState game, Hauling hauling, MarketData data, Fu
                 "commodity" => Commodities(await Overview(ask)),
                 "module" or "ship" => await SpanshList(kind, ask),
                 "services" => new NameList([.. Services.Select(service => service.Name)], [], []),
+                // No service lists every station's name: the ones to pick from are those whose market the player has opened.
+                "station" => new NameList([.. (book?.Visits ?? []).Select(visit => visit.Station).Distinct(StringComparer.OrdinalIgnoreCase)], [], []),
                 _ => throw new FindProblem("Unknown kind of thing to find."),
             };
         }
@@ -170,7 +178,8 @@ sealed partial class Finder(GameState game, Hauling hauling, MarketData data, Fu
         // The game says where the system the player is in lies; any other system the services have to know.
         double[]? here = Same(from, game.StarSystem) ? game.StarPos : null;
         FindAnswer answer = await Asked(kind == "commodity" ? ArdentName : SpanshName, $"Find {kind} \"{request.Name}\" from {from}",
-            ask => kind == "commodity" ? Commodity(request, from, here, filter, set, ask) : InStations(kind, request, from, here, filter, ask));
+            ask => kind == "commodity" ? Commodity(request, from, here, filter, set, ask)
+                : kind == "station" ? Named(request, from, here, ask) : InStations(kind, request, from, here, filter, ask));
         Log.Info(Invariant($"Find {kind} \"{request.Name}\" from {from}: {answer.Rows.Count} places"));
         return answer;
     }

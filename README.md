@@ -10,7 +10,7 @@ Elite Studio reads the files the game itself writes (the journal, your ship, you
 
 **Studio Market**
 - **Trades**: the best hauling trades for the ship you are flying, near you or anywhere, one way or round trip.
-- **Find by name**: the nearest places that sell or buy a commodity, sell a module or a ship, or have a service.
+- **Find by name**: the nearest places that sell or buy a commodity, sell a module or a ship, or have a service. Or find a station by its own name and see its price list. Studio remembers the price list of every station whose market you open, and shows what a ton makes carried between that station and the one you are docked at.
 - **Sniffer**: save commodity searches with a price and an amount. Studio runs each one once an hour, anywhere in the galaxy, and can play a sound when one is met.
 
 **Studio Nav** — plot routes and hand them to the galaxy map one system at a time; find unexplored space.
