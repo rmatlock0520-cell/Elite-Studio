@@ -1884,7 +1884,7 @@ function refreshRowStates() {
 }
 function openElement(id) {
   if (id === 'FIXED') { toast('That part keeps Elite’s own color. No setting can change it.'); return; }
-  if (id === 'UNKNOWN') { toast('The setting for this part hasn’t been identified yet. If you find what changes it in game, report it on Elite Studio's GitHub page so the preview can be wired up.'); return; }
+  if (id === 'UNKNOWN') { toast('The setting for this part hasn’t been identified yet. If you find what changes it in game, report it on Elite Studio’s GitHub page so the preview can be wired up.'); return; }
   if (id === 'TRIM') { toast('The white canopy trim is Elite’s own and reflects starlight. No color setting dims it. The optional LightNight add-on turns reflections off (F5 in game), and turning Bloom off in Elite helps too.'); return; }
   if (id === 'XMLW') {
     S.group = 'XML'; S.search = ''; S.onlyChanged = false; showTab('all');
