@@ -17,7 +17,10 @@ namespace EliteStudio.Market;
 /// The "haul" box is filled here: the trade on screen, or a lookup; with neither, a line saying
 /// where the player is with hauling's message under it. <see cref="NavContent"/> draws the route's
 /// next stop and the exploring line as the "nav" box showed them until that box became Studio Nav's
-/// own page; nothing shows it now (see PLAN.md, "Awaiting sign-off before removal").
+/// own page, with the line of the 3D map's check of the plotted route's stops under them; nothing
+/// draws it in the game now but --render-shots (see PLAN.md, "Awaiting sign-off before removal").
+/// In the game that line is Studio Nav's page's own (nav/index.html in the box), which follows the
+/// check's events and prints the same words (<see cref="HeatmapFinds.LineOf"/>).
 ///
 /// Buttons. A box that takes clicks has a row of buttons under the trade, each tagged "do:" and one
 /// of the actions the Elite Haul Overlay had a key for: next, copy, accept, cargo, menu. Next trade,
@@ -56,11 +59,16 @@ public sealed partial class HaulOverlay
     /// <param name="explore">Studio Nav's exploring trip, for its line.</param>
     /// <param name="now">The clock for the menu closing by itself; tests pass their own.</param>
     /// <param name="oldSettingsFile">The Elite Haul Overlay's settings file, copied from on the overlay's very first run; left out, an empty name and tests' own as for <see cref="Hauling"/>.</param>
-    public HaulOverlay(OverlayHost overlay, Hauling hauling, NavRoutes nav, ExploreTrip explore, GameState game, Func<DateTime>? now = null, string? oldSettingsFile = null)
+    /// <param name="routeCheck">The 3D map's check of the stops of the plotted route, for <see cref="NavContent"/>'s line about it; none when left out.</param>
+    /// <param name="navScan">The 3D map's Nav scan, for <see cref="NavContent"/>'s line about it; none when left out.</param>
+    public HaulOverlay(OverlayHost overlay, Hauling hauling, NavRoutes nav, ExploreTrip explore, GameState game, Func<DateTime>? now = null, string? oldSettingsFile = null,
+        HeatmapFinds? routeCheck = null, NavScan? navScan = null)
     {
         (this.overlay, this.hauling, this.nav, this.game, this.explore) = (overlay, hauling, nav, game, explore);
         this.now = now ?? (() => DateTime.Now);
         Clickable = () => overlay.Box(Box)?.TakingClicks == true;
+        RouteCheck = () => routeCheck?.RouteCheckNow();
+        NavScanNow = () => navScan?.View().Line;
         overlay.CopyOldSettings(oldSettingsFile ?? OldHaulSettings.DefaultFile);
 
         overlay.KeyPressed += OnKey;
@@ -68,6 +76,7 @@ public sealed partial class HaulOverlay
         hauling.Changed += Redraw;
         nav.Changed += Redraw;
         explore.Changed += Redraw;
+        // (The nav box is a page, which follows the route's check by itself: nothing here to draw again when it changes.)
         if (overlay.Box(Box) is not { } window) return;   // a run without windows: there is nothing to draw on
         window.Clicked += Click;
         window.PreviewMouseMove += (_, _) => { if (open && mouse) Touch(); };   // a mouse being moved over the menu is a menu in use
@@ -88,6 +97,12 @@ public sealed partial class HaulOverlay
     /// a stand-in here.
     /// </summary>
     internal Func<bool> Clickable { get; init; }
+
+    /// <summary>The 3D map's check of the plotted route as it stands, for the nav box's line; null without one. Tests put a stand-in here.</summary>
+    internal Func<RouteCheckView?> RouteCheck { get; init; }
+
+    /// <summary>The 3D map's Nav scan line as it stands (<see cref="NavScan.LineOf"/>), for the nav box; null while it is off. Tests put a stand-in here.</summary>
+    internal Func<NavScanLine?> NavScanNow { get; init; }
 
     /// <summary>The menu as it stands, for tests: is it open, on which page, which line is lit, is its value being changed, and the first trade on show.</summary>
     internal (bool Open, string Page, int Lit, bool Editing, int Top) Menu => (open, page, lit, editing, top);

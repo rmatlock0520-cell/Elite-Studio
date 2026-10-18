@@ -62,15 +62,26 @@ public sealed partial class HaulOverlay
     }
 
     /// <summary>
-    /// What goes in the nav box now: the route being followed, or the exploring trip's line, or a
-    /// line saying there is neither. A box that takes clicks has a button that copies the next stop.
+    /// What went in the nav box before it became Studio Nav's page (only --render-shots draws it now):
+    /// the route being followed, or the exploring trip's line, or a line saying there is neither; under
+    /// it, while there is one, the line of the 3D map's check of the route plotted in the game, which
+    /// needs no Studio route (the page shows that line in the game, in the same words). A box that takes
+    /// clicks has a button that copies the next stop.
     /// </summary>
     internal UIElement NavContent()
     {
         OverlaySettings look = overlay.Settings;
+        TextBlock? checking = RouteCheckLine(RouteCheck(), look.Accent);
+        // Nav scan's line, under the route check's, while Nav scan is on (the page prints it in the same words).
+        TextBlock? scanning = NavScanText(NavScanNow(), look.Accent);
         if (RouteShown is not { } route)
-            return explore.OverlayLine(look.Accent) ?? Draw.Note("No route is being followed. Plot one in Studio Nav.");
+        {
+            UIElement alone = explore.OverlayLine(look.Accent) ?? Draw.Note("No route is being followed. Plot one in Studio Nav.");
+            return checking is null && scanning is null ? alone : Draw.Stack([alone, .. new[] { checking, scanning }.OfType<UIElement>()]);
+        }
         var lines = new List<UIElement>(RouteLines(route));
+        if (checking is not null) lines.Add(checking);
+        if (scanning is not null) lines.Add(scanning);
         if (route.Next is not null && overlay.Box(NavBox)?.TakingClicks == true)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
@@ -79,6 +90,52 @@ public sealed partial class HaulOverlay
         }
         return Draw.Stack([.. lines]);
     }
+
+    /// <summary>What the line of the route's check starts with, in the accent colour as EXPLORING is.</summary>
+    internal const string RouteCheckLabel = "ROUTE CHECK   ";
+
+    /// <summary>
+    /// The line of the 3D map's check of every stop of the plotted route (<see cref="RouteCheckWords"/>), under its
+    /// label; null while there is no check to tell of.
+    /// </summary>
+    static TextBlock? RouteCheckLine(RouteCheckView? check, string accent) =>
+        RouteCheckWords(check) is { } said
+            ? Draw.Text(14.5).Add(RouteCheckLabel, accent, bold: true).Add(said.Words, said.Ink, bold: said.Ink == Draw.Gold)
+            : null;
+
+    /// <summary>
+    /// What the line of the route's check says after its label, and in what colour: the 3D map's own line of it
+    /// (<see cref="HeatmapFinds.LineOf"/>), which Studio Nav's page shows in the game's nav box in the same words, its
+    /// tone in the overlay's colours. Null while there is nothing to tell: switched off, or no route plotted.
+    /// </summary>
+    internal static (string Words, string? Ink)? RouteCheckWords(RouteCheckView? check) =>
+        check?.Line is { } line ? (line.Words, Ink(line.Tone)) : null;
+
+    /// <summary>A line's tone in the overlay's colours.</summary>
+    static string? Ink(string tone) => tone switch
+    {
+        Nav.RouteCheckLine.Dim => Draw.Dim,
+        Nav.RouteCheckLine.Gold => Draw.Gold,
+        Nav.RouteCheckLine.Green => Draw.Green,
+        _ => null,   // the box's own white
+    };
+
+    /// <summary>What Nav scan's line starts with, in the accent colour as ROUTE CHECK is.</summary>
+    internal const string NavScanLabel = "NAV SCAN   ";
+
+    /// <summary>
+    /// Nav scan's line (<see cref="NavScanWords"/>) under its label; null while Nav scan is off.
+    /// </summary>
+    static TextBlock? NavScanText(NavScanLine? line, string accent) =>
+        NavScanWords(line) is { } said
+            ? Draw.Text(14.5).Add(NavScanLabel, accent, bold: true).Add(said.Words, said.Ink, bold: said.Ink == Draw.Gold)
+            : null;
+
+    /// <summary>
+    /// What Nav scan's line says after its label, and in what colour: the 3D map's own line of it (<see cref="NavScan.LineOf"/>),
+    /// which Studio Nav's page shows in the game's nav box in the same words. Null while Nav scan is off.
+    /// </summary>
+    internal static (string Words, string? Ink)? NavScanWords(NavScanLine? line) => line is null ? null : (line.Words, Ink(line.Tone));
 
     // ---------------------------------------------------------------- a trade, or a lookup's place to sell
 
@@ -141,7 +198,7 @@ public sealed partial class HaulOverlay
 
         // BUY: where to pick the cargo up, how far that is from the player (flown empty), the price and how much there is.
         table.Cell(0, 0, 12.5, Ink("BUY", accent)).Add(Mark("BUY"), bold: true);
-        table.Cell(0, 1, 15).Add(trade.BuyStation, bold: true).Add($"  {PadText(trade.BuyType, trade.BuyPad)} · {trade.BuySystem}{Power(trade.BuyPower)}", Draw.Dim);
+        table.Cell(0, 1, 15).Picture(StationPictures.Of(trade.BuyType), StationPictures.Colour(trade.BuyType)).Add(trade.BuyStation, bold: true).Add($"  {PadText(trade.BuyType, trade.BuyPad)} · {trade.BuySystem}{Power(trade.BuyPower)}", Draw.Dim);
         TextBlock toBuy = table.Cell(0, 2, 14);
         if (trade.BuyHere) toBuy.Add("★ you are docked here", Draw.Gold);
         else if (trade.BuyDistanceLy > 0) toBuy.Add($"{Ly(trade.BuyDistanceLy)} ly from you{Jumps("BUY", JumpText(trade.JumpsToBuy, "empty"))}");
@@ -150,7 +207,7 @@ public sealed partial class HaulOverlay
 
         // SELL: the destination, in grey; the trip there is flown with a full hold.
         table.Cell(1, 0, 12.5, Ink("SELL", Draw.Grey)).Add(Mark("SELL"), bold: true);
-        table.Cell(1, 1, 15, Draw.Grey).Add(trade.SellStation, bold: true).Add($"  {PadText(trade.SellType, trade.SellPad)} · {trade.SellSystem}{Power(trade.SellPower)}");
+        table.Cell(1, 1, 15, Draw.Grey).Picture(StationPictures.Of(trade.SellType), StationPictures.Colour(trade.SellType)).Add(trade.SellStation, bold: true).Add($"  {PadText(trade.SellType, trade.SellPad)} · {trade.SellSystem}{Power(trade.SellPower)}");
         table.Cell(1, 2, 14, Draw.Grey).Add($"{Ly(trade.DistanceLy)} ly trip{Jumps("SELL", JumpText(trade.JumpsOut, "full"))}");
         table.Cell(1, 3, 14, Draw.Grey).Add($"{Draw.Whole(trade.SellPrice)} cr", bold: true).Add($"   wants {Draw.Whole(trade.Demand)} t");
 
@@ -193,7 +250,7 @@ public sealed partial class HaulOverlay
         table.Cell(0, 1, 15).Add($"{Draw.Whole(lookup.Count)} t of {lookup.Name}", bold: true).Add(paid, Draw.Dim);
 
         table.Cell(1, 0, 12.5, Draw.Gold).Add(Right + " SELL", bold: true);
-        table.Cell(1, 1, 15, Draw.Grey).Add(place.SellStation, bold: true).Add($"  {PadText(place.SellType, place.SellPad)} · {place.SellSystem}");
+        table.Cell(1, 1, 15, Draw.Grey).Picture(StationPictures.Of(place.SellType), StationPictures.Colour(place.SellType)).Add(place.SellStation, bold: true).Add($"  {PadText(place.SellType, place.SellPad)} · {place.SellSystem}");
         table.Cell(1, 2, 14, Draw.Grey).Add(stop.Here ? "in this system" : $"{Ly(stop.Ly)} ly from you{JumpText(stop.Jumps, "full")}");
         TextBlock price = table.Cell(1, 3, 14, Draw.Grey).Add($"{Draw.Whole(place.SellPrice)} cr", bold: true).Add($"   wants {Draw.Whole(place.Demand)} t");
         if (place.Demand < lookup.Count) price.Add("   (not your whole load)", Draw.Gold);
@@ -202,7 +259,7 @@ public sealed partial class HaulOverlay
         {
             TradeRow also = lookup.Rows[(lookup.Index + 1) % lookup.Rows.Count];
             table.Cell(2, 0, 12.5, Draw.Dim).Add("ALSO", bold: true);
-            table.Cell(2, 1, 14, Draw.Dim).Add($"{also.SellStation}  {PadText(also.SellType, also.SellPad)} · {also.SellSystem}");
+            table.Cell(2, 1, 14, Draw.Dim).Picture(StationPictures.Of(also.SellType), StationPictures.Colour(also.SellType)).Add($"{also.SellStation}  {PadText(also.SellType, also.SellPad)} · {also.SellSystem}");
             table.Cell(2, 2, 14, Draw.Dim).Add($"{Ly(also.DistanceLy)} ly{JumpText(also.JumpsOut, "full")}");
             table.Cell(2, 3, 14, Draw.Dim).Add($"{Draw.Whole(also.SellPrice)} cr   wants {Draw.Whole(also.Demand)} t{Draw.Dot}{also.Updated}");
         }
@@ -322,8 +379,8 @@ public sealed partial class HaulOverlay
             MenuCell(lines, at, column++, tag, on ? Draw.Gold : Draw.Green).Add(on ? Right : mine ? CheckMark : "", bold: true);
             MenuCell(lines, at, column++, tag, Draw.Dim, atRight: true).Add(trade.Rank.ToString(CultureInfo.InvariantCulture));
             MenuCell(lines, at, column++, tag, ink).Add(trade.Commodity + (mine && on ? "  " + CheckMark : ""), bold: true);
-            if (manyBuys) MenuCell(lines, at, column++, tag, ink).Add(trade.BuyStation);
-            MenuCell(lines, at, column++, tag, ink).Add($"{trade.SellStation} · {trade.SellSystem}");
+            if (manyBuys) MenuCell(lines, at, column++, tag, ink).Picture(StationPictures.Of(trade.BuyType), StationPictures.Colour(trade.BuyType)).Add(trade.BuyStation);
+            MenuCell(lines, at, column++, tag, ink).Picture(StationPictures.Of(trade.SellType), StationPictures.Colour(trade.SellType)).Add($"{trade.SellStation} · {trade.SellSystem}");
             MenuCell(lines, at, column++, tag, ink, atRight: true).Add(Ly(trade.DistanceLy));
             MenuCell(lines, at, column++, tag, ink, atRight: true).Add((trade.JumpsToBuy + trade.JumpsOut + trade.JumpsBack).ToString(CultureInfo.InvariantCulture));
             MenuCell(lines, at, column++, tag, Draw.Green, atRight: true).Add("+" + Draw.Whole(trade.ProfitPerTon));
@@ -455,7 +512,12 @@ public sealed partial class HaulOverlay
             var nav = new NavRoutes(game, settings, spansh);
             var explore = new ExploreTrip(game, settings);
             bool clicks = false;   // as if the hauling box were shown in the game, where it takes clicks
-            var box = new HaulOverlay(overlay, hauling, nav, explore, game, () => clock, noOldTool) { ToClipboard = _ => { }, Clickable = () => clicks };
+            RouteCheckView? routeCheck = null;   // the 3D map's check of a route plotted in the game: none, then made up
+            NavScanLine? scanLine = null;        // the 3D map's Nav scan: off, then a picture made up
+            var box = new HaulOverlay(overlay, hauling, nav, explore, game, () => clock, noOldTool)
+            {
+                ToClipboard = _ => { }, Clickable = () => clicks, RouteCheck = () => routeCheck, NavScanNow = () => scanLine,
+            };
 
             void Shoot(string name, bool navBox = false) => shoot(name + ".png", overlay.Settings, navBox ? box.NavContent : box.Content);
             void Keys(params string[] keys) => Array.ForEach(keys, overlay.Press);
@@ -497,6 +559,18 @@ public sealed partial class HaulOverlay
                 """{ "event":"FSSDiscoveryScan", "BodyCount":9 }""", """{ "event":"Scan", "BodyID":3, "PlanetClass":"Icy body", "WasDiscovered":false, "WasMapped":false }""");
             Shoot("exploring", navBox: true);
             explore.Reset();
+
+            // A route plotted in the game, every stop checked by the 3D map: while it goes on, and once done, with a stop no database has.
+            routeCheck = SampleRouteCheck(done: false);
+            Shoot("route-check", navBox: true);
+            routeCheck = SampleRouteCheck(done: true);
+            Shoot("route-check-done", navBox: true);
+            // Nav scan on, under it: a screenshot of the Navigation panel read, with one name on it no database has.
+            scanLine = NavScan.LineOf(true, 1, new NavScanPicture("20261009200130_1.jpg", clock.ToUniversalTime(), 18, 17, 1, 0, 0, 0, NavScan.Done),
+                ["Col 285 Sector WO-J a38-0"]);
+            Shoot("nav-scan", navBox: true);
+            routeCheck = null;
+            scanLine = null;
 
             // Trades are found: the first one, then accepted with a route plotted to where it buys.
             search.Finds = request => request.Mode == "lookup" ? SamplePlaces(request) : SampleTrades(oneWay: !request.Returns);
@@ -641,6 +715,24 @@ public sealed partial class HaulOverlay
             new("Col 359 Sector NN-T e3-3", 0, -90.2, -12.5, 935.6, 534.4, 21100.8, 9, true, false, 0),
             new("Colonia", 0, -9530.5, -910.3, 19808.1, 21100.8, 0, 240, false, false, 0),
         ]);
+
+    /// <summary>The sample's check of a route of 34 stops plotted in the game: 12 checked so far, or all of them with one not recorded.</summary>
+    static RouteCheckView SampleRouteCheck(bool done)
+    {
+        DateTime began = new(2026, 10, 9, 20, 1, 0, DateTimeKind.Utc);
+        RouteCheckStop[] stops =
+        [
+            .. Enumerable.Range(1, 34).Select(i =>
+            {
+                string name = i == 30 ? "Wredguia WD-K d8-66" : $"Wredguia AB-C d{i}";
+                string state = !done && i > 12 ? HeatmapFinds.Waiting : i == 30 ? HeatmapFinds.NotRecorded : HeatmapFinds.Recorded;
+                return new RouteCheckStop(name, 1000 + i, i * 10, 0, i * 10, state, null, null);
+            }),
+        ];
+        int notRecorded = stops.Count(stop => stop.State == HeatmapFinds.NotRecorded), recorded = stops.Count(stop => stop.State == HeatmapFinds.Recorded);
+        return new RouteCheckView(done ? HeatmapFinds.Done : HeatmapFinds.Checking, HeatmapFinds.CheckAll, began, done ? began.AddSeconds(9) : null,
+            stops.Length, recorded + notRecorded, recorded, notRecorded, 0, 1, null, stops);
+    }
 
     /// <summary>The sample's trade search: answers at once, from the made-up lists.</summary>
     sealed class SampleSearch : ITradeSearch

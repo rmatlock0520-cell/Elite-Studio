@@ -11,7 +11,8 @@
 // must carry the token. Pages talk to the app only through Studio.api() and Studio.onEvent(), never
 // through anything that exists only inside the app's own window, so they work the same in a browser.
 // The rest is what every page would otherwise write for itself: finding and building elements (Studio.$,
-// Studio.h, Studio.options), numbers and times in words (Studio.whole, Studio.count, Studio.credits,
+// Studio.h, Studio.options, Studio.stationIcon for the picture of a station's kind), names that open like links
+// (Studio.link, with Studio.inspect and Studio.stationSheet for what a click opens), numbers and times in words (Studio.whole, Studio.count, Studio.credits,
 // Studio.tons, Studio.ly, Studio.ago, and the dots between the parts of a line: Studio.dot, Studio.wideDot),
 // the message at the bottom (Studio.toast), the dialog (Studio.ask, and Studio.nameLength for a name it asks
 // for), the clipboard (Studio.copy, Studio.copyName), the whole-page message (Studio.cover), a From box that
@@ -74,6 +75,252 @@ function h(tag, attrs, ...kids) {
   }
   for (const k of kids.flat(Infinity)) if (k != null && k !== false) n.append(k.nodeType ? k : String(k));
   return n;
+}
+
+// The small picture of a station's kind, to go before its name: h('td', null, stationIcon(row.type), row.station).
+// The kind is taken as the game's journal spells it ("CraterOutpost") or as Spansh words it ("Planetary
+// Outpost"); the mouse resting on the picture shows it in words. A kind with no picture gives null, which h() leaves out.
+const stationKinds = [   // [what the kind's name holds, the picture, the kind in words when the name is the journal's]
+  [/construction/, null], [/carrier/, 'carrier', 'Fleet carrier'], [/settlement/, 'settlement', 'Settlement'], [/surfacestation/, 'settlement', 'Surface settlement'],
+  [/craterport|planetaryport/, 'port', 'Planetary port'], [/crateroutpost|planetaryoutpost/, 'port', 'Planetary outpost'],
+  [/coriolis/, 'coriolis', 'Coriolis starport'], [/dodec/, 'coriolis', 'Dodec starport'], [/orbis/, 'orbis', 'Orbis starport'],
+  [/ocellus|bernal/, 'ocellus', 'Ocellus starport'], [/asteroid/, 'asteroid', 'Asteroid base'], [/megaship/, 'megaship', 'Mega ship'], [/outpost/, 'outpost', 'Outpost'],
+];
+function stationIcon(type) {
+  const name = String(type || '').toLowerCase().replace(/[^a-z]/g, '');
+  const kind = stationKinds.find(([holds]) => holds.test(name));
+  if (!kind || !kind[1]) return null;
+  return h('span', { class: 'st-icon st-' + kind[1], role: 'img', title: /\s/.test(type) ? type : kind[2], 'aria-label': kind[2] });
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Names that open. Every station, star system and commander a page shows is a link, as on a web site:
+//   Studio.link('station', 'Jameson Memorial', 'Shinrarta Dezhra')    Studio.link('system', 'Sol')    Studio.link('cmdr', 'Jameson')
+// A click opens its sheet over the page (the inspector, below); the right mouse button brings a short menu: open
+// it, copy the name, plot a route to its system. So no page needs a Copy or a Route button beside a name. The
+// text can be selected like any other. A name that has been opened is drawn a shade apart, like a visited link.
+const opened = new Set();
+const nameKey = (kind, name) => kind + '|' + String(name).toLowerCase();
+function link(kind, name, system) {
+  if (!name) return null;
+  const where = kind === 'system' ? name : system || '';
+  return h('a', { class: 'lnk' + (opened.has(nameKey(kind, name)) ? ' seen' : ''), href: '#', draggable: 'false',
+    'data-kind': kind, 'data-name': name, 'data-system': where,
+    title: 'Click to open ' + name + '. Right-click to copy the name' + (where ? ' or plot a route' : '') + '.' }, name);
+}
+
+// The menu of a name, at the mouse. It goes with the next click anywhere, with Escape, and when the page scrolls.
+let menu = null;
+function closeMenu() { if (menu) { menu.remove(); menu = null; } }
+function openMenu(a, x, y) {
+  closeMenu();
+  const { kind, name, system } = a.dataset;
+  const item = (text, act) => h('button', { type: 'button', onclick: () => { closeMenu(); act(); } }, text);
+  menu = h('div', { class: 'ctx', role: 'menu' },
+    item('Open ' + name, () => inspect(kind, name, system)),
+    item('Copy "' + name + '"', () => copyName(name)),
+    kind === 'station' && system && item('Copy its system, "' + system + '"', () => copyName(system)),
+    kind === 'station' && system && item('Open the system ' + system, () => inspect('system', system)),
+    system && item('Plot a route to ' + system, () => { closeInspector(); open('nav', '?to=' + encodeURIComponent(system)); }));
+  document.body.append(menu);
+  // Kept inside the window: a menu opened near the right or the bottom edge opens to the other side.
+  const box = menu.getBoundingClientRect(), zoom = Number(document.documentElement.style.zoom) || 1;
+  menu.style.left = Math.max(4, Math.min(x / zoom, window.innerWidth / zoom - box.width / zoom - 6)) + 'px';
+  menu.style.top = Math.max(4, Math.min(y / zoom, window.innerHeight / zoom - box.height / zoom - 6)) + 'px';
+  menu.querySelector('button').focus();
+}
+// Heard before anything on the page hears it: a name in a row that does something when clicked opens, and the row does nothing.
+document.addEventListener('click', e => {
+  const a = e.target.closest && e.target.closest('a.lnk');
+  if (menu && !menu.contains(e.target)) closeMenu();
+  if (!a) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (String(window.getSelection()).length) return;   // letters were being selected, not a name clicked
+  inspect(a.dataset.kind, a.dataset.name, a.dataset.system);
+}, true);
+document.addEventListener('contextmenu', e => {
+  const a = e.target.closest && e.target.closest('a.lnk');
+  if (!a) { closeMenu(); return; }
+  e.preventDefault();
+  e.stopPropagation();
+  openMenu(a, e.clientX, e.clientY);
+}, true);
+document.addEventListener('scroll', closeMenu, true);
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (menu) closeMenu();
+  else if (layer) back();
+});
+
+// The inspector: the sheet of the name opened, over the page, which stays as it was underneath. A name inside a sheet
+// opens the next sheet; Back goes to the one before, and from the first one back to the page.
+const trail = [];   // what is open, the newest last: { kind, name, system }
+let layer = null;
+function inspect(kind, name, system) {
+  trail.push({ kind, name, system: system || '' });
+  showSheet();
+}
+function back() {
+  trail.pop();
+  if (trail.length) showSheet();
+  else closeInspector();
+}
+function closeInspector() {
+  trail.length = 0;
+  if (layer) { layer.remove(); layer = null; }
+}
+async function showSheet() {
+  const at = trail[trail.length - 1], before = trail[trail.length - 2];
+  opened.add(nameKey(at.kind, at.name));
+  for (const a of document.querySelectorAll('a.lnk')) if (a.dataset.kind === at.kind && a.dataset.name.toLowerCase() === at.name.toLowerCase()) a.classList.add('seen');
+  const body = h('div', { class: 'sheet' }, h('p', { class: 'muted' }, at.kind === 'cmdr' ? '' : 'Asking Spansh about ' + at.name + '…'));
+  const fresh = h('div', { class: 'inspector', role: 'dialog', 'aria-label': at.name },
+    h('div', { class: 'bar' },
+      h('button', { type: 'button', class: 'btn', onclick: back }, before ? '◄ Back to ' + before.name : '◄ Back'),
+      h('span', { class: 'what' }, { station: 'Station', system: 'Star system', cmdr: 'Commander' }[at.kind] || ''),
+      h('button', { type: 'button', class: 'btn', title: 'Closes every sheet and goes back to the page', onclick: closeInspector }, '✕ Close')),
+    h('div', { class: 'scroll' }, body));
+  if (layer) layer.replaceWith(fresh); else document.body.append(fresh);
+  layer = fresh;
+  fresh.querySelector('button').focus();
+  const fill = nodes => body.replaceChildren(...[nodes].flat(Infinity).filter(Boolean));
+  if (at.kind === 'cmdr') { fill(commanderSheet(at.name)); return; }
+  try {
+    const found = await api('GET', '/api/market/inspect/' + at.kind + '?name=' + encodeURIComponent(at.name) + (at.kind === 'station' && at.system ? '&system=' + encodeURIComponent(at.system) : ''));
+    if (trail[trail.length - 1] !== at) return;   // another name was opened, or Back pressed, while waiting
+    fill(at.kind === 'station' ? stationSheet(found, found.station, found.system) : systemSheet(found));
+  } catch (problem) {
+    if (trail[trail.length - 1] !== at) return;
+    fill([h('h2', null, at.name), h('p', { class: 'card bad' }, problem.message)]);
+  }
+}
+
+// What a sheet is made of: label and value pairs in a list, and "not known" in place of nothing.
+const unknown = text => h('span', { class: 'unknown' }, text || 'not known');
+const facts = rows => h('dl', null, rows.filter(Boolean).map(([label, value]) => [h('dt', null, label), h('dd', null, value || unknown())]));
+const seenAgo = time => time ? ago(time) : unknown('not reported');
+const sheetHint = () => h('p', { class: 'muted small hint' }, 'Click a name to open it. Right-click a name to copy it or to plot a route to it.');
+
+// The services a station can have, in the three rows a player thinks of them in: its docks and yards, its offices,
+// its concourse. Each with the letters Spansh's name for it holds ("exact" where a shorter name is part of another's).
+// A service Spansh names that is none of these gets a tag of its own at the end; what every station has is left out.
+const serviceRows = [
+  [['Commodity market', ['market'], true], ['Outfitting', ['outfitting']], ['Rearm', ['restock', 'rearm']], ['Refuel', ['refuel']], ['Repair', ['repair']], ['Shipyard', ['shipyard']]],
+  [['Black market', ['blackmarket']], ['Contacts', ['contacts']], ['Fleet carrier administration', ['carrieradministration', 'carriermanagement']],
+    ['Fleet carrier services', ['carrierservices', 'carrierfuel']], ['Fleet carrier vendor', ['carriervendor']], ['Interstellar factors', ['interstellarfactors', 'facilitator']],
+    ['Material trader', ['materialtrader']], ['Power contact', ['powerplay', 'powercontact']], ['Redemption office', ['redemption']], ['Search and rescue', ['searchandrescue', 'searchrescue']],
+    ['System colonisation', ['colonisation']], ['Construction services', ['construction']], ['Refinery contact', ['refinery']], ['Technology broker', ['technologybroker', 'techbroker']],
+    ['Universal Cartographics', ['universalcartographics', 'exploration']], ['Vendors', ['shop', 'vendors'], true], ['Workshop', ['workshop', 'engineer']]],
+  [['Bartender', ['bartender']], ['Concourse', ['socialspace', 'concourse']], ['Crew lounge', ['crewlounge']], ['Frontline Solutions', ['frontlinesolutions']],
+    ['Missions', ['missions'], true], ['Pioneer Supplies', ['pioneersupplies']], ['Tuning', ['tuning']], ['Vista Genomics', ['vistagenomics']], ['Apex Interstellar', ['apexinterstellar']]],
+];
+const everywhere = ['dock', 'autodock', 'flightcontroller', 'stationoperations', 'stationmenu', 'missionsgenerated', 'livery'];
+const lettersOf = text => text.toLowerCase().replace(/\(.*\)/, '').replace(/[^a-z]/g, '');
+
+// A station's sheet: its name with what it is, two columns of what is known of it, its services as rows of tags (lit
+// when it has them), and for a fleet carrier who may dock. d is what the app knows of it (StationDetails); null when
+// only its name and system are known. The Find by name page shows the same sheet over a station's price list.
+function stationSheet(d, station, system, prices) {
+  const acts = h('div', { class: 'acts' },
+    prices !== false && h('button', { type: 'button', class: 'btn small', title: 'Opens Find by name with what this station sells and buys',
+      onclick: () => { closeInspector(); open('market', 'find.html?find=station&name=' + encodeURIComponent(station)); } }, 'Its price list'),
+    !boxed && h('a', { class: 'btn small', href: 'https://inara.cz/elite/station/?search=' + encodeURIComponent(system + ' [' + station + ']'), target: '_blank', rel: 'noopener',
+      title: 'Opens this station on Inara in your browser' }, 'Open on Inara ↗'));
+  if (!d) {
+    return [h('h2', null, link('station', station, system)), facts([['Star system', link('system', system)]]),
+      h('p', { class: 'muted small' }, 'Spansh has told Studio nothing more of this station.'), acts, sheetHint()];
+  }
+  const carrier = /carrier/i.test(d.type);
+  const pads = [d.largePads && d.largePads + ' large', d.mediumPads && d.mediumPads + ' medium', d.smallPads && d.smallPads + ' small'].filter(Boolean).join(', ');
+  const largest = d.largePads ? 'Large' : d.mediumPads ? 'Medium' : d.smallPads ? 'Small' : '';
+  const has = (d.services || []).map(name => ({ name, letters: lettersOf(name), used: false }));
+  const tag = ([label, keys, exact]) => {
+    const found = has.filter(s => keys.some(key => exact ? s.letters === key : s.letters.includes(key)));
+    for (const s of found) s.used = true;
+    // The kind of a material trader or technology broker comes in brackets after Spansh's name for it.
+    const kind = found.map(s => (s.name.match(/\((.*)\)/) || [])[1]).find(Boolean);
+    return h('span', { class: 'tag' + (found.length ? ' has' : '') }, label + (kind ? ' (' + kind + ')' : ''));
+  };
+  const rows = serviceRows.map(row => h('div', { class: 'tags' }, row.map(tag)));
+  const others = has.filter(s => !s.used && !everywhere.includes(s.letters));
+  return [
+    h('h2', null, stationIcon(d.type),
+      carrier && d.carrierName ? [h('span', null, d.carrierName), h('span', { class: 'call' }, '('), link('station', station, system), h('span', { class: 'call' }, ')')] : link('station', station, system),
+      h('span', { class: 'call' }, '–'), link('system', system)),
+    h('div', { class: 'cols' },
+      facts([
+        ['Star system', link('system', system)],
+        ['Power', d.power ? [d.power, d.powerState && h('span', { class: 'muted' }, ' · ' + d.powerState)] : unknown('none')],
+        ['Station distance', d.starLs == null ? null : whole(d.starLs) + ' ls from the star'],
+        ['From you', d.distanceLy == null ? null : d.distanceLy.toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' ly'],
+        ['Landing pad', largest && [largest, pads && h('span', { class: 'muted' }, '  (' + pads + ')')]],
+        ['Station type', d.type],
+        d.state && ['State', d.state],
+      ]),
+      facts([
+        ['Economy', (d.economies || []).join(', ')],
+        ['Population', d.population ? whole(d.population) + ' in the system' : null],
+        ['Government', d.government],
+        ['Allegiance', d.allegiance],
+        ['Minor faction', d.faction],
+        ['Station update', seenAgo(d.updated)],
+        ['Market update', seenAgo(d.marketUpdated)],
+        ['Shipyard update', seenAgo(d.shipyardUpdated)],
+        ['Outfitting update', seenAgo(d.outfittingUpdated)],
+      ])),
+    h('h3', null, 'Station services'), rows,
+    others.length ? h('div', { class: 'tags' }, others.map(s => h('span', { class: 'tag has' }, s.name))) : null,
+    carrier ? [h('h3', null, 'Fleet carrier'), facts([
+      ['Docking access', d.access && h('span', { class: d.access === 'open to all' ? 'good' : 'warn' }, d.access)],
+      ['Owner', unknown('No data service says who owns a carrier. Inara shows it where the owner has registered: press Open on Inara.')],
+    ])] : null,
+    acts, sheetHint()];
+}
+
+// A star system's sheet: who runs it and how many live there, the factions in it, and every station it has, each a name that opens.
+function systemSheet(s) {
+  const kinds = [s.stations.some(b => b.market) && 'M = commodity market', s.stations.some(b => b.shipyard) && 'S = shipyard', s.stations.some(b => b.outfitting) && 'O = outfitting'].filter(Boolean).join(', ');
+  return [
+    h('h2', null, link('system', s.name), s.needsPermit && h('span', { class: 'call warn' }, 'needs a permit')),
+    h('div', { class: 'cols' },
+      facts([
+        ['From you', s.distanceLy == null ? null : s.distanceLy.toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' ly'],
+        ['Allegiance', s.allegiance],
+        ['Government', s.government],
+        ['Security', s.security],
+        ['Economy', s.economy],
+        ['Population', s.population ? whole(s.population) : unknown('none')],
+      ]),
+      facts([
+        ['Power', s.power ? [s.power, s.powerState && h('span', { class: 'muted' }, ' · ' + s.powerState)] : unknown('none')],
+        s.powers.length > 1 && ['Powers in reach', s.powers.join(', ')],
+        ['Controlling faction', s.faction && [s.faction, s.factionState && s.factionState !== 'None' && h('span', { class: 'muted' }, ' · ' + s.factionState)]],
+        ['Region', s.region],
+        ['Bodies', s.bodies ? whole(s.bodies) : null],
+        ['Last reported', seenAgo(s.updated)],
+      ])),
+    s.factions.length ? [h('h3', null, 'Minor factions'), h('div', { class: 'tablebox' }, h('table', null,
+      h('thead', null, h('tr', null, ['Faction', 'Influence', 'State', 'Government', 'Allegiance'].map((title, at) => h('th', { class: at === 1 ? 'r' : null }, title)))),
+      h('tbody', null, s.factions.map(f => h('tr', null, h('td', null, f.name), h('td', { class: 'r' }, f.influence.toLocaleString('en-US', { maximumFractionDigits: 1 }) + '%'),
+        h('td', null, f.state), h('td', null, f.government), h('td', null, f.allegiance))))))] : null,
+    h('h3', null, count(s.stations.length, 'station') + (kinds ? ' (' + kinds + ')' : '')),
+    s.stations.length ? h('div', { class: 'tablebox' }, h('table', null,
+      h('thead', null, h('tr', null, ['Station', 'Type', 'From star (ls)', 'Pad', 'Has'].map((title, at) => h('th', { class: at === 2 ? 'r' : null }, title)))),
+      h('tbody', null, s.stations.map(b => h('tr', null, h('td', null, stationIcon(b.type), link('station', b.name, s.name)), h('td', null, b.type),
+        h('td', { class: 'r' }, b.starLs == null ? '' : whole(b.starLs)), h('td', null, b.pad || '?'),
+        h('td', null, [b.market && 'M', b.shipyard && 'S', b.outfitting && 'O'].filter(Boolean).join(' '))))))) : h('p', { class: 'muted' }, 'No station is known here.'),
+    h('div', { class: 'acts' },
+      !boxed && h('a', { class: 'btn small', href: 'https://inara.cz/elite/starsystem/?search=' + encodeURIComponent(s.name), target: '_blank', rel: 'noopener', title: 'Opens this system on Inara in your browser' }, 'Open on Inara ↗')),
+    sheetHint()];
+}
+
+// A commander's sheet. No data service tells one program about another player, so it holds the name and the way to Inara.
+function commanderSheet(name) {
+  return [h('h2', null, 'CMDR ', link('cmdr', name)),
+    h('p', { class: 'muted' }, 'No data service tells Studio anything about other commanders. Inara shows what a commander has chosen to share there.'),
+    h('div', { class: 'acts' }, !boxed && h('a', { class: 'btn small', href: 'https://inara.cz/elite/cmdrs/?search=' + encodeURIComponent(name), target: '_blank', rel: 'noopener' }, 'Find this commander on Inara ↗')),
+    h('p', { class: 'muted small hint' }, 'Right-click the name to copy it, for a message in the game.')];
 }
 
 // Fills a drop-down list from [value, text] entries: options(select, [['near', 'Near me'], ['anywhere', 'Anywhere']]).
@@ -253,6 +500,9 @@ async function copyName(name) {
 // address (new URLSearchParams(location.search)), so it need not know which of the two happened.
 function open(studio, page) {
   if (shell) window.parent.postMessage({ studio: 'open', to: studio, page: page || '' }, location.origin);
+  // In one of the overlay's boxes the other studio has a box of its own: that one is opened, and this one stays as it is,
+  // with its own key still showing and hiding it. (It used to turn into the other page, with no way back.)
+  else if (boxed) api('POST', '/api/overlay/open', { box: studio, page: page || '' }).catch(problem => toast(problem.message, true));
   else location.href = '../' + studio + '/' + (page || '');
 }
 // A link in the middle of a line that does so when clicked (its look is .go in studio.css):
@@ -370,5 +620,5 @@ function report(text) {
 window.addEventListener('error', e => report((e.message || 'error') + (e.filename ? ' (line ' + e.lineno + ')' : '')));
 window.addEventListener('unhandledrejection', e => report('Unhandled: ' + ((e.reason && e.reason.message) || e.reason)));
 
-return { served, boxed, api, onEvent, follow, open, go, $, h, options, fromBox, whole, count, credits, tons, ly, ago, dot, wideDot, toast, ask, nameLength, copy, copyName, cover };
+return { served, boxed, api, onEvent, follow, open, go, $, h, stationIcon, link, inspect, stationSheet, options, fromBox, whole, count, credits, tons, ly, ago, dot, wideDot, toast, ask, nameLength, copy, copyName, cover };
 })();

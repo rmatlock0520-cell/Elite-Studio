@@ -161,6 +161,21 @@ public sealed class ExploreCoverage(string folder, HttpMessageHandler? handler =
     public bool Stale => Map is not { } kept || DateTime.UtcNow - kept.FetchedUtc >= KeepFor;
 
     /// <summary>
+    /// Where the copy of the list is kept on this PC (it may not be there yet). The 3D map reads
+    /// the same copy for its own needs (<see cref="SectorCubes"/>), so EDAstro is asked only once for both.
+    /// </summary>
+    public string FilePath => file;
+
+    /// <summary>
+    /// Raised when a new list has come from EDAstro and taken the place of the old map, with the
+    /// list's own text and when it was fetched, after the copy on disk has been written. It is raised
+    /// when the copy could not be written as well: the text comes with it so that whoever reads the
+    /// list (<see cref="SectorCubes"/>) takes the same new one the flat map now shows, not the old copy
+    /// that is still on disk (or no copy at all).
+    /// </summary>
+    public event Action<string, DateTime>? Refreshed;
+
+    /// <summary>
     /// Fetches the list from EDAstro, unless the copy on this PC is younger than a week. Gives null
     /// when the map is there afterwards, or the reason it could not be fetched, in the player's
     /// words; an older map then stays in use. A second call while one is under way waits for the same answer.
@@ -191,7 +206,8 @@ public sealed class ExploreCoverage(string folder, HttpMessageHandler? handler =
             // Started on a background thread, as every call to Spansh is: looking up Windows' proxy
             // settings can take seconds, and the UI thread must never stand still.
             string csv = await Task.Run(() => http.GetStringAsync(Source));
-            map = SectorMap.Parse(csv, DateTime.UtcNow);
+            DateTime fetched = DateTime.UtcNow;
+            map = SectorMap.Parse(csv, fetched);
             Log.Info($"EDAstro's sector list fetched: {map.Known.Count(count => count > 0)} squares with known systems");
             try
             {
@@ -202,6 +218,7 @@ public sealed class ExploreCoverage(string folder, HttpMessageHandler? handler =
             {
                 Log.Error("EDAstro's sector list could not be kept on disk, so it will be fetched again next time", problem);
             }
+            Refreshed?.Invoke(csv, fetched);
             return null;
         }
         catch (HttpRequestException problem)

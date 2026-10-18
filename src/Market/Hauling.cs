@@ -80,6 +80,8 @@ public sealed partial class Hauling
     SearchRequest? lastKey;         // what the newest answer was an answer to
     DateTime? searchDue;            // when the search after a changed setting starts
     DateTime? checkAccepted;        // when to look whether the accepted trade's cargo is gone, after a sale somewhere else
+    (string System, string Station) lastDock = ("", "");   // the station the player is docked at, or was last
+    StationMarket? dockMarket;      // its price list as the game showed it; null until its commodities screen was opened
 
     /// <param name="now">The clock; tests pass their own.</param>
     /// <param name="oldSettingsFile">
@@ -94,6 +96,7 @@ public sealed partial class Hauling
         this.now = now ?? (() => DateTime.Now);
         Settings = MarketSettings.Load(settings, oldSettingsFile ?? OldHaulSettings.DefaultFile);
         system = game.StarSystem;
+        NoteDock();
         game.Journal += OnJournal;
         game.Changed += OnGameChanged;
     }
@@ -222,14 +225,52 @@ public sealed partial class Hauling
     /// <summary>The "Search again" button: asks the data service afresh, also while a trade is accepted.</summary>
     public void SearchAgain() => StartSearch(force: true, byHand: true);
 
-    SearchRequest Request() => new()
+    SearchRequest Request()
     {
-        Mode = Settings.StartMode, StarSystem = game.StarSystem, Pad = Pad, BuyLy = Settings.BuyLy, MaxLy = Settings.MaxLy,
-        MaxAgeHours = Settings.MaxAgeHours, MaxStarLs = Settings.MaxStarLs, MinSupply = Settings.MinSupply, MinDemand = Settings.MinDemand,
-        Carriers = Settings.Carriers, Surface = Settings.Surface, Cargo = CargoTons,
-        SrcPower = Settings.SrcPower, DstPower = Settings.DstPower, SrcState = Settings.SrcState, DstState = Settings.DstState,
-        RankBy = Settings.RankBy, Returns = Settings.Returns, Jump = JumpFull, JumpEmpty = JumpEmpty,
-    };
+        var request = new SearchRequest
+        {
+            Mode = Settings.StartMode, StarSystem = game.StarSystem, Pad = Pad, BuyLy = Settings.BuyLy, MaxLy = Settings.MaxLy,
+            MaxAgeHours = Settings.MaxAgeHours, MaxStarLs = Settings.MaxStarLs, MinSupply = Settings.MinSupply, MinDemand = Settings.MinDemand,
+            Carriers = Settings.Carriers, Surface = Settings.Surface, Cargo = CargoTons,
+            SrcPower = Settings.SrcPower, DstPower = Settings.DstPower, SrcState = Settings.SrcState, DstState = Settings.DstState,
+            RankBy = Settings.RankBy, Returns = Settings.Returns, Jump = JumpFull, JumpEmpty = JumpEmpty,
+        };
+        if (!CarryMode) return request;
+
+        // From a station to a system: both named, and one way. Where the station is, is known while the player is in its
+        // system; its price list as the game showed it, once they have opened its commodities screen while docked there.
+        (string from, string station) = CarryFrom;
+        double[]? here = Same(from, game.StarSystem) ? game.StarPos : null;
+        return request with
+        {
+            Returns = false, FromSystem = from, FromStation = station, ToSystem = Settings.ToSystem,
+            FromX = here?[0] ?? 0, FromY = here?[1] ?? 0, FromZ = here?[2] ?? 0,
+            LiveMarket = dockMarket is { } shown && Same(shown.StationName, station) && Same(shown.StarSystem, from) ? shown : null,
+        };
+    }
+
+    bool CarryMode => Settings.StartMode == "carry";
+
+    /// <summary>
+    /// The station a "from a station to a system" search buys at, with its system: the one the
+    /// player named, else the one they are docked at, or were docked at last (the list must not
+    /// empty itself at take-off). Two empty names when neither is known.
+    /// </summary>
+    public (string System, string Station) CarryFrom =>
+        Settings.FromSystem.Length > 0 && Settings.FromStation.Length > 0 ? (Settings.FromSystem, Settings.FromStation) : lastDock;
+
+    /// <summary>The stations of a system that sell something, by name, for the page's list of stations to buy at.</summary>
+    public Task<IReadOnlyList<string>> Stations(string system) => search.Stations(system, CancellationToken.None);
+
+    // Where the player is docked, and that station's price list once the game has shown it. Both are kept after take-off:
+    // what was bought there is still what is being carried.
+    void NoteDock()
+    {
+        if (!game.Docked || string.IsNullOrEmpty(game.Station) || string.IsNullOrEmpty(game.StarSystem)) return;
+        if (!Same(lastDock.Station, game.Station) || !Same(lastDock.System, game.StarSystem)) dockMarket = null;
+        lastDock = (game.StarSystem, game.Station);
+        dockMarket = game.Market ?? dockMarket;
+    }
 
     /// <summary>
     /// What decides a search's answer: the request itself. "Anywhere" answers do not depend on where
@@ -283,7 +324,7 @@ public sealed partial class Hauling
             Apply(LastResult);
             return;
         }
-        message = $"Searching trades from {game.StarSystem}…";
+        message = CarryMode && request.ToSystem.Length > 0 ? $"Searching what to carry to {request.ToSystem}…" : $"Searching trades from {game.StarSystem}…";
         // The answer on its way is to another question, so the list on show is not its list: it goes, and its line says
         // why nothing is listed. The same question asked again keeps its list and its line on screen meanwhile.
         if (key != lastKey) (trades, listMessage) = ([], message);
@@ -327,7 +368,7 @@ public sealed partial class Hauling
     {
         trades = [.. result.Trades];
         RefreshRows();
-        ListOneWay = trades.Count > 0 ? trades[0].OneWay : !Settings.Returns;
+        ListOneWay = trades.Count > 0 ? trades[0].OneWay : !Settings.Returns || CarryMode;
         Index = 0;
         if (!result.Ok)
         {
@@ -336,10 +377,11 @@ public sealed partial class Hauling
             Log.Error($"Search failed for {result.StarSystem}: {result.Error}");
         }
         else if (trades.Count > 0) message = null;
+        else if (result.Empty is { } why) message = why;
         else if (result.Exports == 0) message = $"No market data for stations in {result.StarSystem} that fit your filters. Try older prices or another pad size.";
         else message = $"No profitable trades within {Settings.MaxLy} ly of {result.StarSystem}. Try a wider distance or older prices.";
 
-        listMessage = (trades.Count > 0 ? $"{trades.Count} trades from {result.StarSystem}" : message)
+        listMessage = (trades.Count > 0 ? result.Summary ?? $"{trades.Count} trades from {result.StarSystem}" : message)
             + (string.IsNullOrEmpty(result.Note) ? "" : $"   ·   {result.Note}")
             + (Accepted is null ? "" : "   ·   the overlay stays on your accepted trade until you drop it");
         RaiseChanged();
@@ -459,11 +501,16 @@ public sealed partial class Hauling
 
     void OnGameChanged()
     {
+        NoteDock();
         bool search = TakeMarks() || searchWanted;   // a finished trade: look for the next one from here
         searchWanted = false;
         // Docked somewhere the list was not made for, as after arriving in the middle of a plotted route.
         bool unsearched = game.Docked && !string.IsNullOrEmpty(game.StarSystem) && !Same(searchedFor, game.StarSystem) && Settings.StartMode != "anywhere";
-        if (search || unsearched) StartSearch(force: false);
+        // From a station to a system: the list is for the station the player is docked at, and for its prices as the game
+        // shows them. Another station in the same system, or its commodities screen just read, is another question.
+        bool elsewhere = CarryMode && started && !Searching && lastKey is not null && Request() is { } asked
+            && (!Same(asked.FromStation, lastKey.FromStation) || !Same(asked.FromSystem, lastKey.FromSystem) || !ReferenceEquals(asked.LiveMarket, lastKey.LiveMarket));
+        if (search || unsearched || elsewhere) StartSearch(force: false);
         else
         {
             RefreshRows();

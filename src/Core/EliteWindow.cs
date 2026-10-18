@@ -93,26 +93,30 @@ public static class EliteWindow
         long now = Environment.TickCount64;
         if (now - checkedAt < CheckEveryMs) return;
         checkedAt = now;
-        processId = 0;
-        handle = IntPtr.Zero;
+        // Worked out first and stored together at the end, so nothing asking meanwhile (the tests ask from several
+        // threads at once) sees the game gone for the moment of the look.
+        uint id = 0;
+        IntPtr window = IntPtr.Zero;
         // A fresh Process object each time: an old one keeps the window handle it first saw.
         Process[] found = Process.GetProcessesByName(ProcessName);
         try
         {
             if (found.Length > 0)
             {
-                handle = found[0].MainWindowHandle;
-                processId = (uint)found[0].Id;
+                window = found[0].MainWindowHandle;
+                id = (uint)found[0].Id;
             }
         }
         catch (InvalidOperationException)
         {
             // the game closed while it was being looked at
+            (id, window) = (0, IntPtr.Zero);
         }
         finally
         {
             foreach (Process process in found) process.Dispose();
         }
+        (processId, handle) = (id, window);
     }
 
     [StructLayout(LayoutKind.Sequential)]

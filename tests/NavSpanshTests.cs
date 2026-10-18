@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using EliteStudio.Core;
 using EliteStudio.Nav;
 
@@ -75,7 +76,12 @@ sealed class SpanshStandIn : HttpMessageHandler
 ///   system-names.json    the name search for "Maia"
 /// Both jobs were asked for by Studio itself, running against a practice journal; the two short
 /// answers that come before a result (job taken on, job unfinished) are written out in
-/// <see cref="SpanshStandIn"/> as they were seen then.
+/// <see cref="SpanshStandIn"/> as they were seen then. One more answer was recorded on 14 October
+/// 2026, also byte for byte:
+///   systems-box.json     a box search over Systoodou's sector (38, 33, 17), its far faces pulled in
+///                        by 1/64 ly, asking for 5 systems: the first 5 of the 131 Spansh knew there,
+///                        with all it sends about each. One request, sent by hand with Studio's own
+///                        User-Agent (Studio itself never asks for fewer than 500 at a time).
 /// </summary>
 public class NavSpanshTests
 {
@@ -379,6 +385,339 @@ public class NavSpanshTests
         }, net.Asked);
 
         await Assert.ThrowsAsync<SpanshException>(() => spansh.SystemNames("Offline now"));
+    }
+
+    [Fact]
+    public async Task Where_each_suggested_system_is_comes_from_the_same_answer_as_the_names()
+    {
+        var net = new SpanshStandIn().Then(SpanshStandIn.Recorded("system-names.json"));
+        using Spansh spansh = Quick(net);
+
+        Assert.Empty(await spansh.Locate("Ma"));
+        IReadOnlyList<LocatedSystem> found = await spansh.Locate(" Maia ");
+
+        Assert.Equal(new[]
+        {
+            new LocatedSystem("Maia", 8216113749, -81.78125, -149.4375, -343.375),
+            new LocatedSystem("Maiadiwobog", 3382655718090, 144.3125, -180.9375, -53.96875),
+            new LocatedSystem("Maiawa", 7268292830601, 23.21875, 49.8125, -66.6875),
+        }, found);
+        Assert.Equal(new[] { "Maia", "Maiadiwobog", "Maiawa" }, await spansh.SystemNames("MAIA"));   // kept: not asked again
+        Assert.Single(net.Asked);
+
+        // To a page the number goes as text, so that no digit of it is lost on the way.
+        Assert.Contains("\"id64\": \"8216113749\"", JsonSerializer.Serialize(found[0], EliteStudio.App.Settings.Json));
+    }
+
+    [Fact]
+    public async Task A_suggestion_without_a_position_is_left_out_and_a_number_sent_as_text_is_read_whole()
+    {
+        const string Loose = """
+            {"min_max":[
+              {"id64":"9007199254740993","name":"Far","x":"1.5","y":-2,"z":0},
+              {"id64":10477373803,"name":"Nowhere","x":1},
+              {"name":"Unnumbered","x":1,"y":2,"z":3}],
+             "values":["Far","Nowhere","Unnumbered"]}
+            """;
+        using Spansh spansh = Quick(new SpanshStandIn().Then(Loose));
+
+        Assert.Equal(new[]
+        {
+            new LocatedSystem("Far", 9007199254740993, 1.5, -2, 0),
+            new LocatedSystem("Unnumbered", 0, 1, 2, 3),
+        }, await spansh.Locate("Somewhere"));
+        Assert.Equal(3, (await spansh.SystemNames("Somewhere")).Count);   // the name box still offers all three
+    }
+
+    // ------------------------------------------------------------ boxes of space (the 3D map)
+
+    static readonly string SystemsBox = SpanshStandIn.Recorded("systems-box.json");
+
+    /// <summary>Systoodou's sector, where systems-box.json was recorded.</summary>
+    static readonly Box Systoodou = Galaxy.SectorBounds(38, 33, 17);
+
+    /// <summary>The JSON a call carried: what follows "POST /api/systems/search ".</summary>
+    static string Sent(string asked) => asked.Split(' ', 3)[2];
+
+    /// <summary>An answer as Spansh shapes it, with plain systems Star 0, Star 1 and so on.</summary>
+    static string Answer(int count, int rows, int from = 0)
+    {
+        IEnumerable<string> systems = Enumerable.Range(from, rows)
+            .Select(i => $$"""{"bodies":[],"id64":{{1000 + i}},"name":"Star {{i}}","x":{{i}},"y":0,"z":0}""");
+        return $$"""{"count":{{count}},"from":{{from}},"results":[{{string.Join(",", systems)}}],"size":500}""";
+    }
+
+    [Fact]
+    public async Task A_box_is_counted_by_asking_for_one_system_with_its_far_faces_pulled_in_by_a_64th_of_a_light_year()
+    {
+        var net = new SpanshStandIn().Then(Answer(2521, 1)).Then(SystemsBox);
+        using Spansh spansh = Quick(net);
+
+        // Sphuedu's sector, exactly as the 3D map's research asked it of Spansh live.
+        Assert.Equal(new BoxCount(2521, Capped: false), await spansh.CountBox(Galaxy.SectorBounds(38, 33, 18), TestContext.Current.CancellationToken));
+        Assert.Equal(
+            """POST /api/systems/search {"filters":{"x":{"comparison":"<=>","value":[-1345,-65.015625]},"y":{"comparison":"<=>","value":[1255,2534.984375]},"z":"""
+            + """{"comparison":"<=>","value":[-1065,214.984375]}},"sort":[{"id64":{"direction":"asc"}}],"size":1,"page":0}""",
+            net.Asked[0]);
+        Assert.Matches(@"^EliteStudio/\d+\.\d+\.\d+ \(", net.UserAgent);
+
+        // Systoodou's, against Spansh's real answer, which repeats the search it was given: the same box and order.
+        BoxCount count = await spansh.CountBox(Systoodou, TestContext.Current.CancellationToken);
+        Assert.Equal(new BoxCount(131, Capped: false), count);
+        Assert.Equal(1, count.Pages);
+        using JsonDocument sent = JsonDocument.Parse(Sent(net.Asked[1]));
+        using JsonDocument echoed = JsonDocument.Parse(SystemsBox);
+        JsonElement search = echoed.RootElement.GetProperty("search");
+        Assert.True(JsonElement.DeepEquals(search.GetProperty("filters"), sent.RootElement.GetProperty("filters")));
+        Assert.True(JsonElement.DeepEquals(search.GetProperty("sort"), sent.RootElement.GetProperty("sort")));
+        Assert.Equal(2, net.Asked.Count);
+    }
+
+    [Theory]
+    [InlineData(-49985.0, -40985.0, -24105.0, 1280.0, "[-49985,-48705.015625]")]   // the very first sector
+    [InlineData(-1345.0, 1255.0, -1065.0, 160.0, "[-1345,-1185.015625]")]           // a 160 ly cube
+    [InlineData(-100.0, -20.0, 30.0, 0.01, "[-100,-99.984375]")]                  // a far face between two positions: the next position on is -99.96875
+    [InlineData(10.5, -20.0, 30.0, 0.5, "[10.5,10.984375]")]
+    public async Task Every_box_owns_its_near_faces_and_none_of_its_far_ones(double x0, double y0, double z0, double width, string xs)
+    {
+        var net = new SpanshStandIn().Then(Answer(0, 0));
+        using Spansh spansh = Quick(net);
+
+        await spansh.CountBox(new Box(x0, y0, z0, x0 + width, y0 + width, z0 + width), TestContext.Current.CancellationToken);
+
+        Assert.Contains($$"""{"x":{"comparison":"<=>","value":{{xs}}},""", net.Asked[0]);
+    }
+
+    [Fact]
+    public async Task A_count_of_10000_means_10000_or_more()
+    {
+        using Spansh spansh = Quick(new SpanshStandIn().Then(Answer(10_000, 1)).Then(Answer(9_999, 1)));
+        Box wredguia = Galaxy.SectorBounds(38, 32, 18);
+
+        BoxCount capped = await spansh.CountBox(wredguia, TestContext.Current.CancellationToken);
+        BoxCount below = await spansh.CountBox(wredguia, TestContext.Current.CancellationToken);
+
+        Assert.Equal(new BoxCount(10_000, Capped: true), capped);
+        Assert.Equal(20, capped.Pages);   // all a listing can have, and still not all of them
+        Assert.Equal(new BoxCount(9_999, Capped: false), below);
+        Assert.Equal(20, below.Pages);
+        Assert.Equal(0, new BoxCount(0, false).Pages);
+    }
+
+    [Fact]
+    public async Task A_box_is_listed_500_at_a_time_on_pages_0_to_19_and_never_more()
+    {
+        var net = new SpanshStandIn().Then(Answer(10_000, 500)).Then(Answer(10_000, 500, from: 9_500)).Then(Answer(2_521, 500, from: 500));
+        using Spansh spansh = Quick(net);
+        Box sphuedu = Galaxy.SectorBounds(38, 33, 18);
+
+        BoxPage first = await spansh.ListBoxPage(Galaxy.SectorBounds(38, 32, 18), 0, TestContext.Current.CancellationToken);
+        BoxPage last = await spansh.ListBoxPage(Galaxy.SectorBounds(38, 32, 18), 19, TestContext.Current.CancellationToken);
+        await spansh.ListBoxPage(sphuedu, 1, TestContext.Current.CancellationToken);
+
+        Assert.Equal(500, first.Systems.Count);
+        Assert.Equal(new BoxCount(10_000, Capped: true), last.Count);
+        Assert.Equal((19, "Star 9500"), (last.Page, last.Systems[0].Name));
+        // The request the 3D map's research sent live for Sphuedu's second page, word for word.
+        Assert.Equal(
+            """POST /api/systems/search {"filters":{"x":{"comparison":"<=>","value":[-1345,-65.015625]},"y":{"comparison":"<=>","value":[1255,2534.984375]},"z":"""
+            + """{"comparison":"<=>","value":[-1065,214.984375]}},"sort":[{"id64":{"direction":"asc"}}],"size":500,"page":1}""",
+            net.Asked[2]);
+
+        // Page 20 would reach past Spansh's 10,000th system, which it answers with an error: not asked.
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => spansh.ListBoxPage(sphuedu, 20, TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => spansh.ListBoxPage(sphuedu, -1, TestContext.Current.CancellationToken));
+        Assert.Equal(3, net.Asked.Count);
+        Assert.All(net.Asked, asked =>
+        {
+            using JsonDocument search = JsonDocument.Parse(Sent(asked));
+            Assert.Equal(500, search.RootElement.GetProperty("size").GetInt32());
+            Assert.InRange(search.RootElement.GetProperty("page").GetInt32(), 0, 19);
+        });
+    }
+
+    [Fact]
+    public async Task A_page_keeps_only_what_the_map_uses_of_Spansh_real_rows()
+    {
+        // Spansh's real answer, told the box holds just these five: the page then holds all it should.
+        JsonNode answer = JsonNode.Parse(SystemsBox)!;
+        answer["count"] = 5;
+        using Spansh spansh = Quick(new SpanshStandIn().Then(answer.ToJsonString()));
+
+        BoxPage page = await spansh.ListBoxPage(Systoodou, 0, TestContext.Current.CancellationToken);
+
+        Assert.Equal(new BoxCount(5, Capped: false), page.Count);
+        static DateTime Utc(int year, int month, int day, int hour, int minute, int second) => new(year, month, day, hour, minute, second, DateTimeKind.Utc);
+        Assert.Equal(new[]
+        {
+            new BoxSystem("HD 80711", 10242754787, -1141.28125, 1318.6875, -1323, null, 9, Utc(2022, 4, 15, 19, 44, 15)),   // no discovery scan reported
+            new BoxSystem("HIP 44601", 659954148049, -824.3125, 1685.96875, -1812.875, 5, 5, Utc(2024, 8, 3, 13, 45, 20)),
+            new BoxSystem("HD 237948", 659955262377, -820.25, 2019.65625, -1281.03125, 32, 32, Utc(2024, 11, 3, 17, 18, 36)),
+            new BoxSystem("HD 74904", 654048109297, -1264.1875, 1553.125, -1738.21875, null, 9, Utc(2020, 12, 27, 23, 22, 23)),
+            new BoxSystem("HD 75229", 82511860018, -822.78125, 1815.65625, -2087.53125, 9, 9, Utc(2025, 5, 16, 16, 30, 12)),
+        }, page.Systems);
+        Assert.Equal(DateTimeKind.Utc, page.Systems[0].Updated!.Value.Kind);
+        Assert.All(page.Systems, system => Assert.True(Systoodou.Contains(system.X, system.Y, system.Z)));
+        // Sorted by number, Spansh says, but not strictly: the reason repeats are dropped by number, not by place in the order.
+        Assert.False(page.Systems.Select(system => system.Id64).SequenceEqual(page.Systems.Select(system => system.Id64).Order()));
+
+        string sent = JsonSerializer.Serialize(page.Systems[0], EliteStudio.App.Settings.Json);
+        Assert.Contains("\"id64\": \"10242754787\"", sent);
+        Assert.Equal(page.Systems[0], JsonSerializer.Deserialize<BoxSystem>(sent, EliteStudio.App.Settings.Json));
+    }
+
+    [Fact]
+    public async Task A_page_short_of_systems_is_refused_rather_than_taken_for_the_whole_page()
+    {
+        var net = new SpanshStandIn()
+            .Then(SystemsBox)                            // Spansh's real answer to a request for 5 of 131
+            .Then(Answer(10_000, 25))                    // what a request for 501 brings back
+            .Then(Answer(600, 101, from: 500))           // one too many
+            .Then(Answer(600, 100, from: 500))           // the last page, just right
+            .Then(Answer(131, 0, from: 500));            // past the end: nothing, as it should be
+        using Spansh spansh = Quick(net);
+
+        var five = await Assert.ThrowsAsync<SpanshException>(() => spansh.ListBoxPage(Systoodou, 0, TestContext.Current.CancellationToken));
+        var short25 = await Assert.ThrowsAsync<SpanshException>(() => spansh.ListBoxPage(Systoodou, 3, TestContext.Current.CancellationToken));
+        var extra = await Assert.ThrowsAsync<SpanshException>(() => spansh.ListBoxPage(Systoodou, 1, TestContext.Current.CancellationToken));
+        BoxPage last = await spansh.ListBoxPage(Systoodou, 1, TestContext.Current.CancellationToken);
+        BoxPage past = await spansh.ListBoxPage(Systoodou, 1, TestContext.Current.CancellationToken);
+
+        Assert.Equal("Spansh sent 5 systems where it should have sent 131. Try again in a moment.", five.Message);
+        Assert.Equal("Spansh sent 25 systems where it should have sent 500. Try again in a moment.", short25.Message);
+        Assert.Equal("Spansh sent 101 systems where it should have sent 100. Try again in a moment.", extra.Message);
+        Assert.True(five.Temporary);
+        Assert.Equal(100, last.Systems.Count);
+        Assert.Empty(past.Systems);
+        Assert.Equal(5, net.Asked.Count);   // none of them asked a second time
+    }
+
+    [Fact]
+    public async Task Rows_with_numbers_sent_as_text_are_read_and_rows_that_cannot_be_placed_are_left_out()
+    {
+        const string Loose = """
+            {"count":"5","results":[
+              {"name":"A","id64":"9007199254740993","x":"1.5","y":-2,"z":0,"body_count":"3","bodies":[{"name":"A 1","rings":[{"name":"A 1 A Ring"}]},{},7],"updated_at":"2026-10-14 10:34:31+00"},
+              {"name":"B","id64":22712681061,"x":1.5,"y":-2,"z":12.25,"body_count":null,"bodies":null,"updated_at":null},
+              {"name":"No position","id64":5,"x":1},
+              {"name":"","id64":6,"x":1,"y":2,"z":3},
+              null],
+             "size":500}
+            """;
+        using Spansh spansh = Quick(new SpanshStandIn().Then(Loose));
+
+        BoxPage page = await spansh.ListBoxPage(Systoodou, 0, TestContext.Current.CancellationToken);
+
+        Assert.Equal(new[]
+        {
+            new BoxSystem("A", 9007199254740993, 1.5, -2, 0, 3, 3, new DateTime(2026, 10, 14, 10, 34, 31, DateTimeKind.Utc)),
+            new BoxSystem("B", 22712681061, 1.5, -2, 12.25, null, 0, null),
+        }, page.Systems);
+    }
+
+    [Theory]
+    [InlineData("""{"error":"Invalid filter"}""", 400, "Spansh said: Invalid filter")]
+    [InlineData("""{"results":[]}""", 200, "Spansh sent an answer Studio could not read. Try again in a moment.")]   // no count
+    [InlineData("""{"count":3,"results":{}}""", 200, "Spansh sent an answer Studio could not read. Try again in a moment.")]
+    [InlineData("<html><body>500 Internal Server Error</body></html>", 500, "Spansh sent an answer Studio could not read. Try again in a moment.")]
+    [InlineData("{}", 503, "Spansh answered with error 503. Try again in a moment.")]
+    [InlineData("", 0, "Spansh could not be reached. Check your internet connection and try again.")]   // offline
+    public async Task A_box_call_that_goes_wrong_says_why_in_plain_words_and_is_not_sent_again(string answer, int status, string expected)
+    {
+        var net = new SpanshStandIn().Then(answer, (HttpStatusCode)status).Then(answer, (HttpStatusCode)status);
+        using Spansh spansh = Quick(net);
+
+        var count = await Assert.ThrowsAsync<SpanshException>(() => spansh.CountBox(Systoodou, TestContext.Current.CancellationToken));
+        var page = await Assert.ThrowsAsync<SpanshException>(() => spansh.ListBoxPage(Systoodou, 0, TestContext.Current.CancellationToken));
+
+        Assert.Equal(expected, count.Message);
+        Assert.Equal(expected, page.Message);
+        Assert.Equal(2, net.Asked.Count);   // one each
+    }
+
+    [Fact]
+    public async Task Systems_are_looked_up_by_their_exact_names_in_one_request_as_many_as_names()
+    {
+        var net = new SpanshStandIn()
+            // Spansh's layout: every body of each system (only counted), numbers and places as numbers or as text.
+            .Then("""{"count":2,"from":0,"results":[{"bodies":[{"name":"Sol A","rings":[]},{"name":"Earth"}],"id64":10477373803,"name":"Sol","x":0,"y":0,"z":0},{"id64":"2868635510153","name":"Barnard's Star","x":"-3.03125","y":1.375,"z":4.9375}],"size":2}""")
+            // Three found under two names, two sent: a name two systems share pushed one out.
+            .Then("""{"count":3,"from":0,"results":[{"name":"Twin","id64":1},{"name":"","id64":2,"x":1,"y":2,"z":3}],"size":2}""")
+            .ThenOffline();
+        using Spansh spansh = Quick(net);
+        CancellationToken cancel = TestContext.Current.CancellationToken;
+
+        var (systems, complete) = await spansh.SystemsNamed(["Sol", "Barnard's Star"], cancel);
+
+        // The names as written, as many systems asked for as names, the first page.
+        Assert.Equal("""POST /api/systems/search {"filters":{"name":{"value":["Sol","Barnard's Star"]}},"size":2,"page":0}""", net.Asked[0]);
+        Assert.True(complete);
+        Assert.Equal([new NamedSystem("Sol", 10477373803, 0, 0, 0), new NamedSystem("Barnard's Star", 2868635510153, -3.03125, 1.375, 4.9375)], systems);
+        Assert.Contains("\"id64\": \"2868635510153\"", JsonSerializer.Serialize(systems[1], EliteStudio.App.Settings.Json));
+
+        // Not all Spansh found; a row with no place still counts, one with no name cannot be matched and is left out.
+        (systems, complete) = await spansh.SystemsNamed(["Twin", "Other"], cancel);
+        Assert.False(complete);
+        Assert.Equal([new NamedSystem("Twin", 1, null, null, null)], systems);
+
+        // Offline: the player's words, and not sent again.
+        var offline = await Assert.ThrowsAsync<SpanshException>(() => spansh.SystemsNamed(["Sol"], cancel));
+        Assert.Equal("Spansh could not be reached. Check your internet connection and try again.", offline.Message);
+
+        // No names, or more than one request takes: nothing is asked.
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => spansh.SystemsNamed([], cancel));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => spansh.SystemsNamed([.. Enumerable.Range(0, Spansh.MostNames + 1).Select(i => $"Star {i}")], cancel));
+        Assert.Equal(3, net.Asked.Count);
+    }
+
+    [Fact]
+    public async Task A_box_with_no_room_inside_is_not_asked_about()
+    {
+        var net = new SpanshStandIn();
+        using Spansh spansh = Quick(net);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => spansh.CountBox(new Box(0, 0, 0, 10, 0, 10), TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(() => spansh.ListBoxPage(new Box(0, 0, 0, -10, 10, 10), 0, TestContext.Current.CancellationToken));
+        Assert.Empty(net.Asked);
+    }
+
+    /// <summary>
+    /// Goes out to the internet, with two requests to Spansh (a count and one page of up to 500
+    /// systems, about 240 KB), to see that it still answers a box search in the layout Studio reads.
+    /// Skipped unless the environment variable ELITE_STUDIO_LIVE is 1; run it on its own, as the top
+    /// of TradeSearchLiveTests.cs shows, with -method "*Live_Spansh_lists*". Nothing is kept on disk.
+    /// </summary>
+    [Fact]
+    public async Task Live_Spansh_lists_every_system_it_counts_in_Systoodous_sector()
+    {
+        Assert.SkipUnless(Environment.GetEnvironmentVariable("ELITE_STUDIO_LIVE") == "1", "Set ELITE_STUDIO_LIVE=1 to ask Spansh over the internet.");
+        using var spansh = new Spansh();
+
+        BoxCount count = await spansh.CountBox(Systoodou, TestContext.Current.CancellationToken);
+        Assert.InRange(count.Count, 131, Spansh.PageSize);   // 131 on 14 October 2026; it only grows, and fits one page for a good while yet
+        BoxPage page = await spansh.ListBoxPage(Systoodou, 0, TestContext.Current.CancellationToken);
+
+        Assert.Equal(count.Count, page.Systems.DistinctBy(system => system.Id64).Count());
+        Assert.All(page.Systems, system => Assert.True(Systoodou.Contains(system.X, system.Y, system.Z), $"{system.Name} lies outside the box"));
+    }
+
+    /// <summary>
+    /// Goes out to the internet, with one request to Spansh for three systems by their exact names (a few KB), to see
+    /// that its name filter takes a list of whole names and finds each by its name alone, as the check of a plotted
+    /// route counts on. Skipped unless the environment variable ELITE_STUDIO_LIVE is 1; run it on its own, as the top
+    /// of TradeSearchLiveTests.cs shows, with -method "*Live_Spansh_finds*". Nothing is kept on disk.
+    /// </summary>
+    [Fact]
+    public async Task Live_Spansh_finds_systems_by_their_exact_names_and_no_others()
+    {
+        Assert.SkipUnless(Environment.GetEnvironmentVariable("ELITE_STUDIO_LIVE") == "1", "Set ELITE_STUDIO_LIVE=1 to ask Spansh over the internet.");
+        using var spansh = new Spansh();
+
+        var (systems, complete) = await spansh.SystemsNamed(["Sol", "Achenar", "Barnard's Star"], TestContext.Current.CancellationToken);
+
+        Assert.True(complete);
+        Assert.Equal(["Achenar", "Barnard's Star", "Sol"], systems.Select(system => system.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(10477373803, systems.Single(system => system.Name == "Sol").Id64);
     }
 
     // ------------------------------------------------------------ the ship numbers the exact plotter is sent

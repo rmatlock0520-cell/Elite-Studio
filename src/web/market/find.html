@@ -45,6 +45,7 @@
 #rows td:first-child{font-weight:600}
 #rows .btn{height:24px}   /* keeps a row as low as its text */
 #places tr.picked td{background:var(--accent-soft)}
+#places tr.gone td{opacity:.55}   /* a ship's station EDSM was not asked about: Spansh alone says it sells the ship */
 /* A station found by name: the stations on top, the price list of the one picked under them with the room to spare. */
 /* The price list is what the page is for then (the owner, 11 October 2026: it showed "a very few entrys"): the stations
    shrink to the one picked, the Nearest buttons and the credit line make room, and a window too low for all of it
@@ -72,6 +73,8 @@
 #prices-box th:first-child{width:99%}
 #prices-box .none{padding:14px 10px;color:var(--muted);font-weight:400}
 .found .credit{margin-top:auto}   /* at the foot of the page, whatever is above it */
+/* (The station's own sheet over its price list is the shared one: .sheet in ../studio.css, made by Studio.stationSheet.) */
+#station{flex:none}
 </style>
 </head>
 <body>
@@ -85,6 +88,7 @@
       <button type="button" data-kind="module">Module</button>
       <button type="button" data-kind="ship">Ship</button>
       <button type="button" data-kind="station" title="Find a station by its own name and see its price list">Station</button>
+      <button type="button" data-kind="sector" title="List the star systems of a sector of space: type the start of their names, like Wregoe or Col 285 Sector">&#10023; Sector</button>
     </div>
     <div class="field name">
       <label>Name<input id="name" list="names" autocomplete="off" spellcheck="false" placeholder="Type a few letters, then pick from the list"></label>
@@ -97,6 +101,9 @@
     <div class="field grades" id="grades" hidden>
       <label title="The module's size. Any: every size the station sells">Class<select id="class"><option value="">Any</option></select></label>
       <label title="E is the plainest, A the best. Any: every rating the station sells">Rating<select id="rating"><option value="">Any</option></select></label>
+    </div>
+    <div class="field grades" id="inhabited-label" hidden>
+      <label title="Most of a sector is empty space with stars nobody lives at">Show<select id="inhabited"><option value="false">Every known system</option><option value="true">Only where people live</option></select></label>
     </div>
     <div class="field from">
       <label title="Distances are measured from this system">From<input id="from" autocomplete="off" spellcheck="false" placeholder="Start Elite, or type a system"></label>
@@ -114,10 +121,11 @@
         <option value="odyssey">All of them</option><option value="horizons">No Odyssey settlements</option><option value="none">None</option>
       </select></label>
       <label>Fleet carriers<select id="carriers"><option value="false">Leave out</option><option value="true">Include</option></select></label>
+      <label id="docking-label" title="A carrier's owner decides who may dock. Studio asks Spansh what each one is set to; that is as old as the last report, so a carrier listed as open can still turn you away." hidden>Carrier docking<select id="docking"><option value="open">Open to all only</option><option value="any">Any (may refuse you)</option></select></label>
       <label id="age-label">Max. price age<select id="maxAgeHours"></select></label>
       <label id="volume-label" title="Tons on sale when buying, tons wanted when selling: stations with less are left out"><span id="volume-caption"></span><select id="volume"></select></label>
     </div>
-    <button type="button" class="btn" id="mine" title="Back to the filters saved in your settings. What you change here is used on this page only." hidden>My settings</button>
+    <button type="button" class="btn" id="mine" title="Back to the filters of your Trades settings. What you change here is kept for this page, and changes nothing on Trades." hidden>Trades' filters</button>
     <button type="button" class="btn" id="sniff" title="Keeps this commodity search on the Sniffer tab, where you add a price. Studio then runs it every hour, anywhere in the galaxy, and can play a sound when it is met.">Save to Sniffer</button>
   </div>
 
@@ -141,6 +149,7 @@
     </table>
   </div>
   <section id="prices" hidden>
+    <div id="station" class="sheet" hidden></div>
     <div class="head"><h2 id="prices-what"></h2><p class="muted small" id="prices-about"></p></div>
     <p class="card bad" id="prices-problem" hidden></p>
     <div class="tools" id="prices-tools">
@@ -163,18 +172,28 @@
     </div>
   </section>
   <p id="pager" hidden><button type="button" class="btn small" id="prev">◄ The 5 before</button> <span class="muted small" id="pager-text"></span> <button type="button" class="btn small" id="next">The next 5 ►</button></p>
-  <p class="muted small credit">Commodity prices come from <a href="https://ardent-insight.com/" target="_blank" rel="noopener">Ardent Insight</a>; modules, ships, services and stations by name from <a href="https://spansh.co.uk/" target="_blank" rel="noopener">Spansh</a>. Both are free services that volunteers run for all of us, fed by what players' tools report: an answer is as fresh as the last visit by one of them. Please search for what you mean to fly to.</p>
+  <p class="muted small credit">Commodity prices come from <a href="https://ardent-insight.com/" target="_blank" rel="noopener">Ardent Insight</a>; modules, ships, services and stations by name from <a href="https://spansh.co.uk/" target="_blank" rel="noopener">Spansh</a>, with each ship's stations checked against <a href="https://www.edsm.net/" target="_blank" rel="noopener">EDSM</a>. All three are free services that volunteers run for all of us, fed by what players' tools report: an answer is as fresh as the last visit by one of them. Please search for what you mean to fly to.</p>
 </main>
 
 <script src="../studio.js"></script>
 <script>
 (() => {
 'use strict';
-const { $, h, whole, count, ago, wideDot } = Studio;
+const { $, h, stationIcon, whole, count, ago, wideDot } = Studio;
 
 let kind = 'commodity', side = 'buy';
 let mine = null;            // the Market picture, for the player's own filters: their settings, the pad their ship needs, the choices the overlay menu offers
 const touched = new Set();  // filters changed on this page: they are sent along, the others are the app's to fill in
+// The page keeps its own filters from one visit to the next (a rare commodity wants older prices and fleet carriers,
+// a trade run neither). A browser that keeps nothing still shows the page right: it then starts from the Trades filters.
+const Kept = 'studio.find.filters';
+let kept = {};              // what was kept, by box, until the boxes have their choices and can show it
+try { kept = JSON.parse(localStorage.getItem(Kept) || '{}') || {}; } catch (e) { kept = {}; }
+function keep() {
+  const now = { docking: $('#docking').value };
+  for (const box of touched) now[box] = $('#' + box).value;
+  try { localStorage.setItem(Kept, JSON.stringify(now)); } catch (e) {}
+}
 const names = {};           // the lists of names already fetched, by kind
 const typed = {};           // what was typed in the name box, by kind
 let busy = false, problem = '';
@@ -193,11 +212,13 @@ function setKind(k) {
   for (const b of document.querySelectorAll('#kinds button')) b.classList.toggle('active', b.dataset.kind === k);
   $('#name').value = typed[k] || '';
   $('#sides').hidden = $('#age-label').hidden = $('#volume-label').hidden = k !== 'commodity';
+  $('#docking-label').hidden = k !== 'commodity' || $('#carriers').value !== 'true';
   $('#sniff').hidden = k !== 'commodity' || Studio.boxed;   // the overlay's box has no tabs to come back by
   $('#grades').hidden = k !== 'module';
-  $('.quick').hidden = k === 'station';     // the Nearest buttons are another search: their row is the price list's while a station is looked up
-  $('.filters').hidden = k === 'station';   // a station asked for by name is listed whatever its pad and wherever it is
-  $('#name').placeholder = k === 'station' ? 'A station\u2019s name, or a part of it' : 'Type a few letters, then pick from the list';
+  $('#inhabited-label').hidden = k !== 'sector';
+  $('.quick').hidden = k === 'station' || k === 'sector';     // the Nearest buttons are another search: their row is the price list's while a station is looked up
+  $('.filters').hidden = k === 'station' || k === 'sector';   // a station asked for by name is listed whatever its pad and wherever it is
+  $('#name').placeholder = k === 'station' ? 'A station\u2019s name, or a part of it' : k === 'sector' ? 'The start of the systems\u2019 names: Wregoe YV-W, Col 285 Sector' : 'Type a few letters, then pick from the list';
   loadNames(k);
 }
 
@@ -240,9 +261,22 @@ function showFilters() {
   $('#volume-caption').textContent = side === 'sell' ? 'Min. demand' : 'Min. supply';
   choices('#maxAgeHours', offered('maxAgeHours'), own.maxAgeHours, ' h');
   choices('#volume', offered('minSupply'), own[filters.volume[side === 'sell' ? 1 : 0]], ' t or more');
+  // What the page kept from the last visit goes into the boxes once, now that the lists have their choices.
+  if (kept) {
+    for (const box of Object.keys(filters)) {
+      if (kept[box] == null) continue;
+      const el = $('#' + box), value = String(kept[box]);
+      if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === value)) el.append(h('option', { value }, value));
+      el.value = value;
+      touched.add(box);
+    }
+    if (kept.docking === 'any') $('#docking').value = 'any';
+    kept = null;
+  }
   for (const [box, settings] of Object.entries(filters))
     if (!touched.has(box)) $('#' + box).value = String(own[settings[box === 'volume' && side === 'sell' ? 1 : 0]]);
   $('#mine').hidden = !touched.size;
+  $('#docking-label').hidden = kind !== 'commodity' || $('#carriers').value !== 'true';   // only fleet carriers have an owner who decides
 }
 
 // The choices the app offers for a list, and the player's own value when it is none of them.
@@ -260,7 +294,8 @@ function filterValue(box) {
 function find(what, name) {
   const body = { name, from: from.typed ? $('#from').value.trim() : '', filters: {} };
   for (const box of touched) for (const setting of filters[box]) body.filters[setting] = filterValue(box);
-  if (what === 'commodity') body.side = side;
+  if (what === 'commodity') { body.side = side; body.docking = $('#docking').value; }
+  if (what === 'sector') body.inhabited = $('#inhabited').value === 'true';
   if (what === 'module') { body.class = $('#class').value; body.rating = $('#rating').value; }
   send({ kind: what, side, body });
 }
@@ -277,7 +312,8 @@ async function send(search) {
   busy = true;
   if (!before) shown = null;
   problem = '';
-  $('#busy-text').textContent = search.kind === 'commodity' ? 'Asking Ardent Insight…' : search.kind === 'station' ? 'Asking Spansh…' : 'Asking Spansh… Its answers are long, so this takes a few seconds.';
+  $('#busy-text').textContent = search.kind === 'commodity' ? 'Asking Ardent Insight…' : search.kind === 'station' || search.kind === 'sector' ? 'Asking Spansh…'
+    : search.kind === 'ship' ? 'Asking Spansh, then checking the nearest stations with EDSM one by one… This can take half a minute.' : 'Asking Spansh… Its answers are long, so this takes a few seconds.';
   render();
   try {
     const answer = await Studio.api('POST', '/api/market/find/' + search.kind, search.body);
@@ -330,6 +366,16 @@ const priceSides = {
     with: here => 'profit a ton when you buy it at ' + here, none: 'It buys nothing on its list.' },
 };
 
+// ============================================================ the station's own sheet
+// The same sheet a station's name opens anywhere in Studio (Studio.stationSheet), here over its price list. Drawn
+// again only when it changed: a redraw would take a text being selected with it.
+function renderStation() {
+  const box = $('#station'), mark = JSON.stringify([prices.marketId, prices.station, prices.system, prices.details]);
+  if (box.dataset.mark === mark) return;
+  box.dataset.mark = mark;
+  box.replaceChildren(...[Studio.stationSheet(prices.details, prices.station, prices.system, false)].flat(Infinity).filter(Boolean));
+}
+
 function renderPrices() {
   const on = !!shown && shown.kind === 'station' && (!!prices || !!pricesProblem);
   $('#prices').hidden = !on;
@@ -337,8 +383,9 @@ function renderPrices() {
   if (!on) return;
   $('#prices-problem').hidden = !pricesProblem;
   $('#prices-problem').textContent = pricesProblem;
-  $('#prices-what').hidden = $('#prices-about').hidden = $('#prices-box').hidden = $('#prices-tools').hidden = !prices;
+  $('#prices-what').hidden = $('#prices-about').hidden = $('#prices-box').hidden = $('#prices-tools').hidden = $('#station').hidden = !prices;
   if (!prices) return;
+  renderStation();
   $('#prices-what').textContent = 'Prices at ' + prices.station + ', ' + prices.system;
   $('#prices-about').textContent = (prices.mine ? 'The prices you saw there yourself' : 'Prices from Spansh, reported') + (prices.updated ? ' ' + ago(prices.updated) : '') + '.'
     + (prices.here ? '' : ' Dock somewhere and open its commodities market, and Studio adds what a ton makes carried between the two.');
@@ -383,27 +430,36 @@ function renderPrices() {
 // The copy button has no value to sort by. It stands right beside the system it copies, where a narrow window cannot cut it off;
 // the button after it hands the system to Studio Nav's Routes page.
 const columns = {
-  station: { title: 'Station', value: r => r.station },
-  system: { title: 'System', value: r => r.system },
-  copy: { title: '', text: r => [
-    h('button', { class: 'btn small', title: 'Then paste it into the galaxy map\'s search box with Ctrl+V', onclick: () => Studio.copyName(r.system) }, 'Copy system'), ' ',
-    h('button', { class: 'btn small', title: 'Opens Studio Nav with this system under To, ready to plot', onclick: () => Studio.open('nav', '?to=' + encodeURIComponent(r.system)) }, 'Route')] },
+  station: { title: 'Station', value: r => r.station, text: r => [stationIcon(r.type), Studio.link('station', r.station, r.system)] },
+  system: { title: 'System', value: r => r.system, text: r => Studio.link('system', r.system) },
   ly: { title: 'Distance (ly)', num: true, value: r => r.distanceLy, text: r => r.distanceLy == null ? '' : r.distanceLy.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
   ls: { title: 'From star (ls)', num: true, value: r => r.starLs, text: r => r.starLs == null ? '' : whole(r.starLs), hint: 'Light seconds from the star you arrive at' },
   pad: { title: 'Pad', value: r => r.pad ? 'SML'.indexOf(r.pad) : null, text: r => r.pad || '?', hint: 'The largest landing pad' },
-  type: { title: 'Station type', value: r => r.type },
+  type: { title: 'Station type', value: r => r.type, text: r => r.access ? [r.type, h('div', { class: 'muted small' }, r.access)] : r.type },
   item: { title: 'On sale', value: r => r.item, hint: 'Class and rating, as on the outfitting screen: 5A is class 5, rating A' },
   price: { title: 'Price (cr)', num: true, value: r => r.price, text: r => r.price == null ? '' : whole(r.price) },
   tons: { title: '', num: true, value: r => r.tons, text: r => whole(r.tons) },
   prices: { title: '', text: r => h('button', { class: 'btn small', disabled: !r.marketId, title: 'Shows below what this station sells and buys', onclick: () => showPrices(r.marketId, true) }, 'Prices') },
+  // a sector's star systems
+  population: { title: 'Population', num: true, value: r => r.population || 0, text: r => r.population ? whole(r.population) : '' },
+  allegiance: { title: 'Allegiance', value: r => r.allegiance },
+  security: { title: 'Security', value: r => r.security },
+  economy: { title: 'Economy', value: r => r.economy },
+  power: { title: 'Power', value: r => r.power },
+  stations: { title: 'Stations', num: true, value: r => r.stations, text: r => r.stations ? whole(r.stations) : '', hint: 'Stations, settlements and fleet carriers known there' },
+  bodies: { title: 'Bodies', num: true, value: r => r.bodies, text: r => r.bodies ? whole(r.bodies) : '', hint: 'Stars, planets and moons reported so far' },
   age: { title: 'Reported', value: r => r.updated ? -Date.parse(r.updated) : null, text: r => r.updated ? ago(r.updated) : '', hint: 'When a player\'s tool last reported this' },
+  // A ship: whether EDSM, which keeps only the ships really on sale, agrees with Spansh. Stations it says do not sell it are not listed at all.
+  edsm: { title: 'EDSM', value: r => ['confirmed', 'no list', 'not checked'].indexOf(r.edsm), hint: 'Checked against EDSM, which lists only the ships a shipyard is selling right now',
+    text: r => r.edsm === 'confirmed' ? h('span', { class: 'good' }, 'Confirmed') : h('span', { class: 'warn' }, r.edsm === 'no list' ? 'No EDSM list' : 'Not checked') },
 };
 const shownColumns = {
-  commodity: ['station', 'system', 'copy', 'ly', 'ls', 'pad', 'type', 'price', 'tons', 'age'],
-  module: ['station', 'system', 'copy', 'ly', 'ls', 'pad', 'type', 'item', 'price', 'age'],
-  ship: ['station', 'system', 'copy', 'ly', 'ls', 'pad', 'type', 'price', 'age'],
-  services: ['station', 'system', 'copy', 'ly', 'ls', 'pad', 'type', 'age'],
-  station: ['station', 'system', 'copy', 'ly', 'ls', 'pad', 'type', 'prices', 'age'],
+  commodity: ['station', 'system', 'ly', 'ls', 'pad', 'type', 'price', 'tons', 'age'],
+  module: ['station', 'system', 'ly', 'ls', 'pad', 'type', 'item', 'price', 'age'],
+  ship: ['station', 'system', 'ly', 'ls', 'pad', 'type', 'price', 'age', 'edsm'],
+  services: ['station', 'system', 'ly', 'ls', 'pad', 'type', 'age'],
+  station: ['station', 'system', 'ly', 'ls', 'pad', 'type', 'prices', 'age'],
+  sector: ['system', 'ly', 'population', 'allegiance', 'security', 'economy', 'power', 'stations', 'bodies', 'age'],
 };
 
 function render() {
@@ -450,7 +506,7 @@ function render() {
   $('#pager-text').textContent = 'Places ' + (pageAt + 1) + ' to ' + (pageAt + onShow.length) + ' of ' + rows.length;
   $('#prev').disabled = pageAt === 0;
   $('#next').disabled = pageAt + pageRows >= rows.length;
-  $('#places').replaceChildren(...onShow.map(r => h('tr', { class: prices && r.marketId === prices.marketId && 'picked' },
+  $('#places').replaceChildren(...onShow.map(r => h('tr', { class: prices && r.marketId === prices.marketId ? 'picked' : r.edsm === 'not checked' && 'gone' },
     keys.map(key => h('td', { class: columns[key].num && 'r' }, columns[key].text ? columns[key].text(r) : columns[key].value(r))))));
 }
 const pageRows = 5;
@@ -476,8 +532,9 @@ if (!Studio.served) return;
 for (const b of document.querySelectorAll('#kinds button')) b.addEventListener('click', () => setKind(b.dataset.kind));
 for (const b of document.querySelectorAll('#sides button')) b.addEventListener('click', () => setSide(b.dataset.side));
 const from = Studio.fromBox($('#from'));   // the system distances are measured from: the one the player is in, until they type another
-for (const box of Object.keys(filters)) $('#' + box).addEventListener('input', () => { touched.add(box); showFilters(); });
-$('#mine').addEventListener('click', () => { touched.clear(); showFilters(); });
+for (const box of Object.keys(filters)) $('#' + box).addEventListener('input', () => { touched.add(box); showFilters(); keep(); });
+$('#docking').addEventListener('input', keep);
+$('#mine').addEventListener('click', () => { touched.clear(); showFilters(); keep(); });
 $('#form').addEventListener('submit', e => { e.preventDefault(); find(kind, $('#name').value); });
 $('#more').addEventListener('click', findMore);
 $('#others').addEventListener('click', () => { allStations = !allStations; render(); });

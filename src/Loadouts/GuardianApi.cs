@@ -7,8 +7,8 @@ namespace EliteStudio.Loadouts;
 /// <summary>
 /// The Guardian helper's one route and its "guardian" event.
 ///   GET /api/loadouts/guardian/list   everything a Guardian technology broker unlocks, what the commander holds
-///                                     toward each, which are unlocked already, and where the blueprint segments
-///                                     for the rest are found (<see cref="GuardianView"/>)
+///                                     toward each, which are unlocked already, where the blueprint segments
+///                                     for the rest are found, and every known Guardian site (<see cref="GuardianView"/>)
 /// Every "guardian" event carries the same picture, sent whenever it changes: materials or cargo picked up,
 /// something unlocked, a jump, or the search of the older journals coming in.
 /// </summary>
@@ -49,19 +49,34 @@ public sealed record GuardianItem(string Group, string Name, string Detail, bool
 
 /// <summary>A Guardian structure whose data terminal gives a blueprint segment.</summary>
 /// <param name="Ly">Light years from the system the ship is in; null while that is not known.</param>
-/// <param name="BeaconSystem">For the structures that need an Ancient Key: the system of the Guardian beacon that gives one for this site.</param>
+/// <param name="BeaconSystem">For the structures that need an Ancient Key: the system of the Guardian beacon nearest to this site (any beacon's key opens any such site).</param>
 public sealed record GuardianSite(string System, string Body, double? Ly, string? BeaconSystem, string? BeaconBody);
 
 /// <summary>One of the three kinds of blueprint segment, and where it is found.</summary>
 /// <param name="Need">How many the recipes of everything still locked take between them.</param>
 /// <param name="Layouts">The shapes of Guardian structure that give it, by the names explorers use for them.</param>
 /// <param name="Key">What the structure's data terminal takes before it gives the segment up.</param>
+/// <param name="Sites">The three nearest to the ship (to Sol while the ship's place is not known).</param>
 public sealed record GuardianBlueprint(
     string Code, string Name, int Have, int Need, IReadOnlyList<string> Layouts, string Key, IReadOnlyList<GuardianSite> Sites);
 
+/// <summary>One known Guardian site, for the page's list of all of them.</summary>
+/// <param name="Kind">
+/// What it is for: "weapon", "module" or "vessel" (a structure whose data terminal gives that blueprint segment),
+/// "materials" (a small structure with no data terminal), "beacon" (in space: it gives the Ancient Key) or "ruins"
+/// (obelisk data).
+/// </param>
+/// <param name="Layouts">
+/// The structure's shape by the name explorers use (Bear, Turtle...) or "Beacon"; for ruins the type of each ruin on
+/// the body, as several often share one ("Alpha", "Gamma", "Gamma").
+/// </param>
+/// <param name="Ly">Light years from the system the ship is in; null while that is not known.</param>
+public sealed record GuardianPlace(string Kind, IReadOnlyList<string> Layouts, string System, string Body, double? Ly);
+
 /// <summary>Everything the Guardian page shows: the answer to GET list and the data of every "guardian" event.</summary>
 /// <param name="HistoryRead">False while the commander's older journals have never been searched for unlocks: the search is still running.</param>
-public sealed record GuardianView(IReadOnlyList<GuardianItem> Items, IReadOnlyList<GuardianBlueprint> Blueprints, bool HistoryRead);
+/// <param name="Places">Every known Guardian site, nearest to the ship first (to Sol while the ship's place is not known).</param>
+public sealed record GuardianView(IReadOnlyList<GuardianItem> Items, IReadOnlyList<GuardianBlueprint> Blueprints, bool HistoryRead, IReadOnlyList<GuardianPlace> Places);
 
 /// <summary>
 /// The Guardian checklist against the game. Lives on the UI thread like the game state it reads.
@@ -84,11 +99,12 @@ public sealed record GuardianView(IReadOnlyList<GuardianItem> Items, IReadOnlyLi
 ///
 /// THE SITES: which shape of structure gives which segment, and what its terminal takes, is from
 /// Canonn's survey (canonn.science/codex/guardian-structure) and the wiki ("Ancient Data Terminal",
-/// "Guardian Structure"); ED Odyssey Materials Helper's own list says the same. Each site named
-/// here is in Canonn's tables with that segment and in the wiki's own lists, which players kept
-/// by hand ("Ancient Data Terminal" for weapon and module sites, "Guardian Beacon" for vessel
-/// sites with their beacons), with the same body; its place is the same in ED Odyssey Materials
-/// Helper's list and on EDSM. They are the three nearest to Sol of each kind that both name.
+/// "Guardian Structure"); ED Odyssey Materials Helper's own list says the same. That a beacon gives
+/// an Ancient Key that opens any vessel site, what Sentinels and panels drop, and that obelisk data
+/// comes by chance (Delta and Epsilon rarely) are from Canonn, the wiki, Inara and players' guides.
+/// The sites themselves are in Core\Data\guardian_sites.csv: Canonn's survey of ruins and structures
+/// (github.com/canonn-science/GR-RuinsComboMap) joined with ED Odyssey Materials Helper's list of
+/// structures and beacons, which agree on every structure both name. The file says how it is made.
 /// </summary>
 public sealed class GuardianHelper
 {
@@ -158,30 +174,37 @@ public sealed class GuardianHelper
             (Vessel, 1), (Cell, 25), (Parts, 18), (Epsilon, 26), (Tech, 25)),
     ];
 
-    /// <param name="X">The system's place in light years, to say how far it is.</param>
-    sealed record Site(string System, string Body, double X, double Y, double Z, string? BeaconSystem = null, string? BeaconBody = null);
+    /// <summary>One line of Core\Data\guardian_sites.csv: a site, what it is for (see <see cref="GuardianPlace.Kind"/>) and its system's place in light years.</summary>
+    internal sealed record Site(string Kind, string Layout, string System, string Body, double X, double Y, double Z);
 
-    /// <summary>The three kinds of blueprint segment: the shapes of structure that give each, what the terminal takes, and known sites.</summary>
-    static readonly (string Code, string[] Layouts, string Key, Site[] Sites)[] Segments =
+    /// <summary>Every known Guardian site, read once from the program's own copy of the list.</summary>
+    internal static IReadOnlyList<Site> Sites => sites.Value;
+
+    static readonly Lazy<Site[]> sites = new(() =>
+    {
+        using Stream file = typeof(GameData).Assembly.GetManifestResourceStream("Data.guardian_sites.csv")
+            ?? throw new InvalidOperationException("The list of Guardian sites is missing from the program");
+        using var reader = new StreamReader(file);
+        var list = new List<Site>();
+        bool heading = true;
+        while (reader.ReadLine() is { } line)
+        {
+            if (line.Length == 0 || line.StartsWith('#')) continue;
+            if (heading) { heading = false; continue; }
+            string[] r = line.Split(',');
+            list.Add(new Site(r[0], r[1], r[2], r[3], Number(r[4]), Number(r[5]), Number(r[6])));
+        }
+        return [.. list];
+    });
+
+    static double Number(string text) => double.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>The three kinds of blueprint segment: what the list calls the sites that give each, their shapes, and what the terminal takes.</summary>
+    static readonly (string Code, string Kind, string[] Layouts, string Key)[] Segments =
     [
-        (Weapon, ["Bear", "Bowl", "Hammerbot"], "Guardian Relic",
-        [
-            new("Synuefe EU-Q c21-10", "A 3", 758.65625, -176.90625, -133.21875),
-            new("NGC 2451A Sector IR-W d1-77", "AB 1 a", 742.78125, -156.90625, -260.96875),
-            new("Synuefe FK-P c22-2", "E 1", 809.75, -104.96875, -104.5625),
-        ]),
-        (Module, ["Turtle"], "Guardian Relic",
-        [
-            new("Synuefe PX-J c25-8", "7 a", 649.6875, -124.25, 32.4375),
-            new("Synuefe GT-H b43-1", "C 4", 749, -163.09375, -128.0625),
-            new("Synuefe NL-N c23-4", "B 3", 860.125, -124.59375, -61.0625),
-        ]),
-        (Vessel, ["Squid", "Stickyhand", "Robolobster"], "Ancient Key",
-        [
-            new("IC 2391 Sector CA-A d43", "12 a", 591.5625, -112.15625, -36.1875, "IC 2391 Sector CQ-Y c16", "2"),
-            new("IC 2391 Sector HG-X b1-8", "C 2", 603.9375, -104.15625, -61.5625, "IC 2391 Sector FG-X b1-9", "8"),
-            new("IC 2391 Sector FL-X b1-7", "A 3", 611.34375, -78.40625, -51.6875, "IC 2391 Sector MX-T b3-6", "A 1"),
-        ]),
+        (Weapon, "weapon", ["Bear", "Bowl", "Hammerbot"], "Guardian Relic"),
+        (Module, "module", ["Turtle"], "Guardian Relic"),
+        (Vessel, "vessel", ["Squid", "Stickyhand", "Robolobster"], "Ancient Key"),
     ];
 
     readonly GameState game;
@@ -210,6 +233,12 @@ public sealed class GuardianHelper
             .. Unlocks.Select(unlock => new GuardianItem(
                 unlock.Group, unlock.Name, unlock.Detail, IsUnlocked(unlock), unlock.Recipe[0].Code, [.. unlock.Recipe.Select(part => Part(part.Code, part.Count))])),
         ];
+        // Distances are from the ship; while its place is not known, the nearest to Sol come first and no distance is given.
+        double[] from = game.StarPos ?? [0, 0, 0];
+        double Away(Site site) => ShipMath.Distance(from, [site.X, site.Y, site.Z]);
+        double? Ly(Site site) => game.StarPos is null ? null : Math.Round(Away(site), 1);
+        Site[] beacons = [.. Sites.Where(site => site.Kind == "beacon")];
+        Site? NearestBeacon(Site to) => beacons.MinBy(beacon => ShipMath.Distance([to.X, to.Y, to.Z], [beacon.X, beacon.Y, beacon.Z]));
         return new GuardianView(
             items,
             [
@@ -218,13 +247,21 @@ public sealed class GuardianHelper
                     items.Where(item => !item.Unlocked && item.Blueprint == segment.Code).Sum(item => item.Recipe[0].Need),
                     segment.Layouts, segment.Key,
                     [
-                        .. segment.Sites.Select(site => new GuardianSite(
-                            site.System, site.Body,
-                            game.StarPos is { } here ? Math.Round(ShipMath.Distance(here, [site.X, site.Y, site.Z]), 1) : null,
-                            site.BeaconSystem, site.BeaconBody)),
+                        .. Sites.Where(site => site.Kind == segment.Kind).OrderBy(Away).Take(3).Select(site =>
+                        {
+                            Site? beacon = segment.Code == Vessel ? NearestBeacon(site) : null;
+                            return new GuardianSite(site.System, site.Body, Ly(site), beacon?.System, beacon?.Body);
+                        }),
                     ])),
             ],
-            game.UnlocksReadTo != default);
+            game.UnlocksReadTo != default,
+            [
+                // a body with several ruins is one place, with the type of each
+                .. Sites.GroupBy(site => site.Kind == "ruins" ? $"ruins|{site.System}|{site.Body}" : $"{site.Kind}|{site.System}|{site.Body}|{site.Layout}")
+                    .Select(group => (Site: group.First(), Layouts: group.Select(site => site.Layout).Order(StringComparer.Ordinal).ToArray()))
+                    .OrderBy(place => Away(place.Site)).ThenBy(place => place.Site.System, StringComparer.OrdinalIgnoreCase).ThenBy(place => place.Site.Body, StringComparer.OrdinalIgnoreCase)
+                    .Select(place => new GuardianPlace(place.Site.Kind, place.Layouts, place.Site.System, place.Site.Body, Ly(place.Site))),
+            ]);
     }
 
     /// <summary>The journals name what was unlocked by the game's code; for a module in sizes they name each size.</summary>

@@ -331,6 +331,121 @@ public class HaulOverlayDrawingTests
         Assert.Equal(new[] { "HERE   Dock at Delta Yard and buy 2 × A Shield Booster." }, Read(rig.Box.NavContent()));
     });
 
+    /// <summary>A check of a route of <paramref name="total"/> stops as the 3D map gives it: the stops not recorded named, as many of the rest recorded, failed and waiting as said.</summary>
+    static RouteCheckView RouteCheck(string state, int total, int recorded = 0, string[]? notRecorded = null, int failed = 0, string? reason = null)
+    {
+        notRecorded ??= [];
+        RouteCheckStop Stop(string name, string stopState, string? why = null) => new(name, 1, 0, 0, 0, stopState, null, why);
+        RouteCheckStop[] stops =
+        [
+            .. Enumerable.Range(1, recorded).Select(i => Stop($"Recorded {i}", HeatmapFinds.Recorded)),
+            .. notRecorded.Select(name => Stop(name, HeatmapFinds.NotRecorded)),
+            .. Enumerable.Range(1, failed).Select(i => Stop($"Failed {i}", HeatmapFinds.Failed, reason)),
+            .. Enumerable.Range(1, total - recorded - notRecorded.Length - failed).Select(i => Stop($"Waiting {i}", HeatmapFinds.Waiting)),
+        ];
+        return new RouteCheckView(state, HeatmapFinds.CheckAll, DateTime.UtcNow, null, total, recorded + notRecorded.Length, recorded, notRecorded.Length, failed, 1,
+            state == HeatmapFinds.Stopped ? reason : null, stops);
+    }
+
+    [Fact]
+    public void The_line_of_the_check_of_a_routes_stops_says_plainly_how_it_stands()
+    {
+        // Nothing to tell: no check, switched off, or no route to check.
+        Assert.Null(HaulOverlay.RouteCheckWords(null));
+        Assert.Null(HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.Off, 0)));
+        Assert.Null(HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.NoRoute, 0)));
+
+        // Under way, dim; waiting its turn (behind the check of the route before, or another request of the 3D map) in
+        // the 3D map page's words, and once part way through, still checking as far as the player can tell.
+        Assert.Equal(("checking 12 of 34…", Draw.Dim), HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.Checking, 34, recorded: 11, notRecorded: ["Wredguia WD-K d8-66"])));
+        Assert.Equal(("checking 14 of 34…", Draw.Dim), HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.Checking, 34, recorded: 12, failed: 2, reason: "Spansh could not be reached.")));
+        Assert.Equal(("waiting to check 34 stops…", Draw.Dim), HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.Waiting, 34)));
+        Assert.Equal(("waiting to check 1 stop…", Draw.Dim), HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.Waiting, 1)));
+        Assert.Equal(("checking 12 of 34…", Draw.Dim), HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.Waiting, 34, recorded: 12)));
+
+        // A route plotted before Studio started has no check of its own: the line says so, and how to have it checked,
+        // rather than going quiet while the player flies it.
+        Assert.Equal(("not checked: your route was plotted before Studio started   ·   plot it again, or press Check this route on the 3D map", null),
+            HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.NoRoute, 0) with { Plotted = 34, PlottedTo = "Khun" }));
+        Assert.Null(HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.Off, 0) with { Plotted = 0 }));
+
+        // Done: green when every stop is recorded, gold naming the stops that are not, plain when some could not be checked.
+        Assert.Equal(("done   ·   34 stops   ·   all recorded", Draw.Green), HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.Done, 34, recorded: 34)));
+        Assert.Equal(("done   ·   1 stop   ·   all recorded", Draw.Green), HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.Done, 1, recorded: 1)));
+        Assert.Equal(("done   ·   34 stops   ·   1 not recorded: Wredguia WD-K d8-66", Draw.Gold),
+            HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.Done, 34, recorded: 33, notRecorded: ["Wredguia WD-K d8-66"])));
+        Assert.Equal(("done   ·   34 stops   ·   5 not recorded: A 1, A 2, A 3 and 2 more   ·   1 not checked", Draw.Gold),
+            HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.Done, 34, recorded: 28, notRecorded: ["A 1", "A 2", "A 3", "A 4", "A 5"], failed: 1, reason: "Spansh could not be reached.")));
+        Assert.Equal(("done   ·   34 stops   ·   2 not checked", null), HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.Done, 34, recorded: 32, failed: 2, reason: "Spansh could not be reached.")));
+
+        // Stopped by the session's requests running out: why, and how far it got.
+        Assert.Equal(("stopped: request limit reached   ·   20 of 34 checked", null),
+            HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.Stopped, 34, recorded: 20, failed: 14, reason: HeatmapFinds.LimitReached)));
+        Assert.Equal(("stopped: request limit reached   ·   20 of 34 checked   ·   1 not recorded: Wredguia WD-K d8-66", Draw.Gold),
+            HaulOverlay.RouteCheckWords(RouteCheck(HeatmapFinds.Stopped, 34, recorded: 19, notRecorded: ["Wredguia WD-K d8-66"], failed: 14, reason: HeatmapFinds.LimitReached)));
+
+        // The words are the 3D map's own line, which the page in the game's nav box prints as the app gives it.
+        RouteCheckView done = RouteCheck(HeatmapFinds.Done, 34, recorded: 33, notRecorded: ["Wredguia WD-K d8-66"]);
+        Assert.Equal(new RouteCheckLine("done   ·   34 stops   ·   1 not recorded: Wredguia WD-K d8-66", RouteCheckLine.Gold), done.Line);
+        Assert.Equal(HaulOverlay.RouteCheckWords(done)!.Value.Words, HeatmapFinds.LineOf(done)!.Words);
+    }
+
+    [Fact]
+    public void The_nav_box_shows_the_check_of_the_routes_stops_with_or_without_a_Studio_route_and_follows_it() => OnWindowThread(() =>
+    {
+        RouteCheckView? check = null;
+        using var none = new BoxRig(routeCheck: () => check);
+        Assert.Equal(new[] { "No route is being followed. Plot one in Studio Nav." }, Read(none.Box.NavContent()));
+
+        // A route plotted in the game, no Studio route followed: the line stands under the note, its label in the accent colour.
+        check = RouteCheck(HeatmapFinds.Checking, 34, recorded: 12);
+        Assert.Equal(new[] { "No route is being followed. Plot one in Studio Nav.", "ROUTE CHECK   checking 12 of 34…" }, Read(none.Box.NavContent()));
+        TextBlock line = Line(none.Box.NavContent(), "ROUTE CHECK");
+        Assert.Equal((Colour(none.Overlay.Settings.Accent), Colour(Draw.Dim)), (Ink(line), Ink(line, run: 1)));
+        check = RouteCheck(HeatmapFinds.Done, 34, recorded: 33, notRecorded: ["Wredguia WD-K d8-66"]);
+        Assert.Equal("ROUTE CHECK   done   ·   34 stops   ·   1 not recorded: Wredguia WD-K d8-66", Read(none.Box.NavContent())[1]);
+        Assert.Equal(Colour(Draw.Gold), Ink(Line(none.Box.NavContent(), "ROUTE CHECK"), run: 1));
+
+        // With a Studio route: under the route's lines.
+        using var rig = new BoxRig(route: BoxRig.RouteVia(Alpha, Beta, Gamma), routeCheck: () => check);
+        Assert.Equal(new[]
+        {
+            "NEXT STOP   Beta   ·   20 ly from you   ·   ~2 jumps   ·   2 stops left on your route",
+            "ROUTE CHECK   done   ·   34 stops   ·   1 not recorded: Wredguia WD-K d8-66",
+        }, Read(rig.Box.NavContent()));
+
+        // No check (switched off, or the route cleared): the line goes.
+        check = RouteCheck(HeatmapFinds.NoRoute, 0);
+        Assert.Single(Read(rig.Box.NavContent()));
+    });
+
+    [Fact]
+    public void The_nav_box_shows_Nav_scans_line_while_it_is_on_under_the_route_checks() => OnWindowThread(() =>
+    {
+        NavScanLine? scan = null;
+        RouteCheckView? check = null;
+        using var rig = new BoxRig(routeCheck: () => check, navScan: () => scan);
+        Assert.Equal(new[] { "No route is being followed. Plot one in Studio Nav." }, Read(rig.Box.NavContent()));
+
+        // On, a picture read: its line under the note, its label in the accent colour, gold for a name not recorded.
+        scan = NavScan.LineOf(true, 1, new NavScanPicture("p.jpg", DateTime.UtcNow, 18, 17, 1, 0, 0, 0, NavScan.Done), ["Col 285 Sector RI-J c9-18"]);
+        Assert.Equal(new[] { "No route is being followed. Plot one in Studio Nav.", "NAV SCAN   picture read   ·   18 names   ·   17 recorded   ·   1 not recorded: Col 285 Sector RI-J c9-18" },
+            Read(rig.Box.NavContent()));
+        TextBlock line = Line(rig.Box.NavContent(), "NAV SCAN");
+        Assert.Equal((Colour(rig.Overlay.Settings.Accent), Colour(Draw.Gold)), (Ink(line), Ink(line, run: 1)));
+        Assert.Equal(("reading…", Draw.Dim), HaulOverlay.NavScanWords(NavScan.LineOf(true, 1, new NavScanPicture("p.jpg", DateTime.UtcNow, 0, 0, 0, 0, 0, 0, NavScan.Reading), [])));
+
+        // With a route's check too: under it.
+        check = RouteCheck(HeatmapFinds.Checking, 34, recorded: 12);
+        Assert.Equal(["ROUTE CHECK   checking 12 of 34…", "NAV SCAN   picture read   ·   18 names   ·   17 recorded   ·   1 not recorded: Col 285 Sector RI-J c9-18"],
+            Read(rig.Box.NavContent()).Skip(1));
+
+        // Off: the line goes.
+        scan = null;
+        Assert.Equal(2, Read(rig.Box.NavContent()).Count);
+        Assert.Null(HaulOverlay.NavScanWords(null));
+    });
+
     // ---- the menu ----
 
     [Fact]
@@ -562,7 +677,7 @@ public class HaulOverlayDrawingTests
                 new[]
                 {
                     "accepted", "buttons", "exploring", "lookup", "lookup-message", "menu-accepted", "menu-mouse", "menu-mouse-settings", "menu-order", "menu-page-names",
-                    "menu-presets", "menu-setting-changing", "menu-settings", "menu-trades", "message", "route", "route-trip", "trade-back", "trade-back-loaded", "trade-buy",
+                    "menu-presets", "menu-setting-changing", "menu-settings", "menu-trades", "message", "nav-scan", "route", "route-check", "route-check-done", "route-trip", "trade-back", "trade-back-loaded", "trade-buy",
                     "trade-one-way", "trade-sell", "trade-sell-copied",
                 },
                 Directory.GetFiles(Path.Combine(shots, OverlayWindow.HaulingShots)).Select(Path.GetFileNameWithoutExtension).Order(StringComparer.Ordinal));

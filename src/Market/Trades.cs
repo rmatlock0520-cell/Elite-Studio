@@ -66,7 +66,7 @@ public sealed class TradeRow
 /// <summary>Everything one search needs to know. It carries no reference to live state, so a search can run while the player flies on.</summary>
 public sealed record SearchRequest
 {
-    public string Mode { get; init; } = "near";          // near | anywhere | lookup
+    public string Mode { get; init; } = "near";          // near | anywhere | carry | lookup
     public string? StarSystem { get; init; }             // where the player is
     public int Pad { get; init; } = 3;                   // smallest landing pad the ship needs: 1 small, 2 medium, 3 large
     public int BuyLy { get; init; } = 15;                // near: buy within this distance of the player
@@ -86,6 +86,14 @@ public sealed record SearchRequest
     public bool Returns { get; init; } = true;           // round trip (true) or one way
     public double Jump { get; init; }                    // light years per jump with a full hold; 0 = not known
     public double JumpEmpty { get; init; }               // ... with an empty hold
+
+    // "What do I take from this station to that system?" (Mode = carry): always one way
+    public string FromSystem { get; init; } = "";        // the system of the station to buy at
+    public string FromStation { get; init; } = "";       // that station's name
+    public double FromX { get; init; }                   // where that system is, when the player is in it; 0, 0, 0 = not known
+    public double FromY { get; init; }
+    public double FromZ { get; init; }
+    public string ToSystem { get; init; } = "";          // the system to sell in, at any of its stations that pass the filters
 
     // "Where can I sell this?" (Mode = lookup)
     public string LookItem { get; init; } = "";          // commodity id
@@ -144,6 +152,8 @@ public sealed record SearchResult
     public IReadOnlyList<string> Urls { get; init; } = [];      // every request actually sent, in order (cache hits are not listed)
     public string? StarSystem { get; init; }                    // the system the search was for
     public string? Note { get; init; }                          // extra line for the list message (Powerplay), or null
+    public string? Summary { get; init; }                       // carry: the list's own line ("12 loads from Ito Landing to Sol"); null = "12 trades from" the system
+    public string? Empty { get; init; }                         // carry: why there is nothing to list, in words a player can act on; null = the usual reasons
 }
 
 /// <summary>
@@ -162,4 +172,10 @@ public interface ITradeSearch
 
     /// <summary>Every traded commodity known from the galaxy price overview (id, display name); empty until a search has loaded it.</summary>
     IReadOnlyList<(string Id, string Name)> Commodities { get; }
+
+    /// <summary>
+    /// The stations of a system that sell something, by name: what the Market page offers to pick
+    /// the station to buy at from. Empty when the system is not known or the service gave no answer.
+    /// </summary>
+    Task<IReadOnlyList<string>> Stations(string system, CancellationToken cancel) => Task.FromResult<IReadOnlyList<string>>([]);
 }

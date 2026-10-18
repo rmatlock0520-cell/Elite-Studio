@@ -18,8 +18,13 @@ namespace EliteStudio.Market;
 /// <param name="Tons">Commodities: tons on sale, or tons wanted; null for everything else.</param>
 /// <param name="Updated">When this was last reported (UTC): the price, the outfitting or shipyard list, or for a service the station itself. Null when not known.</param>
 /// <param name="MarketId">Stations found by name: the game's number for the station, by which its price list is asked for; 0 for everything else.</param>
+/// <param name="Access">A fleet carrier found for a commodity: who may dock there, in words ("open to all", "squadron only", "access not known"); "" for everything else.</param>
+/// <param name="Edsm">Ships: what EDSM, which keeps only the ships really on sale, says of the station: "confirmed" (it sells the ship), "no list"
+/// (EDSM has none for its shipyard) or "not checked" (EDSM was not asked, or did not answer). A station EDSM says does not sell the ship is left
+/// out. "" for everything else.</param>
 public sealed record FoundPlace(
-    string Station, string System, double? DistanceLy, double? StarLs, string Pad, string Type, string Item, long? Price, int? Tons, DateTime? Updated, long MarketId = 0);
+    string Station, string System, double? DistanceLy, double? StarLs, string Pad, string Type, string Item, long? Price, int? Tons, DateTime? Updated, long MarketId = 0,
+    string Access = "", string Edsm = "");
 
 /// <summary>What one "Find by name" search found.</summary>
 /// <param name="What">The search in words, as a heading: "Where to buy Gold".</param>
@@ -58,7 +63,9 @@ public sealed record NameList(IReadOnlyList<string> Names, IReadOnlyList<string>
 /// stock. Everything else comes from Spansh: its stations search tells the three kinds of material
 /// trader and the two kinds of technology broker apart, and it takes most of the station filters
 /// itself. (Ardent's own "nearest service" gives the 20 nearest stations of any type, which around
-/// a busy system are nearly all fleet carriers and settlements.)
+/// a busy system are nearly all fleet carriers and settlements.) Spansh's shipyard lists also name ships
+/// a station is not selling right now, so each station a ship search finds is checked against EDSM,
+/// which keeps the ships on sale only (FindStations.cs).
 ///
 /// One search has no route of its own: Studio Loadouts' shopping list asks through
 /// <see cref="Finder.Sellers"/> for the stations that sell several modules, and a ship, at once.
@@ -77,6 +84,11 @@ public static class FindApi
         web.Map("GET", "/api/market/find/prices", request => Answered(() => Task.FromResult(finder.Prices(
             long.TryParse(request.Query.GetValueOrDefault("id"), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long id) ? id : 0))));
         web.Map("GET", "/api/market/find/names", request => Answered(() => finder.Names(request.Query.GetValueOrDefault("kind") ?? "")));
+        // The star systems of a sector, by the start of their names (Inspect.cs): {"name":"Wregoe YV-W","inhabited":false}.
+        web.Map("POST", "/api/market/find/sector", request => Answered(() => finder.Sector(request.Read<FindRequest>())));
+        // A name the player opens, on any page: the sheet of that station or of that star system (Inspect.cs).
+        web.Map("GET", "/api/market/inspect/station", request => Answered(() => finder.StationSheet(request.Query.GetValueOrDefault("name") ?? "", request.Query.GetValueOrDefault("system") ?? "")));
+        web.Map("GET", "/api/market/inspect/system", request => Answered(() => finder.SystemSheet(request.Query.GetValueOrDefault("name") ?? "")));
         foreach (string kind in Finder.Kinds)
             web.Map("POST", "/api/market/find/" + kind, request => Answered(() => finder.Find(kind, request.Read<FindRequest>())));
         return finder;
@@ -99,6 +111,8 @@ sealed class FindRequest
     public string Rating { get; set; } = "";
     public string From { get; set; } = "";          // "" = the system the player is in
     public int More { get; set; }                   // 0 = from the nearest on; else the "more" of the answer before: the places after it
+    public string Docking { get; set; } = "open";   // commodities, fleet carriers: open = leave out those known not to let everyone dock | any
+    public bool Inhabited { get; set; }             // sectors: only the systems people live in
     public Dictionary<string, JsonElement>? Filters { get; set; }   // station filters for this one search
 }
 
@@ -121,6 +135,9 @@ sealed partial class Finder(GameState game, Hauling hauling, MarketData data, Fu
     const int ReachLy = 500;                // as far around a system as Ardent Insight looks
     const int MostPlaces = 100;             // places to buy or sell a commodity that are listed
     const double OfferMinutes = 5;          // how long the same question gets the remembered answer
+    const int FewPlaces = 10;               // a list shorter than this is checked for what the filters left out
+    const int WideDays = 30;                // how old a price may be for that check
+    const string UnknownAccess = "access not known";   // a fleet carrier Spansh says nothing about
 
     // Station types as the game's journal and Ardent Insight spell them, and as Spansh does. Spansh's words are the ones shown.
     static readonly (string Journal, string Spansh)[] StationTypes =
@@ -149,6 +166,7 @@ sealed partial class Finder(GameState game, Hauling hauling, MarketData data, Fu
                 "services" => new NameList([.. Services.Select(service => service.Name)], [], []),
                 // No service lists every station's name: the ones to pick from are those whose market the player has opened.
                 "station" => new NameList([.. (book?.Visits ?? []).Select(visit => visit.Station).Distinct(StringComparer.OrdinalIgnoreCase)], [], []),
+                "sector" => new NameList([], [], []),   // a sector is typed: there are too many to list
                 _ => throw new FindProblem("Unknown kind of thing to find."),
             };
         }
@@ -238,6 +256,7 @@ sealed partial class Finder(GameState game, Hauling hauling, MarketData data, Fu
         await (placed ? KnownSystem(ArdentName, from, both) : both);
 
         var seen = new HashSet<long>();
+        var listedMarkets = new HashSet<long>();
         var places = new List<FoundPlace>();
         foreach (Offer offer in around.Result.Data.Concat(inSystem.Result.Data))
         {
@@ -254,21 +273,80 @@ sealed partial class Finder(GameState game, Hauling hauling, MarketData data, Fu
             if (offer.Updated is not { } updated || (ask.Now - updated).TotalHours > set.MaxAgeHours) continue;
             // Ardent gives whole light years only, so the distance is worked out from where the two systems are.
             double ly = ShipMath.Distance(here, [offer.X, offer.Y, offer.Z]);
-            places.Add(new FoundPlace(offer.Station, offer.StarSystem, Math.Round(ly, 2), offer.StarLs, StationFilter.PadLetter(offer.Pad), Shown(offer.Type), "", price, tons, updated));
+            listedMarkets.Add(offer.MarketId);
+            places.Add(new FoundPlace(offer.Station, offer.StarSystem, Math.Round(ly, 2), offer.StarLs, StationFilter.PadLetter(offer.Pad), Shown(offer.Type), "", price, tons, updated,
+                Access: IsCarrier(offer.Type) ? UnknownAccess : ""));
         }
+
+        // A fleet carrier lets in whom its owner says. Spansh knows that of most; those known not to be open to
+        // everyone are left out unless the player asked for any, and the others say what is known of them.
+        int shut = 0;
+        if (places.Any(place => place.Access.Length > 0))
+        {
+            Dictionary<string, string> access = await CarrierAccess(places.Where(place => place.Access.Length > 0).Select(place => place.Station), ask);
+            bool anyone = Same(request.Docking, "any");
+            for (int at = places.Count - 1; at >= 0; at--)
+            {
+                if (places[at].Access.Length == 0 || !access.TryGetValue(places[at].Station, out string? who)) continue;
+                if (who != "All" && !anyone)
+                {
+                    places.RemoveAt(at);
+                    shut++;
+                }
+                else if (AccessWords(who) is { Length: > 0 } words) places[at] = places[at] with { Access = words };
+            }
+        }
+
         // Of two places in one system, the better price first. Ardent sends every place within its reach at
         // once; a hundred are listed at a time, and "more" is how many have been listed so far.
         int listed = Math.Max(0, request.More);
         FoundPlace[] next = [.. places.OrderBy(place => place.DistanceLy).ThenBy(place => selling ? -place.Price : place.Price).Skip(listed).Take(MostPlaces)];
         listed += next.Length;
         bool more = places.Count > listed;
-        string? note = places.Count == 0
-            ? $"No station within {ReachLy} ly of {from} that passes your filters is known to {(selling ? "buy" : "sell")} {name}. Try older prices, fewer tons or other filters."
-            : more ? Invariant($"The nearest {listed} places are listed; there are more farther out.")
-            : null;
-        return new FindAnswer($"Where to {(selling ? "sell" : "buy")} {name}", from, next, ArdentName, null, note, more ? listed : null,
+        var notes = new List<string>();
+        if (places.Count == 0)
+            notes.Add($"No station within {ReachLy} ly of {from} that passes your filters is known to {(selling ? "buy" : "sell")} {name}. Try older prices, fewer tons or other filters.");
+        else if (more) notes.Add(Invariant($"The nearest {listed} places are listed; there are more farther out."));
+        if (shut > 0) notes.Add(Invariant($"{shut} fleet {(shut == 1 ? "carrier that does" : "carriers that do")} not let everyone dock {(shut == 1 ? "was" : "were")} left out."));
+        // A short list is often the filters' doing, not the galaxy's: how many more there are with older prices or on carriers.
+        if (request.More <= 0 && places.Count < FewPlaces && (!filter.Carriers || set.MaxAgeHours < WideDays * 24)
+            && await LeftOut(Invariant($"{system}/commodity/name/{id}/nearby/{(selling ? "imports" : "exports")}?maxDistance={ReachLy}&maxDaysAgo={WideDays}&minVolume={least}&sort=distance"),
+                from, selling, least, filter, set, listedMarkets, ask) is { } leftOut) notes.Add(leftOut);
+        return new FindAnswer($"Where to {(selling ? "sell" : "buy")} {name}", from, next, ArdentName, null, notes.Count > 0 ? string.Join(" ", notes) : null, more ? listed : null,
             around.Result.Asked < inSystem.Result.Asked ? around.Result.Asked : inSystem.Result.Asked);
     }
+
+    /// <summary>
+    /// What the player's filters keep from a short list, in a line for them: the places the service
+    /// knows with prices up to thirty days old, fleet carriers among them, that the price age or the
+    /// carriers filter left out. Null when there are none, or the service does not answer: the list
+    /// itself is right either way, so this question may fail without a word to the player.
+    /// </summary>
+    async Task<string?> LeftOut(string url, string from, bool selling, int least, StationFilter filter, MarketSettings set, HashSet<long> listed, MarketData.Asking ask)
+    {
+        IReadOnlyList<Offer> wide;
+        try { wide = (await ask.Answer(url, null, OfferMinutes, Offer.ReadList)).Data; }
+        catch (Exception problem) when (Lost(problem)) { return null; }
+
+        // With carriers counted in: a station the other filters would leave out anyway (its pad, where it stands) is not one more.
+        var withCarriers = filter with { Carriers = true };
+        var seen = new HashSet<long>();
+        int older = 0, onCarriers = 0;
+        foreach (Offer offer in wide)
+        {
+            (int price, int tons) = selling ? (offer.SellPrice, offer.Demand) : (offer.BuyPrice, offer.Stock);
+            if (!seen.Add(offer.MarketId) || listed.Contains(offer.MarketId) || price <= 0 || tons < least || (selling && offer.Stock > 0) || offer.Updated is not { } updated) continue;
+            if (!withCarriers.Keeps(offer.Type, offer.Pad, Same(offer.StarSystem, from) ? null : offer.StarLs)) continue;
+            if (IsCarrier(offer.Type) && !filter.Carriers) onCarriers++;
+            else if ((ask.Now - updated).TotalHours > set.MaxAgeHours) older++;
+        }
+        var parts = new List<string>();
+        if (older > 0) parts.Add(Invariant($"{older} more with prices up to {WideDays} days old"));
+        if (onCarriers > 0) parts.Add(Invariant($"{onCarriers} more on fleet carriers"));
+        return parts.Count == 0 ? null : $"Your filters leave out {string.Join(" and ", parts)}. Change the price age or the carriers filter to see them.";
+    }
+
+    static bool IsCarrier(string type) => type.Contains("FleetCarrier", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Where a system is, from Ardent Insight; asked once a session for each system.</summary>
     async Task<double[]> Position(string system, string address, MarketData.Asking ask)

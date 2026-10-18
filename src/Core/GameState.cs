@@ -163,6 +163,14 @@ public sealed class GameState
     public int CargoCount { get; private set; }
 
     /// <summary>
+    /// Tons in the ship's own hold, limpets included: <see cref="CargoCount"/>, except while the commander drives the SRV.
+    /// Cargo.json then describes the SRV (an empty hold to <see cref="CargoCount"/>), and the ship parked meanwhile still
+    /// carries what it carried: its jump range is worked out from this (Within reach), so getting into the SRV changes
+    /// nothing of it.
+    /// </summary>
+    public int ShipCargoCount { get; private set; }
+
+    /// <summary>
     /// The price list of the station the player is docked at, or null: the game only writes it when
     /// the commodities screen is opened, so the file on disk may still belong to another station.
     /// </summary>
@@ -439,7 +447,12 @@ public sealed class GameState
 
     internal void SetStatus(GameStatus status) => Status = status;
 
-    internal void SetCargo(int tons, IReadOnlyList<CargoItem> items) => (CargoCount, Cargo) = (tons, items);
+    /// <param name="ship">Cargo.json describes the ship (false: the SRV, whose hold says nothing of the ship's).</param>
+    internal void SetCargo(int tons, IReadOnlyList<CargoItem> items, bool ship = true)
+    {
+        (CargoCount, Cargo) = (tons, items);
+        if (ship) ShipCargoCount = tons;
+    }
 
     internal void SetMarket(StationMarket stationMarket) => market = stationMarket;
 

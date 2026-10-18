@@ -175,6 +175,63 @@ html.overlay body{overflow:visible}
 .modal .field{margin-top:8px}
 .modal textarea{height:220px;font:12px/1.4 var(--mono)}
 
+/* text being selected is lit in the accent colour, as the names to copy are */
+::selection{background:rgba(255,113,0,.4);color:#fff}
+/* A name that opens (Studio.link() makes it): a station, a star system, a commander. It looks and behaves like a link
+   on a web site: in the accent colour, underlined and lit while the mouse is on it or the keyboard has it, and a
+   shade apart once it has been opened. Its letters can be selected like any text. */
+a.lnk{color:var(--accent);text-decoration:none;cursor:pointer;border-radius:3px;-webkit-user-drag:none;user-select:text}
+a.lnk:hover,a.lnk:focus-visible{color:#ffb070;text-decoration:underline;background:var(--accent-soft);outline:none}
+a.lnk:focus-visible{box-shadow:0 0 0 1px var(--accent-line)}
+a.lnk:active{color:#fff}
+a.lnk.seen{color:#d9a066}
+a.lnk.seen:hover,a.lnk.seen:focus-visible{color:#ffb070}
+/* the menu of such a name, under the right mouse button */
+.ctx{position:fixed;z-index:90;min-width:210px;max-width:420px;display:grid;padding:5px;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;box-shadow:0 14px 36px rgba(0,0,0,.6)}
+.ctx button{border:0;background:none;text-align:left;padding:7px 12px;border-radius:5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctx button:hover,.ctx button:focus-visible{background:var(--accent-soft);color:#fff;outline:none}
+/* the inspector: the sheet of a name that was opened, over the whole page, with the way back on top */
+.inspector{position:fixed;inset:0;z-index:80;display:flex;flex-direction:column;background:var(--bg)}
+.inspector .bar{flex:none;display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--bg2)}
+.inspector .bar .what{flex:1;color:var(--muted);font-family:var(--hud);letter-spacing:.08em;text-transform:uppercase;font-size:12.5px}
+.inspector .scroll{flex:1;min-height:0;overflow-y:auto;padding:16px}
+.overlay .inspector{position:absolute;min-height:100%}
+/* a sheet: a name with what it is, two columns of what is known of it, tags for what it offers, lists of what belongs to it */
+.sheet{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px 16px}
+.sheet h2{margin:0 0 12px;font-size:20px;font-weight:600;display:flex;flex-wrap:wrap;align-items:center;gap:0 8px}
+.sheet h2 .call{color:var(--muted);font-weight:400}
+.sheet h2 .call.warn{color:var(--warn);font-size:13px}
+.sheet .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:4px 40px}
+.sheet dl{margin:0;display:grid;grid-template-columns:170px 1fr;gap:5px 14px;align-content:start}
+.sheet dt,.sheet h3{color:var(--muted);font-size:12px;letter-spacing:.07em;text-transform:uppercase;font-weight:500}
+.sheet dt{padding-top:2px}
+.sheet dd{margin:0;min-width:0}
+.sheet h3{margin:16px 0 7px}
+.sheet .tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.sheet .tag{padding:3px 10px;border-radius:5px;background:var(--panel2);color:var(--faint);font-size:13px;white-space:nowrap}
+.sheet .tag.has{background:rgba(255,255,255,.1);color:var(--text);font-weight:500}
+.sheet .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.sheet .unknown{color:var(--faint)}
+.sheet .hint{margin:12px 0 0}
+.sheet .tablebox{max-height:none}
+.sheet .tablebox td,.sheet .tablebox th{padding:5px 12px}
+.sheet .tablebox td.r,.sheet .tablebox th.r{text-align:right}
+
+/* the small picture of a station's kind before its name (Studio.stationIcon() makes it). Its colour says where it is:
+   purple in space, orange on the ground, yellow for a fleet carrier (the overlay's are the same: Market\StationPictures.cs) */
+.st-icon{display:inline-block;width:1.15em;height:1.15em;margin-right:.4em;vertical-align:-.2em;background:#b48cff;-webkit-mask:center/contain no-repeat;mask:center/contain no-repeat}
+.st-port,.st-settlement{background:#ff9a2e}
+.st-carrier{background:#ffd83d}
+.st-coriolis{-webkit-mask-image:url(img/stations/coriolis.svg);mask-image:url(img/stations/coriolis.svg)}
+.st-orbis{-webkit-mask-image:url(img/stations/orbis.svg);mask-image:url(img/stations/orbis.svg)}
+.st-ocellus{-webkit-mask-image:url(img/stations/ocellus.svg);mask-image:url(img/stations/ocellus.svg)}
+.st-outpost{-webkit-mask-image:url(img/stations/outpost.svg);mask-image:url(img/stations/outpost.svg)}
+.st-asteroid{-webkit-mask-image:url(img/stations/asteroid.svg);mask-image:url(img/stations/asteroid.svg)}
+.st-megaship{-webkit-mask-image:url(img/stations/megaship.svg);mask-image:url(img/stations/megaship.svg)}
+.st-port{-webkit-mask-image:url(img/stations/port.svg);mask-image:url(img/stations/port.svg)}
+.st-settlement{-webkit-mask-image:url(img/stations/settlement.svg);mask-image:url(img/stations/settlement.svg)}
+.st-carrier{-webkit-mask-image:url(img/stations/carrier.svg);mask-image:url(img/stations/carrier.svg)}
+
 /* whole-page messages: the red "can't reach Elite Studio" bar and the cover Studio.cover() puts in place of the page (studio.js makes both) */
 .banner{background:#2a0f0d;border-bottom:1px solid rgba(255,90,79,.5);color:#ffd3cf;padding:9px 16px;font-size:13px;display:flex;gap:12px;align-items:center}
 .cover{position:fixed;inset:0;background:var(--bg);display:grid;place-items:center;z-index:70;padding:24px}

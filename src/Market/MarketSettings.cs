@@ -46,7 +46,10 @@ public sealed record MarketSettings
         new("Long round trips", Values("""{ "returns": true, "rankBy": "trip", "maxLy": 120 }""")),
     ];
 
-    public string StartMode { get; init; } = "near";        // near | anywhere: where trades may start
+    public string StartMode { get; init; } = "near";        // near | anywhere | carry: where trades may start; carry = from one station to a system the player names
+    public string FromSystem { get; init; } = "";           // carry: the system of the station to buy at; with FromStation empty = the station the player is docked at
+    public string FromStation { get; init; } = "";
+    public string ToSystem { get; init; } = "";             // carry: the system to sell in
     public string RankBy { get; init; } = "hour";           // hour | trip
     public bool Returns { get; init; } = true;              // round trip (true) or one way
     public double JumpRange { get; init; }                  // light years per jump with a FULL hold, as typed by the player; 0 = work it out from the ship
@@ -164,7 +167,10 @@ public sealed record MarketSettings
     /// </summary>
     MarketSettings Tidied() => this with
     {
-        StartMode = Choice(StartMode, "near", "anywhere"),
+        StartMode = Choice(StartMode, "near", "anywhere", "carry"),
+        FromSystem = Place(FromSystem),
+        FromStation = Place(FromStation),
+        ToSystem = Place(ToSystem),
         RankBy = Choice(RankBy, "hour", "trip"),
         Pad = Choice(Pad, "auto", "S", "M", "L"),
         Surface = Choice(Surface, "odyssey", "horizons", "none"),
@@ -189,6 +195,9 @@ public sealed record MarketSettings
         choices.FirstOrDefault(choice => choice.Equals(value, StringComparison.OrdinalIgnoreCase)) ?? choices[0];
 
     static string Named(string? value) => string.IsNullOrWhiteSpace(value) ? "any" : value.Trim();
+
+    /// <summary>The name of a system or a station as typed, without the blanks around it and no longer than any of them is.</summary>
+    static string Place(string? name) => (name ?? "").Trim() is { Length: > 100 } longer ? longer[..100] : (name ?? "").Trim();
 
     static Dictionary<string, JsonElement> Values(string json) => JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json)!;
 
@@ -346,8 +355,8 @@ public static class HaulMenu
             v => (int)v <= 0 ? "The system I am in" : $"{v} ly of me"),
         new("maxAgeHours", "Max. price age", false, [1, 2, 3, 4, 6, 8, 12, 24, 48, 72, 168, 720], s => s.MaxAgeHours,
             v => HoursText((int)v)),
-        new("startMode", "Trades start", true, ["near", "anywhere"], s => s.StartMode,
-            v => (string)v == "anywhere" ? "Anywhere in the galaxy" : "Near me"),
+        new("startMode", "Trades start", true, ["near", "anywhere", "carry"], s => s.StartMode,
+            v => (string)v switch { "anywhere" => "Anywhere in the galaxy", "carry" => "From a station to a system", _ => "Near me" }),
         new("minSupply", "Min. supply", false, [.. MarketSettings.VolumeSteps], s => s.MinSupply, VolumeText),
         new("minDemand", "Min. demand", false, [.. MarketSettings.VolumeSteps], s => s.MinDemand, VolumeText),
     ];
@@ -357,7 +366,8 @@ public static class HaulMenu
     [
         .. Fields.Select(field => new SettingLine(
             field.Key, field.Label,
-            Usable(field, settings) ? field.Text(field.Value(settings)) : "Not used when trades start anywhere",
+            Usable(field, settings) ? field.Text(field.Value(settings))
+                : settings.StartMode == "carry" ? "Not used from a station to a system" : "Not used when trades start anywhere",
             Usable(field, settings),
             [.. field.Choices.Select(choice => new SettingChoice(choice, field.Text(choice)))])),
     ];
@@ -438,8 +448,13 @@ public static class HaulMenu
     /// <summary>"12 h" up to two days, "3 days" from there.</summary>
     public static string HoursText(int hours) => hours < 48 ? $"{hours} h" : $"{(int)Math.Round(hours / 24.0)} days";
 
-    // "anywhere" has no distance from the player
-    static bool Usable(Field field, MarketSettings settings) => !(field.Key == "buyLy" && settings.StartMode == "anywhere");
+    // "anywhere" has no distance from the player; from a station to a system both ends are named, and it is one way
+    static bool Usable(Field field, MarketSettings settings) => settings.StartMode switch
+    {
+        "anywhere" => field.Key != "buyLy",
+        "carry" => field.Key is not ("buyLy" or "maxLy" or "returns"),
+        _ => true,
+    };
 
     static string VolumeText(object tons) => (int)tons <= 0 ? "Any" : ((int)tons).ToString("N0", CultureInfo.InvariantCulture) + " t or more";
 }

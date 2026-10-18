@@ -17,6 +17,15 @@
   carry the game. A route may also be a trip another studio handed to the app (a shopping trip from Studio
   Loadouts): its stops come with a note on what to do there, shown with NEXT and in the table.
   Shown inside the shell (..\index.html) and also works opened on its own in a browser.
+  In the in-game overlay's nav box (?overlay) the page also carries the 3D map's ROUTE CHECK line: how the check of
+  every stop of the route plotted in the game stands, with or without a Studio route, so the player knows while flying
+  when it is complete and which stops are not recorded. The app words the line and picks its colour (the "line" of
+  GET /api/nav/heatmap/route-check and of every "heatmap" event of kind "route-check"); the page only prints it.
+  Beside it, while the 3D map's Nav scan is on (spec v5 D), the NAV SCAN line: what the newest screenshot of the game's
+  Navigation panel gave ("picture read · 18 names · 17 recorded · 1 not recorded: <name>", or "reading…"), worded and
+  coloured by the app the same way (the "line" of GET /api/nav/heatmap/navscan and of every "heatmap" event of kind
+  "navscan").
+  ?selftest checks those two lines (they are printed exactly as the app sends them, and only when there is one).
 -->
 <style>
 /* Only what is this page's own; the shared look (buttons, boxes, badges, fields, the list table...) is in ../studio.css. */
@@ -57,6 +66,22 @@ tr.next .name{font-weight:600}
 #here-note{margin:0 0 10px;padding-bottom:10px;border-bottom:1px solid var(--line)}
 #here-note .tag{color:var(--good)}
 td.sys .muted{display:block;white-space:normal;font-size:12.5px}
+/* the 3D map's route check, in the overlay's box only: one line, its tag in the accent colour as NEXT is; the words dim
+   while it goes on, gold naming the stops not recorded, green when all are (the app's tones: dim, gold, green, plain).
+   Nav scan's line (spec v5 D) is the same, under it. */
+#rcheck,#nscan{display:flex;align-items:baseline;gap:14px;margin:0;flex:none;font-size:16px;line-height:1.35}
+#rcheck .tag,#nscan .tag{font-family:var(--hud);letter-spacing:.16em;font-size:15px;color:var(--accent);flex:none}
+#rcheck-words,#nscan-words{min-width:0;overflow-wrap:anywhere}
+#rcheck.dim #rcheck-words,#nscan.dim #nscan-words{color:var(--muted)}
+#rcheck.gold #rcheck-words,#nscan.gold #nscan-words{color:var(--warn);font-weight:600}
+#rcheck.green #rcheck-words,#nscan.green #nscan-words{color:var(--good)}
+/* ?selftest */
+.selftest{position:fixed;inset:0;z-index:75;background:rgba(2,4,8,.82);display:grid;place-items:center;padding:16px}
+.selftest .box{width:min(900px,100%);max-height:100%;overflow:auto;background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:18px}
+.selftest table{width:100%;border-collapse:collapse;font-size:12.5px}
+.selftest td{padding:3px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.selftest td:first-child{width:46px;font-weight:600}
+.selftest td:last-child{color:var(--muted);font-family:var(--mono);font-size:11.5px;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -96,6 +121,8 @@ td.sys .muted{display:block;white-space:normal;font-size:12.5px}
   </aside>
 
   <main class="way">
+    <p id="rcheck" role="status" aria-live="polite" hidden><span class="tag">ROUTE CHECK</span><span id="rcheck-words"></span></p>
+    <p id="nscan" role="status" aria-live="polite" hidden><span class="tag">NAV SCAN</span><span id="nscan-words"></span></p>
     <p id="empty">No route yet. Plot one on the left, and Studio will walk you along it: the next system to fly to, a button to copy its name for the galaxy map, and how far is left.</p>
     <section class="card next" id="next" hidden>
       <p class="note" id="here-note" hidden><span class="tag">HERE</span><span></span></p>
@@ -322,6 +349,113 @@ function showGame(s) {
   followGame();
 }
 
+// ============================================================ the 3D map's route check (the overlay's box only)
+// The app sends the line whole, words and tone (null when there is nothing to tell: checking is off, or no route is
+// plotted in the game), on every change of the check and on asking. An answer an event overtook is older than what is
+// shown, so it is dropped.
+const TONES = ['dim', 'gold', 'green', 'plain'];
+let routeHeard = 0;     // route-check events heard
+function showRouteCheck(c) {
+  const line = c && c.line && typeof c.line.words === 'string' && c.line.words ? c.line : null;
+  $('#rcheck').hidden = !line;
+  if (!line) return;
+  $('#rcheck').className = TONES.includes(line.tone) ? line.tone : 'plain';
+  $('#rcheck-words').textContent = line.words;
+}
+function loadRouteCheck() {
+  const before = routeHeard;
+  Studio.api('GET', '/api/nav/heatmap/route-check').then(c => { if (routeHeard === before) showRouteCheck(c); }, () => {});   // no answer: the red bar says so
+}
+
+// ============================================================ the 3D map's Nav scan (the overlay's box only)
+// The same for Nav scan (spec v5 D), under the route check's line: the app sends the line whole, words and tone (null
+// when there is nothing to tell), and the page prints it only while Nav scan is on. An answer an event overtook is
+// dropped. An event that carries no line at all (only counts) has the line asked for instead.
+let scanHeard = 0;      // navscan events heard
+function showNavScan(c) {
+  const line = c && c.on !== false && c.line && typeof c.line.words === 'string' && c.line.words ? c.line : null;
+  $('#nscan').hidden = !line;
+  if (!line) return;
+  $('#nscan').className = TONES.includes(line.tone) ? line.tone : 'plain';
+  $('#nscan-words').textContent = line.words;
+}
+function loadNavScan() {
+  const before = scanHeard;
+  Studio.api('GET', '/api/nav/heatmap/navscan').then(c => { if (scanHeard === before) showNavScan(c); }, () => {});
+}
+function heardNavScan(e) {
+  if (!e || typeof e !== 'object') return;
+  const s = e.summary && typeof e.summary === 'object' ? e.summary : e;
+  scanHeard++;
+  if ('line' in s || s.on === false) showNavScan(s); else loadNavScan();
+}
+
+// ============================================================ ?selftest
+// The overlay's two lines: each printed exactly as the app words it, in its colour, and only when there is one (Nav
+// scan's only while it is on); an answer an event overtook is dropped. Prints pass or fail over the page. Opened with
+// ?selftest the page asks the app for nothing else and follows nothing.
+async function selftest() {
+  const out = [];
+  const check = (name, got, want) => out.push({ name, ok: JSON.stringify(got) === JSON.stringify(want), got, want });
+  const state = id => [$(id).hidden, $(id).className, $(id + '-words').textContent];
+  const realApi = Studio.api;
+  const gold = 'picture read · 18 names · 17 recorded · 1 not recorded: Col 285 Sector WO-J a38-0';
+  try {
+    const seen = [];
+    for (const line of [{ words: gold, tone: 'gold' }, { words: 'reading…', tone: 'dim' }, { words: 'picture read · 18 names · all recorded', tone: 'green' }, { words: 'picture read · 2 names', tone: 'loud' }]) {
+      showNavScan({ on: true, line });
+      seen.push(state('#nscan'));
+    }
+    check('NAV SCAN prints the app\'s words as they are, in its colour: gold naming a system not recorded, dim while a picture is read, green when all are recorded, plain for any other tone',
+      seen, [[false, 'gold', gold], [false, 'dim', 'reading…'], [false, 'green', 'picture read · 18 names · all recorded'], [false, 'plain', 'picture read · 2 names']]);
+    const hidden = [];
+    for (const c of [{ on: false, line: { words: gold, tone: 'gold' } }, { on: true, line: null }, { on: true, line: { words: '', tone: 'plain' } }, null]) {
+      showNavScan({ on: true, line: { words: gold, tone: 'gold' } });
+      showNavScan(c);
+      hidden.push($('#nscan').hidden);
+    }
+    check('NAV SCAN shows only while Nav scan is on and the app has words for it', hidden, [true, true, true, true]);
+    const asked = [];
+    Studio.api = (method, path) => { asked.push(method + ' ' + path); return new Promise(() => {}); };
+    heardNavScan({ kind: 'navscan', on: true, line: { words: 'reading…', tone: 'dim' } });
+    const one = state('#nscan');
+    heardNavScan({ kind: 'navscan', summary: { on: true, line: { words: gold, tone: 'gold' } } });
+    const two = state('#nscan');
+    heardNavScan({ kind: 'navscan', on: true, pictures: 3 });
+    heardNavScan({ kind: 'navscan', on: false, line: null });
+    check('A "navscan" event shows its line at once (also from a "summary" inside it); one with counts alone asks for the line; Nav scan turned off takes the line away',
+      [one, two, asked, $('#nscan').hidden], [[false, 'dim', 'reading…'], [false, 'gold', gold], ['GET /api/nav/heatmap/navscan'], true]);
+    let answer = null;
+    Studio.api = () => new Promise(resolve => { answer = resolve; });
+    loadNavScan();
+    heardNavScan({ kind: 'navscan', on: true, line: { words: 'newer', tone: 'plain' } });
+    answer({ on: true, line: { words: 'older', tone: 'plain' } });
+    await new Promise(r => setTimeout(r, 20));
+    check('An answer an event overtook is dropped: the newer words stay', $('#nscan-words').textContent, 'newer');
+    showRouteCheck({ line: { words: 'Checking 12 of 34…', tone: 'dim' } });
+    check('ROUTE CHECK is printed as before, and the two lines stand one under the other, the route check first',
+      [state('#rcheck'), [...document.querySelectorAll('.way > p[role="status"]')].map(p => p.id + ' ' + p.querySelector('.tag').textContent)],
+      [[false, 'dim', 'Checking 12 of 34…'], ['rcheck ROUTE CHECK', 'nscan NAV SCAN']]);
+  } catch (e) {
+    out.push({ name: 'runs at all', ok: false, got: e.message });
+  } finally {
+    Studio.api = realApi;
+  }
+  const pass = out.filter(c => c.ok).length, ok = pass === out.length && out.length > 0;
+  const summary = ok ? 'Self-test: all ' + out.length + ' checks pass.' : 'Self-test: ' + (out.length - pass) + ' of ' + out.length + ' checks FAIL.';
+  const shown = v => { const s = typeof v === 'string' ? v : JSON.stringify(v); return s == null ? '' : s.length > 200 ? s.slice(0, 197) + '…' : s; };
+  const panel = h('div', { class: 'selftest', id: 'selftest', role: 'dialog', 'aria-label': 'Self-test' },
+    h('div', { class: 'box' }, h('h2', { class: ok ? 'good' : 'bad' }, summary),
+      h('table', null, h('tbody', null, out.map(c => h('tr', null, h('td', { class: c.ok ? 'good' : 'bad' }, c.ok ? 'pass' : 'FAIL'), h('td', null, c.name),
+        h('td', null, c.ok ? '' : 'got ' + shown(c.got) + ', want ' + shown(c.want))))))));
+  // Opened from disk, studio.js covers the page once it has loaded: the results go over that cover, after it.
+  if (!Studio.served && document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => document.body.append(panel));
+  else document.body.append(panel);
+  document.title = (ok ? 'PASS ' : 'FAIL ') + document.title;
+  if (Studio.served) Studio.api('POST', '/api/app/log', { message: 'Page ' + location.pathname + ': ' + summary }).catch(() => {});
+}
+if (new URLSearchParams(location.search).has('selftest')) { selftest(); return; }
+
 // ============================================================ start-up
 if (!Studio.served) return;
 setKind(kind);
@@ -347,6 +481,17 @@ setInterval(everySecond, 1000);
 // The app's two pictures, kept up to date. Every request of this page answers with the first, so it goes through call().
 const call = Studio.follow('nav', '/api/nav/route', show);
 Studio.follow('state', '/api/state', showGame);
+// In the game's nav box: the route check's line and Nav scan's, now, whenever the live stream (re)connects, and with
+// every change. (Nav scan's news may also come as an event of its own, "navscan".)
+if (Studio.boxed) {
+  Studio.onEvent('heatmap', e => { if (!e || e.kind !== 'route-check') return; routeHeard++; showRouteCheck(e); });
+  Studio.onEvent('heatmap', e => { if (e && e.kind === 'navscan') heardNavScan(e); });
+  Studio.onEvent('navscan', heardNavScan);
+  Studio.onEvent('open', loadRouteCheck);
+  Studio.onEvent('open', loadNavScan);
+  loadRouteCheck();
+  loadNavScan();
+}
 })();
 </script>
 </body>

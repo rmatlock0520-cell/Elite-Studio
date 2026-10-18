@@ -10,8 +10,10 @@
 <!--
   GUARDIAN HELPER: a checklist of everything a Guardian technology broker unlocks.
   Right: every module, weapon and fighter with its recipe, what the commander holds toward it, and whether it
-  is unlocked already. Left: the three kinds of blueprint segment the recipes start with, how many are still
-  needed, which kind of Guardian site gives each, and known sites with their distance from the ship.
+  is unlocked already; under it, every known Guardian site, nearest first, by what it is for. A Guardian
+  material still short in a recipe has a "where" link that shows the sites that give it.
+  Left: the three kinds of blueprint segment the recipes start with, how many are still needed, which kind of
+  Guardian site gives each, and the three nearest of each with their distance from the ship.
   The page only draws what the app says: GET /api/loadouts/guardian/list and every "guardian" event carry the
   whole picture, so a material picked up, cargo bought, an unlock or a jump show by themselves.
   Its links hand a name to another studio (Studio.open): a site or a beacon to Studio Nav's Routes, the broker
@@ -45,8 +47,17 @@ td.recipe{white-space:normal;line-height:1.9}
 .part.short{border-color:rgba(255,90,79,.45)}
 .part.short small{color:var(--bad)}
 tr.done td.what,tr.done .part{color:var(--faint)}
-/* the "where to buy" link at the end of a recipe's line */
-.part .go{margin-left:6px;font-size:12px}
+/* the "where to buy" link at the end of a recipe's line, and "where" for a Guardian material: the sites that give it */
+.part .go,.part .where{margin-left:6px;font-size:12px}
+.part .where{color:var(--accent)}
+
+/* every Guardian site: what it is for (the filter), what that means, then the list */
+#sites{margin-top:28px}
+#sites .seg{margin:4px 0 10px}
+#kindnote{font-size:13.5px;margin:0 0 12px;max-width:960px}
+td.gives{white-space:normal;min-width:260px}
+td.site .muted{font-size:12.5px}
+#more{margin-top:10px}
 </style>
 </head>
 <body>
@@ -61,7 +72,8 @@ tr.done td.what,tr.done .part{color:var(--faint)}
     <div id="segments"></div>
     <p class="muted small credit">Recipes compared between <a href="https://github.com/msarilar/EDEngineer" target="_blank" rel="noopener">EDEngineer</a>
       and <a href="https://github.com/jixxed/ed-odyssey-materials-helper" target="_blank" rel="noopener">ED Odyssey Materials Helper</a>.
-      The sites were surveyed by <a href="https://canonn.science/codex/guardian-structure/" target="_blank" rel="noopener">Canonn</a>. Thank you to all three.</p>
+      The sites are <a href="https://canonn.science/codex/guardian-structure/" target="_blank" rel="noopener">Canonn</a>'s survey of Guardian ruins and structures,
+      with the beacons and further structures from ED Odyssey Materials Helper's list. Thank you to all three.</p>
   </aside>
 
   <main>
@@ -70,6 +82,17 @@ tr.done td.what,tr.done .part{color:var(--faint)}
       <span class="busy" id="reading" hidden><span class="spin"></span>Reading your older journals for things you unlocked before…</span>
     </div>
     <div id="groups"></div>
+    <section id="sites" hidden>
+      <h2>Guardian sites</h2>
+      <p class="muted small" id="sitesabout"></p>
+      <div class="seg" id="kinds" role="tablist" aria-label="What the site is for"></div>
+      <p class="muted" id="kindnote"></p>
+      <div class="tablebox"><table>
+        <thead><tr><th>Site</th><th>What you get there</th><th>System</th><th>Body</th><th class="r">Distance</th></tr></thead>
+        <tbody id="siterows"></tbody>
+      </table></div>
+      <button class="btn small" id="more" hidden></button>
+    </section>
   </main>
 </div>
 
@@ -89,15 +112,23 @@ const system = name => [h('button', { class: 'textbtn name', title: 'Copy this n
   ' ', go('Route', 'Opens Studio Nav with ' + name + ' under To, ready to plot', 'nav', '?to=' + encodeURIComponent(name))];
 
 // ============================================================ the checklist
-// One line of a recipe. Cargo still to be bought has a link to the places that sell it.
+// Which Guardian sites give a material of a recipe (a filter of the site list below), by the material's name.
+const whereFrom = name => /Weapon Blueprint/.test(name) ? 'weapon' : /Module Blueprint/.test(name) ? 'module' : /Vessel Blueprint/.test(name) ? 'vessel'
+  : /Obelisk Data/.test(name) ? 'ruins' : /^Guardian (Power|Technology|Sentinel)/.test(name) ? 'structures' : null;
+
+// One line of a recipe. Cargo still to be bought has a link to the places that sell it; a Guardian material still
+// short has one to the sites that give it.
 function part(p, unlocked) {
   const cargo = p.kind === 'Commodity';
   const enough = p.have >= p.need;
+  const where = !cargo && !unlocked && !enough && sites && whereFrom(p.name);
   return h('span', { class: 'part' + (unlocked ? '' : enough ? ' ok' : ' short'),
       title: (cargo ? 'Cargo: it has to be in your ship\'s hold at the broker. ' : p.kind + ' material. ') + 'You hold ' + whole(p.have) + '.' },
     whole(p.need) + ' ' + p.name, cargo && ' (cargo)', !unlocked && h('small', null, 'have ' + whole(p.have)),
     cargo && !unlocked && !enough && go('where to buy', 'Opens Find by name in Studio Market and looks for the nearest places that sell ' + p.name,
-      'market', 'find.html?find=commodity&name=' + encodeURIComponent(p.name)));
+      'market', 'find.html?find=commodity&name=' + encodeURIComponent(p.name)),
+    where && h('button', { class: 'textbtn where', title: 'Shows the Guardian sites that give ' + p.name + ', nearest first',
+      onclick: () => { pick(where); $('#sites').scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, 'where'));
 }
 
 function row(item) {
@@ -123,14 +154,69 @@ function segment(b, items) {
     h('p', { class: 'count' }, needs),
     h('p', { class: 'muted small' }, 'Found at Guardian structures of the ' + (b.layouts.length === 1 ? 'shape' : 'shapes') + ' explorers call ' + list(b.layouts)
       + '. Charge the site\'s six pylons, give the data terminal ' + (beacon ? 'an ' : 'a ') + b.key + ' and scan its core: one segment each time. '
-      + (beacon ? 'The key comes from a Guardian beacon, a structure in space; each site below is listed with its beacon.' : 'Relics are found at the sites themselves.')),
+      + (beacon ? 'The key comes from a Guardian beacon, a structure in space, and any beacon\'s key opens any of these sites; each is listed with the beacon nearest to it.' : 'Relics are found at the sites themselves.')
+      + ' The three nearest to you:'),
     h('div', { class: 'sites' }, b.sites.map(site => h('div', null,
       system(site.system), h('span', { class: 'muted' }, dot + 'body ' + site.body + (site.ly == null ? '' : dot + ly(site.ly))),
       site.beaconSystem && h('div', { class: 'muted' }, 'Beacon: ', system(site.beaconSystem), dot + 'body ' + site.beaconBody)))));
 }
 
+// ============================================================ every Guardian site
+// The filter: what the player needs a site for. "structures" is every kind of Guardian structure on a planet.
+const KINDS = [['all', 'All'], ['weapon', 'Weapon blueprints'], ['module', 'Module blueprints'], ['vessel', 'Fighter blueprints'],
+  ['beacon', 'Ancient Keys'], ['structures', 'Guardian materials'], ['ruins', 'Obelisk data']];
+const STRUCTURES = ['weapon', 'module', 'vessel', 'materials'];
+const fits = (place, kind) => kind === 'all' || place.kind === kind || (kind === 'structures' && STRUCTURES.includes(place.kind));
+// What each kind of site is, and what it gives, in a few words for its line.
+const SITE = {
+  weapon: ['Weapon blueprint site', 'Guardian Weapon Blueprint Segment · Guardian materials'],
+  module: ['Module blueprint site', 'Guardian Module Blueprint Segment · Guardian materials'],
+  vessel: ['Fighter blueprint site', 'Guardian Vessel Blueprint Segment · Guardian materials'],
+  materials: ['Small structure', 'Guardian materials only (no data terminal)'],
+  beacon: ['Guardian beacon (in space)', 'Ancient Key, for a fighter blueprint site'],
+  ruins: ['Guardian ruins', 'Pattern Alpha to Epsilon Obelisk Data · artefacts'],
+};
+// ...and in full, for the filter picked.
+const NOTE = {
+  all: 'Pick what you need a site for to see what it takes and what it gives.',
+  weapon: 'Structures explorers call Bear, Bowl and Hammerbot. Charge the site\'s six pylons, give its data terminal a Guardian Relic (shot off the site\'s relic tower) and scan the terminal\'s core: one Guardian Weapon Blueprint Segment each time. Like every Guardian structure, it also gives Guardian materials.',
+  module: 'Structures explorers call Turtle. Charge the six pylons, give the data terminal a Guardian Relic from the site\'s relic tower and scan its core: one Guardian Module Blueprint Segment each time. Like every Guardian structure, it also gives Guardian materials.',
+  vessel: 'Larger structures explorers call Squid, Stickyhand and Robolobster, for the Guardian fighters. Their data terminal takes an Ancient Key from a Guardian beacon (any beacon\'s key opens any of these sites): one Guardian Vessel Blueprint Segment each time. Guardian materials here too.',
+  beacon: 'Guardian beacons are in space, not on a planet. Charge the beacon\'s three pylons (once the first is charged, the other two within three minutes) and scan its data core: it gives an Ancient Key, which opens a fighter blueprint site. It can be done again for more keys.',
+  structures: 'Every Guardian structure gives Guardian materials, the small ones with no data terminal (Lacrosse, Crossroads, Fistbump) as well. Sentinels drop Guardian Sentinel Weapon Parts and Sentinel Wreckage Components; the panels you shoot on the pillars give Guardian Power Cells, Power Conduits and Technology Components. Log out and back in to fill the site again.',
+  ruins: 'Guardian ruins, of three types (Alpha, Beta, Gamma); one body often has several. Scan the obelisks with your SRV\'s data link scanner for Pattern Alpha to Epsilon Obelisk Data. Which pattern comes is chance, and Delta and Epsilon are rare; log out and back in to scan again. The artefacts lying there (Casket, Orb, Relic, Tablet, Totem, Urn) open Ram Tah\'s obelisk transcripts.',
+};
+const FIRST = 25;   // lines shown before "Show all"
+let sites = null, kindOn = 'all', showAll = false;
+
+// Ruins: how many on the body, and of which types ("3 ruins: Alpha, Gamma ×2").
+function layouts(place) {
+  if (place.kind !== 'ruins') return place.kind === 'beacon' ? '' : place.layouts.join(', ');
+  const n = {}; for (const t of place.layouts) n[t] = (n[t] || 0) + 1;
+  return count(place.layouts.length, 'ruin') + ': ' + Object.keys(n).map(t => t + (n[t] > 1 ? ' ×' + n[t] : '')).join(', ');
+}
+function pick(kind) { kindOn = kind; showAll = false; drawSites(); }
+function drawSites() {
+  if (!sites) return;
+  $('#kinds').replaceChildren(...KINDS.map(([kind, label]) => h('button', { type: 'button', class: kind === kindOn ? 'active' : null, role: 'tab',
+    'aria-selected': String(kind === kindOn), onclick: () => pick(kind) }, label + ' ' + sites.filter(place => fits(place, kind)).length)));
+  $('#kindnote').textContent = NOTE[kindOn];
+  const list = sites.filter(place => fits(place, kindOn)), shown = showAll ? list : list.slice(0, FIRST);
+  $('#siterows').replaceChildren(...shown.map(place => h('tr', null,
+    h('td', { class: 'site' }, h('b', null, SITE[place.kind][0]), h('div', { class: 'muted' }, layouts(place))),
+    h('td', { class: 'gives' }, SITE[place.kind][1]),
+    h('td', null, system(place.system)),
+    h('td', null, place.body),
+    h('td', { class: 'r' }, place.ly == null ? '—' : ly(place.ly)))));
+  $('#more').hidden = list.length <= FIRST;
+  $('#more').textContent = showAll ? 'Show the nearest ' + FIRST + ' only' : 'Show all ' + list.length;
+}
+$('#more').addEventListener('click', () => { showAll = !showAll; drawSites(); });
+
 // ============================================================ what the app says
 function show(view) {
+  // (a copy of Elite Studio from before the site list sends none: the page then works as it did)
+  sites = view.places || null;
   const unlocked = view.items.filter(item => item.unlocked).length;
   $('#summary').textContent = unlocked + ' of ' + view.items.length + ' unlocked';
   $('#reading').hidden = view.historyRead;
@@ -140,6 +226,13 @@ function show(view) {
       h('div', { class: 'tablebox' }, h('table', null, h('tbody', null, items.map(row))))];
   }));
   $('#segments').replaceChildren(...view.blueprints.map(b => segment(b, view.items)));
+  $('#sites').hidden = !sites;
+  if (!sites) return;
+  const n = kind => sites.filter(place => place.kind === kind).length;
+  $('#sitesabout').textContent = 'Every Guardian site explorers have found: ' + (n('weapon') + n('module') + n('vessel') + n('materials')) + ' structures, '
+    + n('beacon') + ' beacons and ruins on ' + whole(n('ruins')) + (n('ruins') === 1 ? ' body. ' : ' bodies. ')
+    + (sites.some(place => place.ly != null) ? 'Nearest to your ship first.' : 'Nearest to Sol first, until Elite Studio knows where your ship is.');
+  drawSites();
 }
 
 $('#broker').addEventListener('click', () => Studio.open('market', 'find.html?find=services&name=' + encodeURIComponent('Guardian technology broker')));

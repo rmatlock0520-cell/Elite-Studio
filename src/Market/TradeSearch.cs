@@ -14,6 +14,7 @@ namespace EliteStudio.Market;
 sealed class TradeSearch(MarketData data, Func<DateTime>? utcNow = null) : ITradeSearch
 {
     const int MostRows = 40;
+    const int StationListDays = 30;   // a station whose prices are a month old is still a station to pick from
 
     public IReadOnlyList<(string Id, string Name)> Commodities => data.Overview?.Traded ?? [];
 
@@ -37,6 +38,15 @@ sealed class TradeSearch(MarketData data, Func<DateTime>? utcNow = null) : ITrad
         }, CancellationToken.None);
     }
 
+    /// <summary>The stations of a system that sell something, by name. A question the service does not answer brings none.</summary>
+    public async Task<IReadOnlyList<string>> Stations(string system, CancellationToken cancel)
+    {
+        if (string.IsNullOrWhiteSpace(system)) return [];
+        MarketData.Asking ask = data.Ask(utcNow?.Invoke() ?? DateTime.UtcNow, cancel);
+        IReadOnlyList<Offer> sold = await ask.Offers(Invariant($"{MarketData.SystemAddress(system.Trim())}/commodities/exports?maxDaysAgo={StationListDays}"), 10);
+        return [.. sold.Select(offer => offer.Station).Where(name => name.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase)];
+    }
+
     async Task<SearchResult> Answer(SearchRequest request, MarketData.Asking ask, CancellationToken cancel)
     {
         bool lookup = Is(request.Mode, "lookup");
@@ -46,7 +56,7 @@ sealed class TradeSearch(MarketData data, Func<DateTime>? utcNow = null) : ITrad
             cancel.ThrowIfCancellationRequested();
             if (!Is(request.Mode, "anywhere") && string.IsNullOrWhiteSpace(request.StarSystem)) return Failed("Your current system is not known yet.");
             var search = new Search(request, ask, await ask.Overview());
-            SearchResult found = lookup ? await search.Lookup() : await search.Trades();
+            SearchResult found = lookup ? await search.Lookup() : Is(request.Mode, "carry") ? await search.Carry() : await search.Trades();
             cancel.ThrowIfCancellationRequested();
             if (ask.Lost > 0)
                 Log.Error(Invariant($"Trade search ({request.Mode}) from {request.StarSystem}: {ask.Lost} of {ask.Urls.Count} requests failed and counted as no data. First: {ask.FirstLoss}"));
@@ -81,6 +91,7 @@ sealed class TradeSearch(MarketData data, Func<DateTime>? utcNow = null) : ITrad
     {
         readonly bool anywhere = Is(request.Mode, "anywhere");
         readonly bool byTrip = Is(request.RankBy, "trip");
+        readonly bool returns = request.Returns && !Is(request.Mode, "carry");   // carrying to a system the player names is one way
         readonly int cargo = Math.Max(0, request.Cargo);
 
         // "Any" supply or demand still means at least one ton.
@@ -156,27 +167,93 @@ sealed class TradeSearch(MarketData data, Func<DateTime>? utcNow = null) : ITrad
             List<string> picked = Pick(local, sellers);
             Dictionary<string, List<Offer>> buys = await PlacesToBuy(picked, local, sellers);
             List<TradeRow> rows = await Pair(picked, buys, sellers);
-            if (request.Returns) await ReturnLoads(rows);
-
-            foreach (TradeRow row in rows)
-            {
-                // Out with a full hold; back with a full hold too when there is a load to bring, otherwise empty (fewer jumps).
-                int jumpsOut = ShipMath.JumpsFor(row.DistanceLy, jumpFull);
-                int jumpsBack = request.Returns ? ShipMath.JumpsFor(row.DistanceLy, row.ReturnProfit > 0 ? jumpFull : jumpEmpty) : 0;
-                if (request.Jump > 0) (row.JumpsOut, row.JumpsBack) = (jumpsOut, jumpsBack);
-                double seconds = TripSeconds(jumpsOut, jumpsBack, row.SellStarLs, row.BuyStarLs);
-                row.RoundTripProfit = row.ProfitPerTrip + row.ReturnProfit;
-                row.OneWay = !request.Returns;
-                row.Minutes = Math.Round(seconds / 60, 1);
-                row.PerHour = Convert.ToInt64(row.RoundTripProfit / seconds * 3600);
-                row.Return = row.ReturnId.Length > 0 ? GameData.CommodityName(row.ReturnId) : "";
-            }
+            if (returns) await ReturnLoads(rows);
+            Timed(rows);
             return new SearchResult
             {
                 Trades = Listed(Ranked(rows, row => row.RoundTripProfit)),
                 Exports = local.Count, Scanned = scanned, Candidates = picked.Count,
                 Urls = ask.Urls, StarSystem = request.StarSystem, Note = note,
             };
+        }
+
+        /// <summary>
+        /// From one station to one system ("carry"): what that station sells that a station in the
+        /// system pays more for, the best three places for each commodity. The station to buy at is
+        /// the player's choice, so the station filter does not count for it; where they are docked
+        /// there with its commodities screen read, the game's own numbers are used.
+        /// </summary>
+        public async Task<SearchResult> Carry()
+        {
+            SearchResult Nothing(string why) => new() { Empty = why, Urls = ask.Urls, StarSystem = request.StarSystem };
+            string from = request.FromSystem.Trim(), station = request.FromStation.Trim(), to = request.ToSystem.Trim();
+            if (to.Length == 0) return Nothing("Type the system you are travelling to under \"To system\" on the Market page.");
+            if (from.Length == 0 || station.Length == 0) return Nothing("Dock at the station you are buying at, or pick it under \"From\" on the Market page.");
+
+            // Everything the one system sells and everything the other buys: two questions, whatever the number of stations.
+            // (The station to buy at may be a fleet carrier whatever the carriers setting says, so that one is asked without it.)
+            Task<IReadOnlyList<Offer>> sold = ask.Offers(Invariant($"{MarketData.SystemAddress(from)}/commodities/exports?maxDaysAgo={days}"), 10);
+            Task<IReadOnlyList<Offer>> wanted = ask.Offers(SystemList(to, "imports"), 10);
+
+            var buys = new Dictionary<string, Offer>(StringComparer.OrdinalIgnoreCase);
+            Offer? place = (await sold).FirstOrDefault(offer => Is(offer.Station, station));   // any listing of the station says what kind it is
+            Offer? anyThere = place ?? (await sold).FirstOrDefault();                           // and any listing of the system where it is
+            (double x, double y, double z) = anyThere is not null ? (anyThere.X, anyThere.Y, anyThere.Z) : (request.FromX, request.FromY, request.FromZ);
+            if (request.LiveMarket is { } live && Is(live.StationName, station) && Is(live.StarSystem, from))
+            {
+                foreach (MarketItem item in live.Items.Values.Where(item => item.BuyPrice > 0 && item.Stock >= minSupply))
+                    buys[item.Id] = new Offer(item.Id, live.MarketId, live.StationName, live.Type.Length > 0 ? live.Type : place?.Type ?? "", place?.Pad, place?.StarLs,
+                        live.StarSystem, x, y, z, item.BuyPrice, item.SellPrice, item.Stock, item.Demand, 0, ask.Now, null);
+            }
+            else
+            {
+                foreach (Offer offer in (await sold).Where(offer => Is(offer.Station, station) && offer.BuyPrice > 0 && offer.Stock >= minSupply && Hours(offer) <= request.MaxAgeHours))
+                    buys[offer.Commodity] = offer;
+            }
+            if (buys.Count == 0)
+                return Nothing($"No prices new enough are known for {station} in {from}. Open its commodities market in the game while you are docked there, or allow older prices.");
+
+            Dictionary<string, List<Offer>> takers = Sellers(await wanted, null).GroupBy(offer => offer.Commodity, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
+            if (takers.Count == 0)
+                return Nothing($"No station in {to} that fits your filters has prices new enough. Check the system's name, or allow older prices.");
+
+            var rows = new List<TradeRow>();
+            foreach ((string id, Offer buy) in buys)
+            {
+                if (!takers.TryGetValue(id, out List<Offer>? sells)) continue;
+                IEnumerable<TradeRow> pairs = sells.Where(sell => sell.SellPrice > buy.BuyPrice && sell.MarketId != buy.MarketId)
+                    // a station whose place is not known is no distance away: better no jump count than one measured from Sol
+                    .Select(sell => Trade(id, buy, sell, buy is { X: 0, Y: 0, Z: 0 } ? 0 : ShipMath.Distance([buy.X, buy.Y, buy.Z], [sell.X, sell.Y, sell.Z])));
+                rows.AddRange(Ranked(pairs, pair => pair.ProfitPerTrip).Take(3));
+            }
+            if (rows.Count == 0) return Nothing($"Nothing {station} sells is known to fetch more at a station in {to} that fits your filters.");
+
+            Timed(rows);
+            List<TradeRow> best = Listed(Ranked(rows, row => row.RoundTripProfit));
+            return new SearchResult
+            {
+                Trades = best, Exports = buys.Count, Candidates = rows.Count, Urls = ask.Urls, StarSystem = request.StarSystem,
+                Summary = $"{best.Count} {(best.Count == 1 ? "load" : "loads")} from {station} to {to}",
+            };
+        }
+
+        /// <summary>The jumps, the time and what an hour earns, for every trade found; and the name of the load to bring back.</summary>
+        void Timed(List<TradeRow> rows)
+        {
+            foreach (TradeRow row in rows)
+            {
+                // Out with a full hold; back with a full hold too when there is a load to bring, otherwise empty (fewer jumps).
+                int jumpsOut = ShipMath.JumpsFor(row.DistanceLy, jumpFull);
+                int jumpsBack = returns ? ShipMath.JumpsFor(row.DistanceLy, row.ReturnProfit > 0 ? jumpFull : jumpEmpty) : 0;
+                if (request.Jump > 0) (row.JumpsOut, row.JumpsBack) = (jumpsOut, jumpsBack);
+                double seconds = TripSeconds(jumpsOut, jumpsBack, row.SellStarLs, row.BuyStarLs);
+                row.RoundTripProfit = row.ProfitPerTrip + row.ReturnProfit;
+                row.OneWay = !returns;
+                row.Minutes = Math.Round(seconds / 60, 1);
+                row.PerHour = Convert.ToInt64(row.RoundTripProfit / seconds * 3600);
+                row.Return = row.ReturnId.Length > 0 ? GameData.CommodityName(row.ReturnId) : "";
+            }
         }
 
         /// <summary>
@@ -371,7 +448,7 @@ sealed class TradeSearch(MarketData data, Func<DateTime>? utcNow = null) : ITrad
             int units = cargo > 0 ? Math.Min(cargo, Math.Min(buy.Stock, sell.Demand)) : 0;
             int profit = sell.SellPrice - buy.BuyPrice;
             // A first guess at the time (out full, back empty), so that a short route beats a long one that pays a few credits more.
-            double seconds = TripSeconds(ShipMath.JumpsFor(ly, jumpFull), request.Returns ? ShipMath.JumpsFor(ly, jumpEmpty) : 0, sell.StarLs, buy.StarLs);
+            double seconds = TripSeconds(ShipMath.JumpsFor(ly, jumpFull), returns ? ShipMath.JumpsFor(ly, jumpEmpty) : 0, sell.StarLs, buy.StarLs);
             return SellSide(sell, new TradeRow
             {
                 CommodityId = id, Commodity = GameData.CommodityName(id),
@@ -460,7 +537,7 @@ sealed class TradeSearch(MarketData data, Func<DateTime>? utcNow = null) : ITrad
         /// only the selling end's supercruise counts.
         /// </summary>
         double TripSeconds(int jumpsOut, int jumpsBack, double? sellStarLs, double? buyStarLs) =>
-            (jumpsOut + jumpsBack) * ShipMath.SecondsPerJump + Cruise(sellStarLs) + (request.Returns ? Cruise(buyStarLs) : 0) + 2 * ShipMath.SecondsPerStop;
+            (jumpsOut + jumpsBack) * ShipMath.SecondsPerJump + Cruise(sellStarLs) + (returns ? Cruise(buyStarLs) : 0) + 2 * ShipMath.SecondsPerStop;
 
         static double Cruise(double? lightSeconds) => ShipMath.SupercruiseSeconds(lightSeconds ?? 0);
 

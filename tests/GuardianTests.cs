@@ -115,19 +115,31 @@ public sealed class GuardianTests : IDisposable
             ("Guardian_ModuleBlueprint", "Guardian Module Blueprint Segment", 0, 6, "Turtle", "Guardian Relic"),
             ("Guardian_VesselBlueprint", "Guardian Vessel Blueprint Segment", 0, 3, "Squid, Stickyhand, Robolobster", "Ancient Key"),
         }, view.Blueprints.Select(b => (b.Code, b.Name, b.Have, b.Need, string.Join(", ", b.Layouts), b.Key)));
+        // The three nearest sites of each kind, from the whole list, nearest first (worked out apart from the program
+        // from guardian_sites.csv and HIP 12099's place). A fighter site comes with the beacon nearest to it.
         Assert.Equal(new[]
         {
-            new GuardianSite("Synuefe EU-Q c21-10", "A 3", 865, null, null),
-            new GuardianSite("NGC 2451A Sector IR-W d1-77", "AB 1 a", 852.3, null, null),
-            new GuardianSite("Synuefe FK-P c22-2", "E 1", 913.7, null, null),
+            new GuardianSite("Synuefe GV-T b50-4", "B 1", 789.9, null, null),
+            new GuardianSite("Synuefe PM-L c24-24", "C 6", 830, null, null),
+            new GuardianSite("NGC 2451A Sector EB-X c1-18", "C 2", 840.9, null, null),
         }, view.Blueprints[0].Sites);
         Assert.Equal(new GuardianSite("Synuefe PX-J c25-8", "7 a", 777.8, null, null), view.Blueprints[1].Sites[0]);
         Assert.Equal(new[]
         {
-            new GuardianSite("IC 2391 Sector CA-A d43", "12 a", 705.6, "IC 2391 Sector CQ-Y c16", "2"),
-            new GuardianSite("IC 2391 Sector HG-X b1-8", "C 2", 713.5, "IC 2391 Sector FG-X b1-9", "8"),
-            new GuardianSite("IC 2391 Sector FL-X b1-7", "A 3", 722.5, "IC 2391 Sector MX-T b3-6", "A 1"),
+            new GuardianSite("IC 2391 Sector CA-A d43", "12 a", 705.6, "IC 2391 Sector HG-X b1-7", "4"),
+            new GuardianSite("IC 2391 Sector HG-X b1-8", "C 2", 713.5, "IC 2391 Sector HG-X b1-7", "4"),
+            new GuardianSite("IC 2391 Sector FL-X b1-7", "A 3", 722.5, "IC 2391 Sector HG-X b1-7", "4"),
         }, view.Blueprints[2].Sites);
+
+        // Every site, nearest first: 168 structures and beacons, and the 335 ruins on 159 bodies, one place per body.
+        Assert.Equal((168, 159, 335), (view.Places.Count(place => place.Kind != "ruins"), view.Places.Count(place => place.Kind == "ruins"),
+            view.Places.Where(place => place.Kind == "ruins").Sum(place => place.Layouts.Count)));
+        Assert.Equal(view.Places.Select(place => place.Ly).Order(), view.Places.Select(place => place.Ly));
+        GuardianPlace first = view.Places[0];
+        Assert.Equal(("ruins", "Beta", "Synuefe XR-H d11-102", "1 b", (double?)470.4), (first.Kind, string.Join(", ", first.Layouts), first.System, first.Body, first.Ly));
+        foreach ((GuardianBlueprint blueprint, string kind) in view.Blueprints.Zip(new[] { "weapon", "module", "vessel" }))
+            Assert.Equal(view.Places.Where(place => place.Kind == kind).Take(3).Select(place => (place.System, place.Body, place.Ly)),
+                blueprint.Sites.Select(site => (site.System, site.Body, site.Ly)));
 
         // The commodity of a recipe is counted from the hold, the segment from the materials.
         game.Write(Path.Combine(game.JournalDir, "Cargo.json"), """{ "timestamp":"2026-10-08T12:50:00Z", "event":"Cargo", "Vessel":"Ship", "Count":10, "Inventory":[ { "Name":"hnshockmount", "Name_Localised":"HN Shock Mount", "Count":8, "Stolen":0 }, { "Name":"drones", "Name_Localised":"Limpet", "Count":2, "Stolen":0 } ] }""");
@@ -234,8 +246,68 @@ public sealed class GuardianTests : IDisposable
             """{"group":"Modules","name":"Guardian FSD Booster","detail":"Sizes 1 to 5","unlocked":true,"blueprint":"Guardian_ModuleBlueprint","recipe":[{"name":"Guardian Module Blueprint Segment","kind":"Encoded","need":1,"have":0},{"name":"Guardian Power Cell","kind":"Manufactured","need":21,"have":72},{"name":"Guardian Technology Component","kind":"Manufactured","need":21,"have":0},{"name":"Focus Crystals","kind":"Manufactured","need":24,"have":0},{"name":"HN Shock Mount","kind":"Commodity","need":8,"have":0}]}""",
             JsonSerializer.Serialize(json.GetProperty("items")[0]));
         Assert.Equal(
-            """{"code":"Guardian_VesselBlueprint","name":"Guardian Vessel Blueprint Segment","have":0,"need":3,"layouts":["Squid","Stickyhand","Robolobster"],"key":"Ancient Key","sites":[{"system":"IC 2391 Sector CA-A d43","body":"12 a","ly":705.6,"beaconSystem":"IC 2391 Sector CQ-Y c16","beaconBody":"2"},{"system":"IC 2391 Sector HG-X b1-8","body":"C 2","ly":713.5,"beaconSystem":"IC 2391 Sector FG-X b1-9","beaconBody":"8"},{"system":"IC 2391 Sector FL-X b1-7","body":"A 3","ly":722.5,"beaconSystem":"IC 2391 Sector MX-T b3-6","beaconBody":"A 1"}]}""",
+            """{"code":"Guardian_VesselBlueprint","name":"Guardian Vessel Blueprint Segment","have":0,"need":3,"layouts":["Squid","Stickyhand","Robolobster"],"key":"Ancient Key","sites":[{"system":"IC 2391 Sector CA-A d43","body":"12 a","ly":705.6,"beaconSystem":"IC 2391 Sector HG-X b1-7","beaconBody":"4"},{"system":"IC 2391 Sector HG-X b1-8","body":"C 2","ly":713.5,"beaconSystem":"IC 2391 Sector HG-X b1-7","beaconBody":"4"},{"system":"IC 2391 Sector FL-X b1-7","body":"A 3","ly":722.5,"beaconSystem":"IC 2391 Sector HG-X b1-7","beaconBody":"4"}]}""",
             JsonSerializer.Serialize(json.GetProperty("blueprints")[2]));
         Assert.Equal(5, json.GetProperty("blueprints")[1].GetProperty("need").GetInt32());
+        // Every site, as the page reads it.
+        JsonElement places = json.GetProperty("places");
+        Assert.Equal(168 + 159, places.GetArrayLength());
+        Assert.Equal("""{"kind":"ruins","layouts":["Beta"],"system":"Synuefe XR-H d11-102","body":"1 b","ly":470.4}""", JsonSerializer.Serialize(places[0]));
+    }
+
+    // ------------------------------------------------------------ the list of every Guardian site
+
+    [Fact]
+    public void The_site_list_holds_every_kind_of_Guardian_site_once_by_what_it_is_for()
+    {
+        IReadOnlyList<GuardianHelper.Site> sites = GuardianHelper.Sites;
+        // Canonn's survey and ED Odyssey Materials Helper's list together: 98 blueprint structures, 40 small ones
+        // with no data terminal, 30 beacons and 335 ruins.
+        Assert.Equal(new[] { ("beacon", 30), ("materials", 40), ("module", 17), ("ruins", 335), ("vessel", 31), ("weapon", 50) },
+            sites.GroupBy(site => site.Kind).OrderBy(group => group.Key, StringComparer.Ordinal).Select(group => (group.Key, group.Count())));
+        // Each shape is one kind of site, as Canonn's survey has it.
+        var kindOf = new Dictionary<string, string>
+        {
+            ["Bear"] = "weapon", ["Bowl"] = "weapon", ["Hammerbot"] = "weapon", ["Turtle"] = "module", ["Squid"] = "vessel", ["Stickyhand"] = "vessel",
+            ["Robolobster"] = "vessel", ["Lacrosse"] = "materials", ["Crossroads"] = "materials", ["Fistbump"] = "materials", ["Beacon"] = "beacon",
+            ["Alpha"] = "ruins", ["Beta"] = "ruins", ["Gamma"] = "ruins",
+        };
+        Assert.All(sites, site => Assert.Equal(kindOf[site.Layout], site.Kind));
+        // A structure or a beacon is in the list once, however the two sources wrote its name.
+        GuardianHelper.Site[] structures = [.. sites.Where(site => site.Kind != "ruins")];
+        Assert.Equal(structures.Length, structures.Select(site => (site.System.ToUpperInvariant(), site.Body.Replace(" ", "").ToUpperInvariant())).Distinct().Count());
+        // A body is written as the game writes it: the star's letters in capitals, the planet's number, its moons in small letters.
+        Assert.All(sites.Where(site => site.Kind != "beacon"), site => Assert.Matches(@"^(([A-Z]+ )?\d+( [a-z]+)*|[A-Z]+)$", site.Body));
+        // Every site has its system's place, out where the Guardians were: the nearest a few hundred light years from
+        // Sol, the farthest ruins some 21,200 in the Eorl Auwsy sector.
+        Assert.All(sites, site => Assert.InRange(Math.Sqrt(site.X * site.X + site.Y * site.Y + site.Z * site.Z), 300, 22000));
+
+        // The sites the page named by hand before the list came, each checked then against Canonn, the wiki and EDSM,
+        // are in it as the same kind; so is the best-known ruin.
+        foreach ((string kind, string system, string body) in new[]
+        {
+            ("weapon", "Synuefe EU-Q c21-10", "A 3"), ("weapon", "NGC 2451A Sector IR-W d1-77", "AB 1 a"), ("weapon", "Synuefe FK-P c22-2", "E 1"),
+            ("module", "Synuefe PX-J c25-8", "7 a"), ("module", "Synuefe GT-H b43-1", "C 4"), ("module", "Synuefe NL-N c23-4", "B 3"),
+            ("vessel", "IC 2391 Sector CA-A d43", "12 a"), ("vessel", "IC 2391 Sector HG-X b1-8", "C 2"), ("vessel", "IC 2391 Sector FL-X b1-7", "A 3"),
+            ("beacon", "IC 2391 Sector CQ-Y c16", "2"), ("beacon", "IC 2391 Sector FG-X b1-9", "8"), ("beacon", "IC 2391 Sector MX-T b3-6", "A 1"),
+            ("ruins", "Synuefe XR-H d11-102", "1 b"),
+        })
+            Assert.Contains(sites, site => (site.Kind, site.System, site.Body) == (kind, system, body));
+    }
+
+    [Fact]
+    public void Before_the_ship_is_placed_the_sites_are_nearest_to_Sol_first_with_no_distance()
+    {
+        using GameWatcher watcher = game.Watch();
+        GuardianView view = new GuardianHelper(watcher.State, SettingsFile()).View();   // nothing read: where the ship is is not known
+
+        Assert.All(view.Places, place => Assert.Null(place.Ly));
+        Assert.All(view.Blueprints.SelectMany(blueprint => blueprint.Sites), site => Assert.Null(site.Ly));
+        double FromSol(GuardianPlace place)
+        {
+            GuardianHelper.Site site = GuardianHelper.Sites.First(site => site.System == place.System && site.Body == place.Body);
+            return Math.Sqrt(site.X * site.X + site.Y * site.Y + site.Z * site.Z);
+        }
+        Assert.Equal(view.Places.Select(FromSol).Order(), view.Places.Select(FromSol));
     }
 }

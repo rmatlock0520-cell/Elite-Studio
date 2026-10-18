@@ -1,0 +1,507 @@
+# Guardian sites for Studio Loadouts (Loadouts\GuardianApi.cs). Made by make-sites.ps1 from Canonn's survey of Guardian
+# ruins and structures (github.com/canonn-science/GR-RuinsComboMap, GPL-3.0) and ED Odyssey Materials Helper's list of
+# structures and beacons (github.com/jixxed/ed-odyssey-materials-helper, MIT). Lines starting with # are not read.
+kind,layout,system,body,x,y,z
+beacon,Beacon,HIP 36823,1,640.4375,-143.90625,-118.3125
+beacon,Beacon,IC 2391 Sector CQ-Y c16,2,559.875,-87.15625,-33.15625
+beacon,Beacon,IC 2391 Sector FG-X b1-9,8,563.75,-100.03125,-59.3125
+beacon,Beacon,IC 2391 Sector HG-X b1-7,4,604.5625,-101.78125,-58.65625
+beacon,Beacon,IC 2391 Sector MX-T b3-6,A 1,582.9375,-72.28125,-19.40625
+beacon,Beacon,NGC 2451A Sector LX-U d2-25,3,726.0625,-163.5625,-171.78125
+beacon,Beacon,NGC 2451A Sector RT-R c4-19,2,753.03125,-84.03125,-153.75
+beacon,Beacon,NGC 2451A Sector TO-R c4-3,3,739.46875,-127.875,-156.1875
+beacon,Beacon,Synuefe AS-H d11-9,A 2,610.3125,-65.125,-101.84375
+beacon,Beacon,Synuefe BO-G b44-6,1,687.3125,-96.75,-112.125
+beacon,Beacon,Synuefe CS-H d11-121,3,746.09375,-100.78125,-86.625
+beacon,Beacon,Synuefe DK-D b46-12,2,636.3125,-53.65625,-68.8125
+beacon,Beacon,Synuefe DK-P c22-35,3,711.46875,-102.6875,-89.53125
+beacon,Beacon,Synuefe FF-P c22-35,4 a,700.03125,-129.5,-96.375
+beacon,Beacon,Synuefe FU-E b45-5,A 3,682.28125,-102.59375,-104.5625
+beacon,Beacon,Synuefe GJ-G b44-9,3 c,747.84375,-109.28125,-121.65625
+beacon,Beacon,Synuefe HA-P c22-22,2,701.5,-168.125,-104.40625
+beacon,Beacon,Synuefe HL-N c23-4,1 a 1 b,649.9375,-114.78125,-57.0625
+beacon,Beacon,Synuefe HP-E b45-4,4,678.59375,-118.75,-94.78125
+beacon,Beacon,Synuefe IJ-G b44-5,3,790.0625,-124.8125,-120.40625
+beacon,Beacon,Synuefe IL-N c23-15,2 a,658.28125,-117.96875,-46.3125
+beacon,Beacon,Synuefe IT-F d12-5,A 2,739.46875,-140.53125,-13.375
+beacon,Beacon,Synuefe JZ-F b44-8,8,720.625,-163.59375,-112.90625
+beacon,Beacon,Synuefe KU-F b44-4,4,714.34375,-173.84375,-113.59375
+beacon,Beacon,Synuefe OF-E b45-4,1 b,751.0625,-157.71875,-86.09375
+beacon,Beacon,Synuefe QA-E b45-4,3,738.0625,-174.375,-103.25
+beacon,Beacon,Synuefe RA-E b45-5,2,755.53125,-169.125,-88.28125
+beacon,Beacon,Synuefe RL-C b46-6,3,727.90625,-157.1875,-67.1875
+beacon,Beacon,Synuefe WL-J d10-113,3,645.0625,-95.46875,-142.4375
+beacon,Beacon,Synuefe ZG-J d10-49,2 a,723.8125,-156.71875,-152.3125
+materials,Crossroads,Col 135 Sector TU-O c6-15,D 1,923.9375,-138.125,-231.84375
+materials,Crossroads,Col 173 Sector BO-F c12-24,A 3,864.5,-161.65625,-153.03125
+materials,Crossroads,Col 173 Sector DZ-D c13-2,12 a,864.0625,-122.4375,-136.375
+materials,Crossroads,Col 173 Sector HU-D c13-2,A 1,940.84375,-173.9375,-126.28125
+materials,Crossroads,Col 173 Sector JI-J b25-0,AB 2,936.78125,-184.125,-160.75
+materials,Crossroads,Col 173 Sector JX-K b24-0,B 2,993.0625,-188.1875,-173.53125
+materials,Crossroads,Col 173 Sector PZ-O d6-116,6 d,931.4375,-131.25,-164.46875
+materials,Crossroads,Col 173 Sector YF-N b23-5,A 5,962.15625,-144.46875,-188.53125
+materials,Crossroads,HD 62755,10 b,1001.78125,-201.53125,-167.125
+materials,Crossroads,Synuefe OT-I b42-4,B 2,817.5,-238.875,-147.40625
+materials,Crossroads,Vela Dark Region EL-Y d32,B 1,1000.65625,-166.21875,-64.15625
+materials,Crossroads,Vela Dark Region HB-X c1-28,E 2,1073.0625,-100.65625,-92.75
+materials,Crossroads,Vela Dark Region RY-R b4-7,A 1,977.90625,-126.21875,-57.65625
+materials,Fistbump,Col 173 Sector AI-H c11-22,B 1,992.6875,-153.625,-213.71875
+materials,Fistbump,Col 173 Sector BH-K b25-8,B 3,986.21875,-69.53125,-163.4375
+materials,Fistbump,Col 173 Sector DO-F c12-4,A 1,943.15625,-169.46875,-146.78125
+materials,Fistbump,Col 173 Sector RT-I b25-1,B 1,977,-233.625,-151.0625
+materials,Fistbump,Col 173 Sector XL-K b25-1,B 1,950.3125,-57.625,-161.40625
+materials,Fistbump,HIP 39768,A 14 f,866.59375,-119.125,-109.03125
+materials,Fistbump,NGC 2451A Sector TY-R b4-6,C 1,792.40625,-119.6875,-264.21875
+materials,Fistbump,NGC 2451A Sector UO-R c4-4,B 5,800.25,-118.84375,-158.875
+materials,Fistbump,Synuefe LY-I b42-2,C 2,814.71875,-222.78125,-151.15625
+materials,Fistbump,Synuefe TP-F b44-0,CD 1,838.75,-197.84375,-111.84375
+materials,Fistbump,Synuefe ZL-J d10-119,9 b,834.21875,-51.21875,-154.65625
+materials,Lacrosse,Col 173 Sector DH-K b25-2,A 5,1027.09375,-80.25,-163.4375
+materials,Lacrosse,Col 173 Sector IJ-G b27-1,A 1,882.65625,-122.875,-115.71875
+materials,Lacrosse,Col 173 Sector KN-J b25-5,C 3,1002.90625,-152.28125,-160.25
+materials,Lacrosse,Col 173 Sector QU-O d6-25,5 b,878.84375,-205.5625,-156.59375
+materials,Lacrosse,Col 173 Sector QU-O d6-32,3 a,894.09375,-203.625,-146.5625
+materials,Lacrosse,Col 173 Sector WP-O b22-1,A 3,934.125,-172.125,-205.34375
+materials,Lacrosse,Col 173 Sector WZ-O b22-4,C 5,1011.0625,-131.78125,-210.4375
+materials,Lacrosse,Col 173 Sector YF-N b23-6,A 3,962.84375,-132.78125,-194.65625
+materials,Lacrosse,Col 173 Sector ZL-L b24-7,C 4,899,-131.1875,-173
+materials,Lacrosse,NGC 2451A Sector JR-W c1-1,1 c,739.625,-158.09375,-278.3125
+materials,Lacrosse,Synuefe EN-H d11-5,4 e,813.625,-121.28125,-90.25
+materials,Lacrosse,Synuefe ZR-I b43-10,D 2,811.40625,-60.4375,-144.71875
+materials,Lacrosse,Vela Dark Region BQ-Y d94,9 b,916.6875,-99.46875,-86.5625
+materials,Lacrosse,Vela Dark Region FL-Y d63,B 1,1064.5,-144.03125,-101.71875
+materials,Lacrosse,Vela Dark Region IW-W b1-3,B 1,963.03125,-165.1875,-124.4375
+materials,Lacrosse,Vela Dark Region KR-W c1-24,7 a,1036.875,-163.59375,-85.96875
+module,Turtle,Col 173 Sector DS-J b25-2,B 5,895.875,-132.125,-150.71875
+module,Turtle,Col 173 Sector GS-J b25-4,D 2,957.03125,-142,-160.53125
+module,Turtle,Col 173 Sector SU-O d6-54,B 2,981.125,-202.65625,-110.53125
+module,Turtle,Col 173 Sector SZ-G b26-0,B 2,925.625,-234.96875,-132.6875
+module,Turtle,Col 173 Sector XG-K b25-3,B 2,896.21875,-81.90625,-159.0625
+module,Turtle,HD 63154,B 3 a,979.46875,-207.40625,-131.59375
+module,Turtle,NGC 2451A Sector DL-Y d61,A 2,734.6875,-150.28125,-272.28125
+module,Turtle,Pencil Sector VY-A b8,B 1,804.03125,5.5,-142.65625
+module,Turtle,Pencil Sector YJ-A c12,B 3,801.53125,-12.15625,-132.09375
+module,Turtle,Pencil Sector ZJ-A c4,B 4,854.90625,7.8125,-112.125
+module,Turtle,Synuefe GT-H b43-1,C 4,749,-163.09375,-128.0625
+module,Turtle,Synuefe LQ-T b50-1,B 2,728.5,-155.65625,19.3125
+module,Turtle,Synuefe NL-N c23-4,B 3,860.125,-124.59375,-61.0625
+module,Turtle,Synuefe PX-J c25-8,7 a,649.6875,-124.25,32.4375
+module,Turtle,Vela Dark Region DL-Y d112,1 a,924.46875,-171.8125,-98.21875
+module,Turtle,Vela Dark Region DL-Y d83,5 b,930.4375,-165.78125,-65.1875
+module,Turtle,Wregoe IM-Z b41-2,B 2,820.71875,55.78125,-164.09375
+ruins,Alpha,2MASS J10444160-5947046,1 b,8614.1875,-116.6875,2733.03125
+ruins,Alpha,Blaa Hypai EU-D c13-0,B 4,1244.25,-752.1875,12307
+ruins,Alpha,Blaa Hypai LZ-F b27-0,A 5,1251.4375,-752.71875,12330.53125
+ruins,Alpha,Blaa Hypai XR-I b26-0,A 3,1238.59375,-663.0625,12299.96875
+ruins,Alpha,Blaa Hypai XR-I b26-0,A 3,1238.59375,-663.0625,12299.96875
+ruins,Alpha,Blae Eork NE-E d13-25,B 2,8670.0625,-65.1875,2680.59375
+ruins,Alpha,Blae Eork RU-D d13-17,1 a,8675.5,-238.5,2655.625
+ruins,Alpha,Blae Eork RU-D d13-17,1 a,8675.5,-238.5,2655.625
+ruins,Alpha,Blae Eork RU-D d13-20,5 d,8675.25,-185.65625,2687.09375
+ruins,Alpha,Blae Eork UL-J b56-1,A 3,8710.15625,-113.9375,2702
+ruins,Alpha,Blae Eork UL-J b56-1,A 3,8710.15625,-113.9375,2702
+ruins,Alpha,Col 132 Sector GS-K d8-33,D 4,1111.5,-379.75,-418.3125
+ruins,Alpha,Col 173 Sector AI-H c11-22,B 1,992.6875,-153.625,-213.71875
+ruins,Alpha,Col 173 Sector AP-Q b21-2,B 4,1127.3125,-154.03125,-237.90625
+ruins,Alpha,Col 173 Sector BX-I c10-7,B 2,1110.40625,-223.625,-242.6875
+ruins,Alpha,Col 173 Sector CH-L d8-14,D 1,1137.96875,-193.65625,-18.375
+ruins,Alpha,Col 173 Sector CH-L d8-14,D 3,1137.96875,-193.65625,-18.375
+ruins,Alpha,Col 173 Sector DH-K b25-2,A 5,1027.09375,-80.25,-163.4375
+ruins,Alpha,Col 173 Sector EC-L d8-54,1 c,1180.5625,-303.34375,-14.09375
+ruins,Alpha,Col 173 Sector EC-L d8-54,1 c,1180.5625,-303.34375,-14.09375
+ruins,Alpha,Col 173 Sector EM-L d8-27,4 a,1480.5,-182.3125,8
+ruins,Alpha,Col 173 Sector EM-L d8-60,8 a,1511.21875,-177.4375,7.40625
+ruins,Alpha,Col 173 Sector FC-L d8-28,14 c,1231.09375,-307.21875,-10.96875
+ruins,Alpha,Col 173 Sector HI-M a55-0,A 2,1147.4375,-43.9375,-113.21875
+ruins,Alpha,Col 173 Sector HR-M b23-3,B 7,1024.28125,-191.71875,-193.8125
+ruins,Alpha,Col 173 Sector HR-M b23-3,B 7,1024.28125,-191.71875,-193.8125
+ruins,Alpha,Col 173 Sector IE-R b34-3,B 2,1563.8125,-244.625,39.34375
+ruins,Alpha,Col 173 Sector IE-R b34-3,B 2,1563.8125,-244.625,39.34375
+ruins,Alpha,Col 173 Sector JX-K b24-0,B 2,993.0625,-188.1875,-173.53125
+ruins,Alpha,Col 173 Sector KN-J d9-22,5 a,1514.8125,-263.875,75.125
+ruins,Alpha,Col 173 Sector KT-G b40-2,A 3,1172.03125,-221.34375,167.28125
+ruins,Alpha,Col 173 Sector KT-G b40-2,A 3,1172.03125,-221.34375,167.28125
+ruins,Alpha,Col 173 Sector KT-G b40-2,A 3,1172.03125,-221.34375,167.28125
+ruins,Alpha,Col 173 Sector KY-Q d5-47,8 c,1043.875,-100.75,-246.0625
+ruins,Alpha,Col 173 Sector KY-Q d5-47,9 a,1043.875,-100.75,-246.0625
+ruins,Alpha,Col 173 Sector LJ-F c12-0,B 7,1202.125,-213.40625,-165.5625
+ruins,Alpha,Col 173 Sector LY-Q d5-13,AB 9 a,1120.34375,-87.21875,-216.875
+ruins,Alpha,Col 173 Sector LY-Q d5-59,8 a,1078.09375,-86.5625,-249.46875
+ruins,Alpha,Col 173 Sector LY-Q d5-59,8 b,1078.09375,-86.5625,-249.46875
+ruins,Alpha,Col 173 Sector OE-P d6-11,B 3,1014.34375,-67.59375,-173.96875
+ruins,Alpha,Col 173 Sector OE-P d6-11,B 3,1014.34375,-67.59375,-173.96875
+ruins,Alpha,Col 173 Sector OE-P d6-11,C 2,1014.34375,-67.59375,-173.96875
+ruins,Alpha,Col 173 Sector OG-Z c15-35,B 1,1084.125,2.59375,12.9375
+ruins,Alpha,Col 173 Sector OG-Z c15-35,B 1,1084.125,2.59375,12.9375
+ruins,Alpha,Col 173 Sector OT-Q d5-18,D 2,1150.75,-124.03125,-216.8125
+ruins,Alpha,Col 173 Sector OT-Q d5-18,D 2,1150.75,-124.03125,-216.8125
+ruins,Alpha,Col 173 Sector OZ-U b33-6,A 1,1160.90625,-20.03125,21.21875
+ruins,Alpha,Col 173 Sector OZ-U b33-6,A 1,1160.90625,-20.03125,21.21875
+ruins,Alpha,Col 173 Sector PF-E b28-3,B 1,870.34375,-156.03125,-92.84375
+ruins,Alpha,Col 173 Sector QU-O d6-25,5 b,878.84375,-205.5625,-156.59375
+ruins,Alpha,Col 173 Sector RF-D c13-12,C 3,1108.5,-271.90625,-123.4375
+ruins,Alpha,Col 173 Sector RH-C b29-1,B 3,1306.15625,-179.21875,-71.71875
+ruins,Alpha,Col 173 Sector UU-O d6-20,6 c,1192.09375,-209.15625,-184.65625
+ruins,Alpha,Col 173 Sector UU-O d6-20,6 d,1192.09375,-209.15625,-184.65625
+ruins,Alpha,Col 173 Sector UU-O d6-30,4 d,1196.6875,-225.84375,-161.5
+ruins,Alpha,Col 173 Sector VN-A b30-1,C 3,1305.1875,-169.125,-52.125
+ruins,Alpha,Col 173 Sector WK-A a48-4,A 3,1098.15625,-39.96875,-188.75
+ruins,Alpha,Col 173 Sector WZ-O b22-4,C 5,1011.0625,-131.78125,-210.4375
+ruins,Alpha,Col 173 Sector WZ-O b22-4,C 5,1011.0625,-131.78125,-210.4375
+ruins,Alpha,Col 173 Sector XF-N d7-105,A 4 a,1293.5625,-175.625,-48.3125
+ruins,Alpha,Col 173 Sector XY-Y b30-1,B 2,1310.53125,-155.5,-27.65625
+ruins,Alpha,Col 173 Sector YA-N d7-17,A 2,1145.09375,-245.8125,-90.03125
+ruins,Alpha,Col 173 Sector YA-N d7-17,A 2,1145.09375,-245.8125,-90.03125
+ruins,Alpha,Col 173 Sector YF-N c7-5,B 2,1073.21875,-392.25,-378.3125
+ruins,Alpha,Col 173 Sector YF-N c7-5,B 2,1073.21875,-392.25,-378.3125
+ruins,Alpha,Col 173 Sector YF-N c7-5,B 3,1073.21875,-392.25,-378.3125
+ruins,Alpha,Col 173 Sector YF-N d7-74,C 4,1315.75,-181.5625,-62.1875
+ruins,Alpha,Col 173 Sector YF-N d7-74,C 4,1315.75,-181.5625,-62.1875
+ruins,Alpha,Col 173 Sector YV-M d7-23,A 7 a,1005.46875,-271.125,-76.625
+ruins,Alpha,Eorl Auwsy SY-Z d13-3468,ABC 1 h,4948.46875,165.0625,20654.53125
+ruins,Alpha,Eorl Auwsy SY-Z d13-3861,4 c,4950.3125,166.8125,20641.59375
+ruins,Alpha,Eorl Auwsy YF-Y b56-16,B 3,4953.46875,155.8125,20635.6875
+ruins,Alpha,Eta Carina Sector IM-V c2-4,A 2,8629.1875,-98.8125,2713.0625
+ruins,Alpha,Eta Carina Sector IM-V c2-4,A 2,8629.1875,-98.8125,2713.0625
+ruins,Alpha,Graea Hypue LS-S d4-81,AB 5 a,-760.8125,-641.09375,13431.65625
+ruins,Alpha,Graea Hypue LS-S d4-81,AB 5 a,-760.8125,-641.09375,13431.65625
+ruins,Alpha,Graea Hypue QL-V b19-15,C 3,-819.125,-623.34375,13440.4375
+ruins,Alpha,Graea Hypue QL-V b19-15,C 4,-819.125,-623.34375,13440.4375
+ruins,Alpha,Graea Hypue QL-V b19-15,D 2,-819.125,-623.34375,13440.4375
+ruins,Alpha,IC 2391 Sector FL-X b1-7,A 2,611.34375,-78.40625,-51.6875
+ruins,Alpha,IC 2391 Sector ZE-A d101,C 3,526.5,-86.375,-37.9375
+ruins,Alpha,NGC 3199 Sector DL-Y d12,1 a,14563.875,-302.53125,3509.9375
+ruins,Alpha,NGC 3199 Sector IM-V c2-5,B 4,14619.96875,-220.375,3560.375
+ruins,Alpha,NGC 3199 Sector MC-V c2-8,A 5,14619.8125,-275.40625,3560.90625
+ruins,Alpha,NGC 3199 Sector XJ-A d10,11 a,14544.0625,-237.625,3489.375
+ruins,Alpha,Prai Hypoo QC-C d31,2 a,-9294.75,-379.9375,7952.03125
+ruins,Alpha,Prai Hypoo QC-C d31,2 a,-9294.75,-379.9375,7952.03125
+ruins,Alpha,Prai Hypoo WD-A d1-6,10 a,-9302.25,-459.46875,7978.78125
+ruins,Alpha,Prai Hypoo WD-A d1-6,10 a,-9302.25,-459.46875,7978.78125
+ruins,Alpha,Prua Phoe US-B d86,C 3,-5476.6875,-518.8125,10526.65625
+ruins,Alpha,Prua Phoe XY-Z d114,4 f,-5517.78125,-566,10544.46875
+ruins,Alpha,Prua Phoe XY-Z d42,7 a,-5525.5625,-559.09375,10547.71875
+ruins,Alpha,Prua Phoe XY-Z d42,8 a,-5525.5625,-559.09375,10547.71875
+ruins,Alpha,Prua Phoe XY-Z d42,8 a,-5525.5625,-559.09375,10547.71875
+ruins,Alpha,Synuefe CE-R c21-6,C 1,828.1875,-78,-105.1875
+ruins,Alpha,Synuefe CE-R c21-6,C 1,828.1875,-78,-105.1875
+ruins,Alpha,Synuefe NL-N c23-4,B 3,860.125,-124.59375,-61.0625
+ruins,Alpha,Synuefe NL-N c23-4,B 3,860.125,-124.59375,-61.0625
+ruins,Alpha,Synuefe TP-F b44-0,CD 1,838.75,-197.84375,-111.84375
+ruins,Alpha,Synuefe ZL-J d10-109,E 3,852.65625,-51.125,-124.84375
+ruins,Alpha,Synuefe ZL-J d10-119,9 b,834.21875,-51.21875,-154.65625
+ruins,Alpha,Synuefe ZR-I b43-10,D 2,811.40625,-60.4375,-144.71875
+ruins,Alpha,Synuefe ZR-I b43-10,D 2,811.40625,-60.4375,-144.71875
+ruins,Alpha,Vela Dark Region EL-Y d32,B 1,1000.65625,-166.21875,-64.15625
+ruins,Alpha,Vela Dark Region FL-Y d63,A 5,1064.5,-144.03125,-101.71875
+ruins,Alpha,Vela Dark Region HB-X c1-28,E 2,1073.0625,-100.65625,-92.75
+ruins,Alpha,Vela Dark Region HB-X c1-28,E 3,1073.0625,-100.65625,-92.75
+ruins,Alpha,Vela Dark Region KR-W c1-24,7 a,1036.875,-163.59375,-85.96875
+ruins,Alpha,Vela Dark Region KR-W c1-24,7 a,1036.875,-163.59375,-85.96875
+ruins,Alpha,Vela Dark Region RC-V b2-5,C 3,1072.75,-168.1875,-85.125
+ruins,Alpha,Vela Dark Region RC-V b2-5,C 3,1072.75,-168.1875,-85.125
+ruins,Alpha,Vela Dark Region RC-V b2-5,C 3,1072.75,-168.1875,-85.125
+ruins,Alpha,Vela Dark Region VO-Q b5-1,C 5,1062.03125,-91.8125,-40.4375
+ruins,Beta,Blaa Hypai OZ-O d6-16,4 c,1285.5,-731.65625,12309.34375
+ruins,Beta,Blaa Hypai XR-I b26-0,A 3,1238.59375,-663.0625,12299.96875
+ruins,Beta,Blae Eork IF-G c27-13,A 1,8668.1875,-172.03125,2656.125
+ruins,Beta,Blae Eork IF-G c27-13,A 1,8668.1875,-172.03125,2656.125
+ruins,Beta,Blae Eork QU-D d13-3,3,8602.75,-219.8125,2641.9375
+ruins,Beta,Blae Eork RU-D d13-17,1 a,8675.5,-238.5,2655.625
+ruins,Beta,Blae Eork RU-D d13-20,5 d,8675.25,-185.65625,2687.09375
+ruins,Beta,Blae Eork UL-J b56-1,A 3,8710.15625,-113.9375,2702
+ruins,Beta,Col 132 Sector GS-K d8-33,D 4,1111.5,-379.75,-418.3125
+ruins,Beta,Col 173 Sector AP-Q b21-2,A 8,1127.3125,-154.03125,-237.90625
+ruins,Beta,Col 173 Sector AP-Q b21-2,B 4,1127.3125,-154.03125,-237.90625
+ruins,Beta,Col 173 Sector AU-Y b30-2,B 4,1329.46875,-178.09375,-25.40625
+ruins,Beta,Col 173 Sector AV-N b23-5,A 2,1117.03125,-71.03125,-202.15625
+ruins,Beta,Col 173 Sector AV-N b23-5,A 2,1117.03125,-71.03125,-202.15625
+ruins,Beta,Col 173 Sector BX-I c10-7,B 2,1110.40625,-223.625,-242.6875
+ruins,Beta,Col 173 Sector DH-K b25-2,A 5,1027.09375,-80.25,-163.4375
+ruins,Beta,Col 173 Sector DH-K b25-2,A 7,1027.09375,-80.25,-163.4375
+ruins,Beta,Col 173 Sector EC-L d8-54,1 c,1180.5625,-303.34375,-14.09375
+ruins,Beta,Col 173 Sector FC-L d8-28,14 c,1231.09375,-307.21875,-10.96875
+ruins,Beta,Col 173 Sector FC-L d8-28,14 c,1231.09375,-307.21875,-10.96875
+ruins,Beta,Col 173 Sector HR-M b23-3,C 5,1024.28125,-191.71875,-193.8125
+ruins,Beta,Col 173 Sector JB-F b27-1,A 4,1154.96875,-259.96875,-113.46875
+ruins,Beta,Col 173 Sector JB-F b27-1,BC 3,1154.96875,-259.96875,-113.46875
+ruins,Beta,Col 173 Sector JX-K b24-0,B 4,993.0625,-188.1875,-173.53125
+ruins,Beta,Col 173 Sector KN-J b25-5,C 3,1002.90625,-152.28125,-160.25
+ruins,Beta,Col 173 Sector KN-J b25-5,C 3,1002.90625,-152.28125,-160.25
+ruins,Beta,Col 173 Sector KN-J d9-22,5 a,1514.8125,-263.875,75.125
+ruins,Beta,Col 173 Sector KP-T b34-8,B 2,1086.09375,25.6875,46.3125
+ruins,Beta,Col 173 Sector KY-Q d5-47,8 c,1043.875,-100.75,-246.0625
+ruins,Beta,Col 173 Sector KY-Q d5-47,9 d,1043.875,-100.75,-246.0625
+ruins,Beta,Col 173 Sector LB-W b31-0,C 1,1258.5,-283.125,-20.09375
+ruins,Beta,Col 173 Sector LB-W b31-0,C 1,1258.5,-283.125,-20.09375
+ruins,Beta,Col 173 Sector LJ-F c12-0,B 6,1202.125,-213.40625,-165.5625
+ruins,Beta,Col 173 Sector LJ-F c12-0,B 6,1202.125,-213.40625,-165.5625
+ruins,Beta,Col 173 Sector LJ-F c12-0,B 6,1202.125,-213.40625,-165.5625
+ruins,Beta,Col 173 Sector LY-Q d5-13,AB 9 a,1120.34375,-87.21875,-216.875
+ruins,Beta,Col 173 Sector LY-Q d5-13,AB 9 a,1120.34375,-87.21875,-216.875
+ruins,Beta,Col 173 Sector LY-Q d5-59,8 a,1078.09375,-86.5625,-249.46875
+ruins,Beta,Col 173 Sector OC-C b29-1,A 4,1206.46875,-190.59375,-82.625
+ruins,Beta,Col 173 Sector OE-P d6-11,B 3,1014.34375,-67.59375,-173.96875
+ruins,Beta,Col 173 Sector PF-E b28-3,B 1,870.34375,-156.03125,-92.84375
+ruins,Beta,Col 173 Sector QU-O d6-25,5 b,878.84375,-205.5625,-156.59375
+ruins,Beta,Col 173 Sector RH-C b29-1,B 3,1306.15625,-179.21875,-71.71875
+ruins,Beta,Col 173 Sector RH-C b29-1,B 3,1306.15625,-179.21875,-71.71875
+ruins,Beta,Col 173 Sector UG-B c14-0,C 1,1012.8125,-328.71875,-77.96875
+ruins,Beta,Col 173 Sector UU-O d6-20,6 c,1192.09375,-209.15625,-184.65625
+ruins,Beta,Col 173 Sector UU-O d6-42,A 1 c,1147.09375,-252.8125,-156.65625
+ruins,Beta,Col 173 Sector WF-N d7-52,B 2,1186.6875,-166.1875,-80.1875
+ruins,Beta,Col 173 Sector WG-J c10-16,B 1,1067.28125,-138.3125,-258.3125
+ruins,Beta,Col 173 Sector WK-A a48-4,A 3,1098.15625,-39.96875,-188.75
+ruins,Beta,Col 173 Sector WN-B b29-1,D 1,1237.75,-247.375,-76.90625
+ruins,Beta,Col 173 Sector WN-B b29-1,D 1,1237.75,-247.375,-76.90625
+ruins,Beta,Col 173 Sector XG-J c10-17,A 2,1095.25,-127.5625,-238.40625
+ruins,Beta,Col 173 Sector XG-J c10-17,B 4,1095.25,-127.5625,-238.40625
+ruins,Beta,Col 173 Sector XG-J c10-17,B 4,1095.25,-127.5625,-238.40625
+ruins,Beta,Col 173 Sector YF-N c7-5,B 3,1073.21875,-392.25,-378.3125
+ruins,Beta,Col 173 Sector YF-N d7-74,C 4,1315.75,-181.5625,-62.1875
+ruins,Beta,Col 173 Sector YG-A c15-20,A 1,1315.1875,-180.9375,-63.8125
+ruins,Beta,Col 173 Sector YV-M d7-23,A 7 a,1005.46875,-271.125,-76.625
+ruins,Beta,Eorl Auwsy SY-Z d13-3468,ABC 3 c,4948.46875,165.0625,20654.53125
+ruins,Beta,Eorl Auwsy SY-Z d13-3861,3 c,4950.3125,166.8125,20641.59375
+ruins,Beta,Eta Carina Sector EL-Y d16,ABC 4 a,8636.59375,-156.1875,2686.71875
+ruins,Beta,Graea Hypue LS-S d4-3,6 a,-726.96875,-589.90625,13438.40625
+ruins,Beta,Graea Hypue LS-S d4-81,AB 6 c,-760.8125,-641.09375,13431.65625
+ruins,Beta,HIP 39768,A 14 f,866.59375,-119.125,-109.03125
+ruins,Beta,HIP 39768,A 14 f,866.59375,-119.125,-109.03125
+ruins,Beta,IC 2391 Sector GW-V b2-4,B 1,587.9375,-51.03125,-38.53125
+ruins,Beta,NGC 3199 Sector CQ-Y d6,B 4,14596.96875,-264.6875,3570.78125
+ruins,Beta,NGC 3199 Sector DL-Y d12,1 a,14563.875,-302.53125,3509.9375
+ruins,Beta,NGC 3199 Sector IM-V c2-5,B 3,14619.96875,-220.375,3560.375
+ruins,Beta,NGC 3199 Sector IM-V c2-5,B 3,14619.96875,-220.375,3560.375
+ruins,Beta,NGC 3199 Sector MC-V c2-8,A 5,14619.8125,-275.40625,3560.90625
+ruins,Beta,NGC 3199 Sector XJ-A d10,11 a,14544.0625,-237.625,3489.375
+ruins,Beta,Prai Hypoo NQ-F b2-3,C 1,-9324.5625,-339.03125,7954.53125
+ruins,Beta,Prai Hypoo WD-A d1-6,10 a,-9302.25,-459.46875,7978.78125
+ruins,Beta,Prua Phoe TS-B d252,C 6,-5541.84375,-548.03125,10516.9375
+ruins,Beta,Prua Phoe TS-B d252,D 1,-5541.84375,-548.03125,10516.9375
+ruins,Beta,Prua Phoe TS-B d252,D 1,-5541.84375,-548.03125,10516.9375
+ruins,Beta,Prua Phoe US-B d86,C 2,-5476.6875,-518.8125,10526.65625
+ruins,Beta,Prua Phoe XY-Z d42,7 a,-5525.5625,-559.09375,10547.71875
+ruins,Beta,Skaudai AM-B d14-138,AB 7 a,-5477.59375,-504.15625,10436.25
+ruins,Beta,Synuefe CE-R c21-6,C 1,828.1875,-78,-105.1875
+ruins,Beta,Synuefe DK-D b46-4,C 1,652.9375,-63.90625,-80.78125
+ruins,Beta,Synuefe LY-I b42-2,C 2,814.71875,-222.78125,-151.15625
+ruins,Beta,Synuefe TP-F b44-0,CD 1,838.75,-197.84375,-111.84375
+ruins,Beta,Synuefe XO-P c22-17,C 1,546.90625,-56.46875,-97.8125
+ruins,Beta,Synuefe XR-H d11-102,1 b,357.34375,-49.34375,-74.75
+ruins,Beta,Synuefe YY-Q c21-19,2 a,589.15625,-144.5,-107.84375
+ruins,Beta,Synuefe ZL-J d10-109,E 3,852.65625,-51.125,-124.84375
+ruins,Beta,Synuefe ZL-J d10-109,E 3,852.65625,-51.125,-124.84375
+ruins,Beta,Synuefe ZR-I b43-10,D 2,811.40625,-60.4375,-144.71875
+ruins,Beta,Vela Dark Region EL-Y d32,B 1,1000.65625,-166.21875,-64.15625
+ruins,Beta,Vela Dark Region FL-Y d63,A 5,1064.5,-144.03125,-101.71875
+ruins,Beta,Vela Dark Region FL-Y d63,B 1,1064.5,-144.03125,-101.71875
+ruins,Beta,Vela Dark Region KR-W c1-24,7 c,1036.875,-163.59375,-85.96875
+ruins,Beta,Vela Dark Region RC-V b2-5,C 4,1072.75,-168.1875,-85.125
+ruins,Beta,Vela Dark Region VO-Q b5-1,B 6,1062.03125,-91.8125,-40.4375
+ruins,Beta,Vela Dark Region WT-R b4-3,B 2,1044.6875,-158.4375,-62.5625
+ruins,Beta,Vela Dark Region YO-R b4-1,B 4,1045.625,-177.53125,-45.40625
+ruins,Gamma,2MASS J10444160-5947046,1 b,8614.1875,-116.6875,2733.03125
+ruins,Gamma,Blaa Hypai EU-D c13-0,B 4,1244.25,-752.1875,12307
+ruins,Gamma,Blaa Hypai EU-D c13-0,B 4,1244.25,-752.1875,12307
+ruins,Gamma,Blaa Hypai LZ-F b27-0,A 5,1251.4375,-752.71875,12330.53125
+ruins,Gamma,Blaa Hypai LZ-F b27-0,A 5,1251.4375,-752.71875,12330.53125
+ruins,Gamma,Blaa Hypai OZ-O d6-16,4 c,1285.5,-731.65625,12309.34375
+ruins,Gamma,Blaa Hypai OZ-O d6-16,4 c,1285.5,-731.65625,12309.34375
+ruins,Gamma,Blae Eork IF-G c27-13,A 1,8668.1875,-172.03125,2656.125
+ruins,Gamma,Blae Eork QU-D d13-3,3,8602.75,-219.8125,2641.9375
+ruins,Gamma,Blae Eork QU-D d13-3,3,8602.75,-219.8125,2641.9375
+ruins,Gamma,Blae Eork RU-D d13-20,5 d,8675.25,-185.65625,2687.09375
+ruins,Gamma,Col 132 Sector GS-K d8-33,D 4,1111.5,-379.75,-418.3125
+ruins,Gamma,Col 173 Sector AI-H c11-22,B 1,992.6875,-153.625,-213.71875
+ruins,Gamma,Col 173 Sector AI-H c11-22,B 1,992.6875,-153.625,-213.71875
+ruins,Gamma,Col 173 Sector AP-Q b21-2,B 4,1127.3125,-154.03125,-237.90625
+ruins,Gamma,Col 173 Sector AU-Y b30-2,B 4,1329.46875,-178.09375,-25.40625
+ruins,Gamma,Col 173 Sector AV-N b23-5,A 2,1117.03125,-71.03125,-202.15625
+ruins,Gamma,Col 173 Sector BX-I c10-7,B 2,1110.40625,-223.625,-242.6875
+ruins,Gamma,Col 173 Sector BX-I c10-7,B 3,1110.40625,-223.625,-242.6875
+ruins,Gamma,Col 173 Sector BX-I c10-7,B 3,1110.40625,-223.625,-242.6875
+ruins,Gamma,Col 173 Sector CG-M b24-8,A 4,1127.9375,-59.9375,-175.78125
+ruins,Gamma,Col 173 Sector CG-M b24-8,A 4,1127.9375,-59.9375,-175.78125
+ruins,Gamma,Col 173 Sector CG-M b24-8,A 5,1127.9375,-59.9375,-175.78125
+ruins,Gamma,Col 173 Sector CH-L d8-14,D 1,1137.96875,-193.65625,-18.375
+ruins,Gamma,Col 173 Sector EM-L d8-27,4 a,1480.5,-182.3125,8
+ruins,Gamma,Col 173 Sector EM-L d8-60,8 a,1511.21875,-177.4375,7.40625
+ruins,Gamma,Col 173 Sector HI-M a55-0,A 2,1147.4375,-43.9375,-113.21875
+ruins,Gamma,Col 173 Sector HI-M a55-0,A 3,1147.4375,-43.9375,-113.21875
+ruins,Gamma,Col 173 Sector JB-F b27-1,A 4,1154.96875,-259.96875,-113.46875
+ruins,Gamma,Col 173 Sector JX-K b24-0,B 2,993.0625,-188.1875,-173.53125
+ruins,Gamma,Col 173 Sector KN-J b25-5,C 3,1002.90625,-152.28125,-160.25
+ruins,Gamma,Col 173 Sector KP-T b34-8,B 2,1086.09375,25.6875,46.3125
+ruins,Gamma,Col 173 Sector KY-Q d5-47,9 a,1043.875,-100.75,-246.0625
+ruins,Gamma,Col 173 Sector LB-W b31-0,C 1,1258.5,-283.125,-20.09375
+ruins,Gamma,Col 173 Sector LJ-F c12-0,B 7,1202.125,-213.40625,-165.5625
+ruins,Gamma,Col 173 Sector LY-Q d5-13,AB 9 b,1120.34375,-87.21875,-216.875
+ruins,Gamma,Col 173 Sector LY-Q d5-59,8 a,1078.09375,-86.5625,-249.46875
+ruins,Gamma,Col 173 Sector OC-C b29-1,A 4,1206.46875,-190.59375,-82.625
+ruins,Gamma,Col 173 Sector OC-C b29-1,A 4,1206.46875,-190.59375,-82.625
+ruins,Gamma,Col 173 Sector OE-P d6-11,C 2,1014.34375,-67.59375,-173.96875
+ruins,Gamma,Col 173 Sector OG-Z c15-35,B 1,1084.125,2.59375,12.9375
+ruins,Gamma,Col 173 Sector OT-Q d5-18,D 2,1150.75,-124.03125,-216.8125
+ruins,Gamma,Col 173 Sector OZ-U b33-6,A 1,1160.90625,-20.03125,21.21875
+ruins,Gamma,Col 173 Sector PV-B c14-1,D 2,1023.65625,-217.40625,-81.09375
+ruins,Gamma,Col 173 Sector PV-B c14-1,D 2,1023.65625,-217.40625,-81.09375
+ruins,Gamma,Col 173 Sector PV-B c14-1,D 2,1023.65625,-217.40625,-81.09375
+ruins,Gamma,Col 173 Sector RF-D c13-12,C 3,1108.5,-271.90625,-123.4375
+ruins,Gamma,Col 173 Sector RF-D c13-12,C 3,1108.5,-271.90625,-123.4375
+ruins,Gamma,Col 173 Sector UG-B c14-0,C 1,1012.8125,-328.71875,-77.96875
+ruins,Gamma,Col 173 Sector UU-O d6-30,4 d,1196.6875,-225.84375,-161.5
+ruins,Gamma,Col 173 Sector UU-O d6-30,4 f,1196.6875,-225.84375,-161.5
+ruins,Gamma,Col 173 Sector UU-O d6-30,4 f,1196.6875,-225.84375,-161.5
+ruins,Gamma,Col 173 Sector UU-O d6-42,A 1 c,1147.09375,-252.8125,-156.65625
+ruins,Gamma,Col 173 Sector UU-O d6-42,A 1 c,1147.09375,-252.8125,-156.65625
+ruins,Gamma,Col 173 Sector VN-A b30-1,C 3,1305.1875,-169.125,-52.125
+ruins,Gamma,Col 173 Sector VN-A b30-1,C 3,1305.1875,-169.125,-52.125
+ruins,Gamma,Col 173 Sector WF-N d7-52,B 2,1186.6875,-166.1875,-80.1875
+ruins,Gamma,Col 173 Sector WF-N d7-52,B 2,1186.6875,-166.1875,-80.1875
+ruins,Gamma,Col 173 Sector WG-J c10-16,B 1,1067.28125,-138.3125,-258.3125
+ruins,Gamma,Col 173 Sector WG-J c10-16,B 1,1067.28125,-138.3125,-258.3125
+ruins,Gamma,Col 173 Sector WK-A a48-4,A 3,1098.15625,-39.96875,-188.75
+ruins,Gamma,Col 173 Sector WN-B b29-1,D 1,1237.75,-247.375,-76.90625
+ruins,Gamma,Col 173 Sector WZ-O b22-4,C 5,1011.0625,-131.78125,-210.4375
+ruins,Gamma,Col 173 Sector WZ-O b22-4,C 6,1011.0625,-131.78125,-210.4375
+ruins,Gamma,Col 173 Sector XF-N d7-105,A 4 a,1293.5625,-175.625,-48.3125
+ruins,Gamma,Col 173 Sector XF-N d7-105,A 4 a,1293.5625,-175.625,-48.3125
+ruins,Gamma,Col 173 Sector XY-Y b30-1,B 2,1310.53125,-155.5,-27.65625
+ruins,Gamma,Col 173 Sector YA-N d7-17,B 2,1145.09375,-245.8125,-90.03125
+ruins,Gamma,Col 173 Sector YG-A c15-12,B 1,1301.71875,-172.84375,-39.375
+ruins,Gamma,Col 173 Sector YG-A c15-12,B 1,1301.71875,-172.84375,-39.375
+ruins,Gamma,Col 173 Sector YG-A c15-20,A 1,1315.1875,-180.9375,-63.8125
+ruins,Gamma,Eorl Auwsy SY-Z d13-3468,ABC 3 c,4948.46875,165.0625,20654.53125
+ruins,Gamma,Eorl Auwsy SY-Z d13-3861,3 c,4950.3125,166.8125,20641.59375
+ruins,Gamma,Eorl Auwsy YF-Y b56-16,B 3,4953.46875,155.8125,20635.6875
+ruins,Gamma,Eorl Auwsy YF-Y b56-16,C 3,4953.46875,155.8125,20635.6875
+ruins,Gamma,Eta Carina Sector EL-Y d16,ABC 4 a,8636.59375,-156.1875,2686.71875
+ruins,Gamma,Eta Carina Sector EL-Y d16,ABC 4 a,8636.59375,-156.1875,2686.71875
+ruins,Gamma,Eta Carina Sector IM-V c2-4,A 2,8629.1875,-98.8125,2713.0625
+ruins,Gamma,Graea Hypue LS-S d4-3,4 a,-726.96875,-589.90625,13438.40625
+ruins,Gamma,Graea Hypue LS-S d4-3,6 a,-726.96875,-589.90625,13438.40625
+ruins,Gamma,Graea Hypue LS-S d4-81,AB 6 b,-760.8125,-641.09375,13431.65625
+ruins,Gamma,Graea Hypue LS-S d4-81,AB 6 c,-760.8125,-641.09375,13431.65625
+ruins,Gamma,Graea Hypue QL-V b19-15,C 3,-819.125,-623.34375,13440.4375
+ruins,Gamma,Graea Hypue QL-V b19-15,C 4,-819.125,-623.34375,13440.4375
+ruins,Gamma,Graea Hypue QL-V b19-15,D 2,-819.125,-623.34375,13440.4375
+ruins,Gamma,IC 2391 Sector YE-A d103,B 1,489.03125,-98.09375,-34.96875
+ruins,Gamma,NGC 3199 Sector BV-Y c2,B 1,14595.53125,-225.84375,3490.34375
+ruins,Gamma,NGC 3199 Sector BV-Y c2,B 1,14595.53125,-225.84375,3490.34375
+ruins,Gamma,NGC 3199 Sector CQ-Y d6,B 4,14596.96875,-264.6875,3570.78125
+ruins,Gamma,NGC 3199 Sector XJ-A d10,13 b,14544.0625,-237.625,3489.375
+ruins,Gamma,Prai Hypoo GF-E c10,B 4,-9308.09375,-406.1875,7927.40625
+ruins,Gamma,Prai Hypoo GF-E c10,B 4,-9308.09375,-406.1875,7927.40625
+ruins,Gamma,Prai Hypoo GF-E c10,B 4,-9308.09375,-406.1875,7927.40625
+ruins,Gamma,Prai Hypoo NQ-F b2-3,C 1,-9324.5625,-339.03125,7954.53125
+ruins,Gamma,Prai Hypoo NQ-F b2-3,C 1,-9324.5625,-339.03125,7954.53125
+ruins,Gamma,Prai Hypoo PC-C d50,C 1,-9371.3125,-408.5,7899.71875
+ruins,Gamma,Prai Hypoo PC-C d50,C 1,-9371.3125,-408.5,7899.71875
+ruins,Gamma,Prai Hypoo PC-C d50,C 1,-9371.3125,-408.5,7899.71875
+ruins,Gamma,Prai Hypoo WD-A d1-41,5 c,-9326.09375,-425.46875,7995.59375
+ruins,Gamma,Prua Phoe TS-B d252,D 1,-5541.84375,-548.03125,10516.9375
+ruins,Gamma,Prua Phoe US-B d86,C 2,-5476.6875,-518.8125,10526.65625
+ruins,Gamma,Prua Phoe US-B d86,C 2,-5476.6875,-518.8125,10526.65625
+ruins,Gamma,Prua Phoe US-B d86,C 3,-5476.6875,-518.8125,10526.65625
+ruins,Gamma,Prua Phoe XY-Z d114,4 d,-5517.78125,-566,10544.46875
+ruins,Gamma,Prua Phoe XY-Z d114,4 f,-5517.78125,-566,10544.46875
+ruins,Gamma,Prua Phoe XY-Z d114,4 f,-5517.78125,-566,10544.46875
+ruins,Gamma,Prua Phoe XY-Z d42,7 a,-5525.5625,-559.09375,10547.71875
+ruins,Gamma,Skaudai AM-B d14-138,AB 7 a,-5477.59375,-504.15625,10436.25
+ruins,Gamma,Skaudai AM-B d14-138,AB 7 a,-5477.59375,-504.15625,10436.25
+ruins,Gamma,Synuefe CN-H d11-63,A 2 b,610.96875,-145.78125,-57.90625
+ruins,Gamma,Synuefe LY-I b42-2,C 2,814.71875,-222.78125,-151.15625
+ruins,Gamma,Synuefe LY-I b42-2,C 2,814.71875,-222.78125,-151.15625
+ruins,Gamma,Synuefe NL-N c23-4,B 3,860.125,-124.59375,-61.0625
+ruins,Gamma,Synuefe TP-F b44-0,CD 1,838.75,-197.84375,-111.84375
+ruins,Gamma,Vela Dark Region EL-Y d32,B 1,1000.65625,-166.21875,-64.15625
+ruins,Gamma,Vela Dark Region FL-Y d63,B 1,1064.5,-144.03125,-101.71875
+ruins,Gamma,Vela Dark Region HB-X c1-28,E 2,1073.0625,-100.65625,-92.75
+ruins,Gamma,Vela Dark Region HB-X c1-28,E 3,1073.0625,-100.65625,-92.75
+ruins,Gamma,Vela Dark Region VO-Q b5-1,B 6,1062.03125,-91.8125,-40.4375
+ruins,Gamma,Vela Dark Region WT-R b4-3,B 1,1044.6875,-158.4375,-62.5625
+ruins,Gamma,Vela Dark Region WT-R b4-3,B 2,1044.6875,-158.4375,-62.5625
+ruins,Gamma,Vela Dark Region YO-R b4-1,B 4,1045.625,-177.53125,-45.40625
+ruins,Gamma,Vela Dark Region YO-R b4-1,D 2,1045.625,-177.53125,-45.40625
+vessel,Robolobster,IC 2391 Sector HG-X b1-8,C 2,603.9375,-104.15625,-61.5625
+vessel,Robolobster,NGC 2451A Sector TO-R c4-10,B 1,758.875,-122,-165.03125
+vessel,Robolobster,Synuefe AH-J d10-46,C 1,741.3125,-164.8125,-138.78125
+vessel,Robolobster,Synuefe BE-R c21-35,E 2,782.6875,-96.15625,-135.03125
+vessel,Robolobster,Synuefe BZ-Q c21-11,B 5,727.21875,-119.90625,-128.15625
+vessel,Robolobster,Synuefe DJ-G b44-3,A 5,679.59375,-105.6875,-122.40625
+vessel,Robolobster,Synuefe EN-H d11-28,8 b,771.78125,-145,-26.65625
+vessel,Robolobster,Synuefe EN-H d11-29,6 b,745.6875,-115,-91.34375
+vessel,Robolobster,Synuefe IE-G b44-2,A 4,737.25,-130.28125,-111.34375
+vessel,Robolobster,Synuefe NB-B b47-10,B 2,643.4375,-113.84375,-61.5625
+vessel,Squid,HIP 36781,A 6 b,682.03125,-154.03125,-126.65625
+vessel,Squid,IC 2391 Sector FL-X b1-7,A 3,611.34375,-78.40625,-51.6875
+vessel,Squid,Synuefe AH-J d10-103,B 1,777.53125,-158.28125,-117.4375
+vessel,Squid,Synuefe DK-D b46-4,C 1,652.9375,-63.90625,-80.78125
+vessel,Squid,Synuefe DZ-Q c21-14,10 a,793.96875,-122.46875,-135.03125
+vessel,Squid,Synuefe ED-I b43-8,A 2,791.1875,-120.625,-129.40625
+vessel,Squid,Synuefe EU-Q c21-15,A 1,754.15625,-171.84375,-138.09375
+vessel,Squid,Synuefe HE-G b44-5,B 2,726.6875,-128.9375,-112.71875
+vessel,Squid,Synuefe IL-N c23-19,B 2,667.40625,-120.5625,-58.8125
+vessel,Squid,Synuefe ZG-J d10-79,B 1,728,-121.34375,-133.25
+vessel,Squid,Trapezium Sector YU-X c1-2,1 a,573.59375,-339.46875,-1167.65625
+vessel,Stickyhand,IC 2391 Sector CA-A d43,12 a,591.5625,-112.15625,-36.1875
+vessel,Stickyhand,NGC 2451A Sector VJ-R c4-22,A 1,746.34375,-153.09375,-164.25
+vessel,Stickyhand,Synuefe AH-J d10-20,A 3,759.21875,-148.3125,-145.75
+vessel,Stickyhand,Synuefe EN-H d11-96,7 a,757.125,-179.3125,-96.0625
+vessel,Stickyhand,Synuefe GQ-N c23-21,B 3,655.53125,-66.34375,-62.1875
+vessel,Stickyhand,Synuefe HP-E b45-8,D 3,688.59375,-120.40625,-87.21875
+vessel,Stickyhand,Synuefe JP-E b45-4,C 1,724.34375,-111.09375,-103.5625
+vessel,Stickyhand,Synuefe KZ-F b44-5,A 1,747.90625,-161.21875,-109.46875
+vessel,Stickyhand,Synuefe NU-F b44-5,B 1,768.21875,-166.0625,-106.40625
+vessel,Stickyhand,Synuefe PF-E b45-5,B 2,758.5,-164.65625,-101.28125
+weapon,Bear,Col 173 Sector AD-H c11-15,B 2,925,-200.09375,-205.65625
+weapon,Bear,Col 173 Sector OD-J b25-2,B 1,1008.375,-201.5625,-157.4375
+weapon,Bear,Col 173 Sector XH-H c11-21,B 1,894.3125,-153.75,-212.3125
+weapon,Bear,NGC 2451A Sector WE-Q b5-6,B 1,772.5625,-123.75,-240.125
+weapon,Bear,Pencil Sector BQ-X b1-4,B 2,800.71875,26.75,-104.59375
+weapon,Bear,Pencil Sector YJ-A c33,1,794.40625,4.75,-116.78125
+weapon,Bear,Synuefe EN-H d11-106,6 a,785.15625,-167.0625,-75.46875
+weapon,Bear,Synuefe EU-Q c21-10,A 3,758.65625,-176.90625,-133.21875
+weapon,Bear,Synuefe GV-T b50-4,B 1,663.46875,-127.5625,27.25
+weapon,Bear,Synuefe HF-P c22-17,B 1,783.84375,-114.40625,-92.53125
+weapon,Bear,Synuefe PM-L c24-24,C 6,706.6875,-158.875,10.5
+weapon,Bear,Synuefe SP-F b44-0,C 1,831.625,-187.5625,-121.84375
+weapon,Bear,Vela Dark Region DL-Y d91,5 a,922.78125,-126,-101.78125
+weapon,Bear,Vela Dark Region EG-X b1-1,A 1,957.6875,-143.34375,-123.40625
+weapon,Bear,Vela Dark Region EL-Y d55,1,975.78125,-156.8125,-75.34375
+weapon,Bear,Vela Dark Region TD-S b4-5,C 1,1071.21875,-121.03125,-50.09375
+weapon,Bear,Wregoe BU-Y b2-0,1 c,1077.375,400.5625,-993.375
+weapon,Bowl,Col 173 Sector FK-C c14-6,D 2,869.46875,-84.46875,-93.5
+weapon,Bowl,Col 173 Sector HN-I b26-5,A 1,1022.3125,-76.9375,-139.03125
+weapon,Bowl,Col 173 Sector KY-Q d5-26,6 a,975.3125,-103.1875,-222.125
+weapon,Bowl,Col 173 Sector LT-Q d5-82,A 3,926.84375,-120.65625,-199.6875
+weapon,Bowl,Col 173 Sector LT-Q d5-90,D 1,911.0625,-115.875,-208.15625
+weapon,Bowl,Col 173 Sector ME-P d6-92,B 5,891.65625,-98.53125,-157.1875
+weapon,Bowl,Col 173 Sector PF-E b28-3,B 1,870.34375,-156.03125,-92.84375
+weapon,Bowl,Col 173 Sector PZ-O d6-110,5 a,943.0625,-130.75,-142.03125
+weapon,Bowl,Col 173 Sector ZL-L b24-2,B 1,896.78125,-134.90625,-182.09375
+weapon,Bowl,Col 173 Sector ZV-M b23-1,A 1,914.375,-167.3125,-202.5625
+weapon,Bowl,HIP 41730,13 ga,818.375,-7.90625,-149.9375
+weapon,Bowl,NGC 2451A Sector MC-V c2-5,E 1,795.6875,-114.34375,-258.25
+weapon,Bowl,Pencil Sector CQ-Y c31,C 1,800.25,-7.53125,-101.25
+weapon,Bowl,Synuefe BH-J d10-68,C 1,831.375,-149.125,-175.96875
+weapon,Bowl,Vela Dark Region CQ-Y c0,A 2,940.78125,-122.34375,-133.0625
+weapon,Bowl,Vela Dark Region JS-T b3-0,A 3,899.9375,-142.1875,-82.25
+weapon,Bowl,Wregoe JR-A b41-3,F 2,801.34375,-3.0625,-166.46875
+weapon,Bowl,Wregoe JR-L c21-1,C 2,855.25,17.34375,-137.90625
+weapon,Hammerbot,Col 173 Sector CC-K b25-8,A 5,970.375,-99.5625,-160.53125
+weapon,Hammerbot,Col 173 Sector FZ-D c13-30,2,951.375,-117.09375,-143.8125
+weapon,Hammerbot,Col 173 Sector HR-M b23-3,B 7,1024.28125,-191.71875,-193.8125
+weapon,Hammerbot,Col 173 Sector NV-B c14-1,1,954.21875,-212.5625,-94.8125
+weapon,Hammerbot,Col 173 Sector RU-O d6-16,A 2 a,951.1875,-223.25,-152.40625
+weapon,Hammerbot,Col 173 Sector ZS-F c12-27,B 3,894.6875,-113.5625,-166.46875
+weapon,Hammerbot,NGC 2451A Sector EB-X c1-18,C 2,731.03125,-86.5,-280.90625
+weapon,Hammerbot,NGC 2451A Sector IR-W d1-77,AB 1 a,742.78125,-156.90625,-260.96875
+weapon,Hammerbot,NGC 2451A Sector UJ-Q b5-7,B 2,758.09375,-90.75,-226.34375
+weapon,Hammerbot,Pencil Sector XO-A c31,B 3,842.3125,40.3125,-120.0625
+weapon,Hammerbot,Synuefe CE-R c21-6,C 1,828.1875,-78,-105.1875
+weapon,Hammerbot,Synuefe FK-P c22-2,E 1,809.75,-104.96875,-104.5625
+weapon,Hammerbot,Synuefe VK-F b44-0,B 1,836.9375,-220.78125,-122.75
+weapon,Hammerbot,Synuefe ZL-J d10-109,E 3,852.65625,-51.125,-124.84375
+weapon,Hammerbot,Vela Dark Region ZE-A d66,6 b,966.90625,-158,-131.6875

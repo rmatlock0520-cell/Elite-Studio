@@ -362,6 +362,35 @@ public sealed class OverlayTests : IDisposable
         Assert.Equal(new[] { "market", "accept", "loadouts", "market" }, heard);
     }
 
+    [Fact]
+    public async Task A_page_in_one_box_can_have_another_boxs_page_opened_but_nothing_else()
+    {
+        using var web = new WebServer(temp);
+        using var watcher = new GameWatcher(temp, temp);
+        using var overlay = new OverlayHost(web, new Settings(Path.Combine(temp, "settings.json")), watcher.State, headless: true);
+        async Task<(int, string)> Open(string body)
+        {
+            (int status, JsonElement answer) = await Ask(web, "POST", body, "open");
+            return (status, answer.GetProperty("error").GetString()!);
+        }
+
+        // Only the two boxes that show a page, and only with words for that page: never an address of the asker's choosing.
+        Assert.Equal((400, "That part of Studio has no overlay to open."), await Open("""{ "box": "haul", "page": "?to=Sol" }"""));
+        Assert.Equal((400, "That part of Studio has no overlay to open."), await Open("""{ "box": "", "page": "" }"""));
+        Assert.Equal((400, "An overlay opens with words for its own page only."), await Open("""{ "box": "nav", "page": "//elsewhere.example/" }"""));
+        // In a run without windows there is no box to open, and nothing is switched on.
+        Assert.Equal((409, "The overlay is not running."), await Open("""{ "box": "nav", "page": "?to=Sol" }"""));
+        Assert.Equal(new OverlaySettings(), overlay.Settings);
+    }
+
+    [Fact]
+    public void The_two_boxes_that_show_a_page_have_an_opacity_of_their_own()
+    {
+        Assert.Equal(1, new OverlaySettings().PageOpacity);   // solid, as they always were, until the player says otherwise
+        Assert.Equal((0.3, 1, 0.55), ((new OverlaySettings { PageOpacity = 0.05 }).Cleaned().PageOpacity, (new OverlaySettings { PageOpacity = 7 }).Cleaned().PageOpacity,
+            (new OverlaySettings { PageOpacity = 0.551 }).Cleaned().PageOpacity));
+    }
+
     // ---- the controller buttons' routes (the buttons themselves are in ControllerTests) ----
 
     [Fact]

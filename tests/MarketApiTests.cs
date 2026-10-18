@@ -76,7 +76,7 @@ public sealed class MarketApiTests : IDisposable
         Assert.Equal(new[]
         {
             "rows", "shown", "listMessage", "message", "listOneWay", "searching", "lastSearch", "accepted", "nextStop", "lookup",
-            "settings", "inUse", "settingLines", "listSorts", "presets", "commodities", "copiedFrom", "said",
+            "settings", "carryFrom", "inUse", "settingLines", "listSorts", "presets", "commodities", "copiedFrom", "said",
         }, page.EnumerateObject().Select(part => part.Name));
 
         // the list: the search's rows in its order, under the names the page's columns read

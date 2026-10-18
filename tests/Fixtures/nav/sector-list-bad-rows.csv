@@ -1,0 +1,13 @@
+Note,Sector,Systems,Avg X,Avg Y,Avg Z,Min X,Min Y,Min Z,Max X,Max Y,Max Z,MapSector X,MapSector Y,First Encountered,id64 X,id64 Y,id64 Z
+"HAND-MADE. Numbers 0, 0, 0 that do not hold the average, a name the rule cannot read, the average in Wredguia: placed there, then left out for Wredguia's own row further down",Unreadable Too,77,-700.00,200.00,-300.00,-800.00,100.00,-400.00,-600.00,300.00,-200.00,34,14,"2020-01-01 00:00:00",0,0,0
+"EDAstro's own row of 14 October 2026. Its numbers 0, 25, 2 are wrong; its name and its average both say 37, 31, 20",Aucopp,224678,-1872.50,-308.60,2144.80,-2625.00,-1304.97,1495.00,-1345.03,-25.03,2774.97,33,16,"2015-05-27 00:00:00",0,25,2
+"EDAstro's own row of 14 October 2026. Its numbers 0, 0, 0 are wrong; its name and its average both say 39, 31, 39",Juenae,309223,235.03,-320.42,26132.21,-65.00,-1305.00,25815.00,1214.97,-19.78,27095.00,35,35,"2015-07-14 00:00:00",0,0,0
+"EDAstro's own row of 14 October 2026, sound: 38, 32, 18",Wredguia,348581,-717.03,237.84,-297.81,-1345.00,-204.66,-1065.00,6.06,1254.94,214.97,34,14,"2015-05-12 15:29:33",38,32,18
+"HAND-MADE from EDAstro's row: id64 Y left empty. Placed by its name at 38, 31, 18",Synuefai,386879,-674.11,-266.40,-279.93,-5260.81,-1305.00,-3339.75,154.72,64.44,214.97,34,14,"2015-05-12 15:29:33",38,,18
+"HAND-MADE from EDAstro's row: the average pulled down into Wredguia's layer, as one far outlier could. The name agrees with the numbers 38, 33, 18, so they stay",Sphuedu,2110,-612.21,1200.00,-185.43,-1344.66,610.19,-1062.56,-65.50,1964.56,214.94,34,14,"2016-03-02 21:16:45",38,33,18
+"HAND-MADE from EDAstro's row: Wredguia's numbers by mistake. Its name and its average say 39, 32, 18",Wregoe,423048,568.39,279.14,-276.21,-114.78,-25.00,-1065.00,1214.97,1254.97,214.97,35,14,"2015-05-12 15:29:33",38,32,18
+"HAND-MADE. A name the rule cannot read, numbers 40, 32, 18 that do not hold the average: placed by the average, 41, 32, 18",Unreadable,12,3000.00,100.00,-300.00,2900.00,0.00,-400.00,3100.00,200.00,-200.00,37,14,,40,32,18
+"EDAstro's own row of 14 October 2026: a nebula's own sector, which has no numbers",Col 285 Sector,124677,-76.21,29.68,22.38,-378.91,-269.50,-344.72,272.34,521.06,305.19,34,14,"2015-05-12 15:29:33",,,
+"HAND-MADE from EDAstro's row: the count of systems cannot be read. Left out",Eorm Fraae,many,-33997.88,143.74,20035.44,-34624.60,-24.97,19415.40,-33345.10,1229.12,20694.20,8,30,"2016-09-17 00:36:20",12,32,34
+"HAND-MADE from EDAstro's row: cut short. Left out",Loihea,1398,-34006.08
+"HAND-MADE from EDAstro's row: a nebula's own sector without its average, so without a place. Left out",California Sector,1250,,,,-429.12,-305.88,-1016.78,-233.28,-117.97,-823.81,34,14,"2016-05-28 23:57:14",,,

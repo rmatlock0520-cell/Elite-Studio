@@ -67,6 +67,11 @@ button{cursor:pointer}
 .preview{position:relative;flex:1;min-height:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#020305}
 #hud{position:absolute;inset:0;width:100%;height:100%;display:block}
 #hud text{font-family:var(--hud)}
+#partpic{position:absolute;right:12px;bottom:12px;margin:0;padding:6px;border:1px solid var(--line2);border-radius:8px;background:rgba(8,10,14,.94);box-shadow:0 6px 24px rgba(0,0,0,.6);pointer-events:none;max-width:46%}
+#partpic[hidden]{display:none}
+#partpic img{display:block;width:405px;max-width:100%;border-radius:4px}
+#partpic figcaption{margin-top:5px;font-size:12px;color:var(--muted);max-width:405px}
+.el .tested{color:#8fd0a0;font-size:12px;margin-top:3px}
 #hud [data-id]{cursor:pointer;transition:opacity .12s}
 #hud.focus [data-id]:not(.hl){opacity:.14}
 .stagebar{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px;min-height:34px}
@@ -228,11 +233,11 @@ input[type=color]::-webkit-color-swatch{border:0;border-radius:4px}
   <section class="stage">
     <div class="preview">
       <svg id="hud" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Preview of your cockpit HUD"></svg>
+      <figure id="partpic" hidden><img alt=""><figcaption></figcaption></figure>
       <div class="compare-note" id="compare-note" hidden>Showing the colors currently in the game</div>
     </div>
     <div class="views" id="views" role="tablist" aria-label="Preview page">
-      <button data-view="cockpit" class="active">Cockpit</button>
-      <button data-view="drawn">Cockpit (drawn)</button>
+      <button data-view="theme" class="active">Cockpit (your theme)</button>
       <button data-view="station">Station menu</button>
       <button data-view="galaxy">Galaxy map</button>
       <button data-view="foot">On foot</button>
@@ -827,167 +832,8 @@ function buildHud() {
     <filter id="glow" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
     <filter id="soft" x="-30%" y="-80%" width="160%" height="260%"><feGaussianBlur stdDeviation="7"/></filter>
   </defs>`;
-  // Cockpit page, laid out from a real Kestrel Mk II screenshot (1920x1080 scaled to 1600x900).
-  // Elite's cockpit HUD has no boxed panels: just lines, holograms, bars and text over the canopy.
-  svg.querySelector('defs').insertAdjacentHTML('beforeend', `
-    <linearGradient id="strut" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4a3a2c"/><stop offset="1" stop-color="#1c140e"/></linearGradient>
-    <linearGradient id="dashwarm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b3620"/><stop offset="1" stop-color="#1d1109"/></linearGradient>`);
-  sv('rect', { width: 1600, height: 900, fill: 'url(#space)' }, svg);
-  const rnd = mulberry32(7);
-  for (let i = 0; i < 140; i++) sv('circle', { cx: (rnd() * 1600).toFixed(1), cy: (rnd() * 640).toFixed(1), r: (rnd() * 1.1 + 0.3).toFixed(2), fill: '#ffffff', 'fill-opacity': (0.2 + rnd() * 0.6).toFixed(2) }, svg);
-  // canopy struts and the warm-coloured dashboard (Elite's own, not changeable)
-  sv('path', { d: 'M0 0 H150 L640 600 L590 640 L0 90 Z', fill: 'url(#strut)' }, svg);
-  sv('path', { d: 'M1600 0 H1450 L960 600 L1010 640 L1600 90 Z', fill: 'url(#strut)' }, svg);
-  sv('path', { d: 'M0 900 V710 L420 662 L660 640 H940 L1180 662 L1600 710 V900 Z', fill: 'url(#dashwarm)' }, svg);
-  sv('path', { d: 'M0 710 L420 662 L660 640 H940 L1180 662 L1600 710', fill: 'none', stroke: '#9a6a44', 'stroke-opacity': 0.6, 'stroke-width': 2 }, svg);
-  sv('ellipse', { cx: 800, cy: 760, rx: 250, ry: 110, fill: '#6a4028', 'fill-opacity': 0.45 }, svg);
-  // Cabin lighting tints the cockpit surfaces (tested in game: it does NOT change the white canopy trim).
-  const LIGHT1 = 'Advanced:x69|y69|z69', LIGHT2 = 'Advanced:x70|y70|z70', GLOW = 'Advanced:x190|y190|z190';
-  L(svg, 'path', { d: 'M0 900 V710 L420 662 L660 640 H800 V900 Z' }, { f: LIGHT1, fa: 0.28, b: 'Advanced:w69' });
-  L(svg, 'path', { d: 'M1600 900 V710 L1180 662 L940 640 H800 V900 Z' }, { f: LIGHT2, fa: 0.28, b: 'Advanced:w69' });
-  L(svg, 'ellipse', { cx: 800, cy: 760, rx: 250, ry: 110 }, { f: GLOW, fa: 0.18, b: 'Advanced:w69' });
-  // One bright canopy light bar along the top edge of the dashboard, just under the view of space:
-  // Elite's own trim, it glares when a star shines down on the cockpit. No colour setting dims it;
-  // the LightNight add-on (F5 in game) switches the reflections off. Kept above the HUD panels.
-  const bar = 'M0 698 L420 650 L660 628 H940 L1180 650 L1600 698 V708 L1180 660 L940 638 H660 L420 660 L0 708 Z';
-  L(sv('g', { filter: 'url(#soft)' }, svg), 'path', { d: bar }, { f: 'trim:#f4f1ea', fa: 0.7 });
-  L(svg, 'path', { d: bar }, { f: 'trim:#f4f1ea', fa: 0.85 });
-  const g = sv('g', { filter: 'url(#glow)' }, svg);
-  const rot = (deg, x, y) => sv('g', { transform: `rotate(${deg} ${x} ${y})` }, g);
-
-  // --- comms panel (top left): two slanted lines with a row of icons
-  const CHAT = 'Advanced:x232|y232|z232|w232', CHATI = 'Advanced:x233|y233|z233|w233';
-  L(g, 'line', { x1: 83, y1: 36, x2: 508, y2: 112, 'stroke-width': 1.8 }, { s: CHAT });
-  L(g, 'line', { x1: 79, y1: 62, x2: 508, y2: 137, 'stroke-width': 1.8 }, { s: CHAT });
-  [0.08, 0.3, 0.45, 0.62, 0.8, 0.95].forEach((t, i) => {
-    const x = 96 + t * 390, y = 58 + t * 70;
-    if (i === 0) L(g, 'path', { d: `M${x - 9} ${y - 8} h18 v11 h-10 l-5 5 v-5 h-3 Z`, 'stroke-width': 1.5, fill: 'none' }, { s: CHATI });
-    else if (i % 2) L(g, 'circle', { cx: x, cy: y, r: 6, 'stroke-width': 1.5, fill: 'none' }, { s: CHATI });
-    else L(g, 'rect', { x: x - 6, y: y - 6, width: 12, height: 12, rx: 2, 'stroke-width': 1.5, fill: 'none' }, { s: CHATI });
-  });
-
-  // --- info panel (top right): two slanted lines, INFO, messages and the clock
-  const INFO = 'Advanced:x208|y208|z208|w208';
-  L(g, 'line', { x1: 1058, y1: 112, x2: 1512, y2: 38, 'stroke-width': 2.2 }, { s: INFO });
-  L(g, 'line', { x1: 1058, y1: 127, x2: 1512, y2: 53, 'stroke-width': 2.2 }, { s: INFO, sa: 0.8 });
-  const ti = rot(-9.3, 1060, 120);
-  T(ti, 1062, 122, 'INFO', 17, 'text', { 'letter-spacing': 1 });
-  T(ti, 1060, 146, '>1 contact lost', 14, 'text', null, { fa: 0.85 });
-  T(rot(-9.3, 1500, 46), 1500, 46, '20:29:55', 20, 'text', { 'text-anchor': 'end', 'letter-spacing': 2 });
-
-  // --- weapon / fire-group arc (right): setting not identified yet
-  L(g, 'path', { d: 'M1236 308 Q1275 470 1244 632', 'stroke-width': 1.6, fill: 'none' }, { s: 'unknown:#8a86ff' });
-  L(g, 'line', { x1: 1233, y1: 616, x2: 1372, y2: 616, 'stroke-width': 1.6 }, { s: 'unknown:#e0409a' });
-  T(g, 1258, 610, 'POINT DEFENCE T...', 15, 'text', { 'letter-spacing': 0.5 });
-  L(g, 'rect', { x: 1258, y: 619, width: 108, height: 5 }, { f: 'Advanced:x45|y45|z45', b: 'Advanced:w45' });
-  T(g, 1260, 641, '12/10000', 14, 'text');
-
-  // --- reticle and markers in space
-  const RC = 'Advanced:x58|y58|z58|w58', TB = 'Advanced:x56|y56|z56|w56', TBS = 'Advanced:x57|y57|z57|w57';
-  L(g, 'circle', { cx: 800, cy: 360, r: 70, 'stroke-width': 2, fill: 'none' }, { s: RC });
-  for (const ang of [-90, 30, 150]) {
-    const a = ang * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a);
-    L(g, 'line', { x1: 800 + cs * 82, y1: 360 + sn * 82, x2: 800 + cs * 110, y2: 360 + sn * 110, 'stroke-width': 5, 'stroke-linecap': 'round' }, { s: TB });
-    L(g, 'line', { x1: 800 + cs * 44, y1: 360 + sn * 44, x2: 800 + cs * 58, y2: 360 + sn * 58, 'stroke-width': 3, 'stroke-linecap': 'round' }, { s: TBS });
-  }
-  L(g, 'circle', { cx: 862, cy: 306, r: 10, 'stroke-width': 2, fill: 'none' }, { s: 'Advanced:x59|y59|z59', b: 'Advanced:w59' });
-  for (const [x, y] of [[788, 356], [812, 356], [800, 372]]) L(g, 'circle', { cx: x, cy: y, r: 3 }, { f: 'Advanced:x60|y60|z60', b: 'Advanced:w60' });
-  L(g, 'circle', { cx: 838, cy: 392, r: 4.5 }, { f: 'Advanced:x61|y61|z61|w61' });
-  const PST = 'Advanced:x64|y64|z64|w64', DST = 'Advanced:x67|y67|z67|w67', PSC = 'Advanced:x66|y66|z66|w66';
-  L(g, 'path', { d: 'M1022 250 L1040 268 L1022 286 L1004 268 Z', 'stroke-width': 2, fill: 'none' }, { s: PST });
-  T(g, 1050, 273, 'EAGLE MK II', 13, 'text', { 'letter-spacing': 1 }, { fa: 0.85 });
-  L(g, 'circle', { cx: 560, cy: 262, r: 16, 'stroke-width': 2.2, fill: 'none' }, { s: DST });
-  L(g, 'circle', { cx: 560, cy: 262, r: 3 }, { f: DST });
-  T(g, 585, 258, 'GAGARIN VISTA', 14, 'text', { 'letter-spacing': 1 }, { b: 'Advanced:w68' });
-  T(g, 585, 276, '2.30 km', 12, 'text', null, { fa: 0.7, b: 'Advanced:w68' });
-  L(g, 'circle', { cx: 1110, cy: 440, r: 12, 'stroke-width': 2, fill: 'none' }, { s: PSC });
-
-  // --- mid HUD above the radar
-  const MID = 'Advanced:x184|y184|z184', FSD = 'Advanced:x182|y182|z182|w182';
-  T(g, 800, 540, 'FRAME SHIFT DRIVE CHARGING', 13, MID, { 'text-anchor': 'middle', 'letter-spacing': 3 }, { b: 'Advanced:w184' });
-  L(g, 'rect', { x: 680, y: 550, width: 240, height: 6, rx: 2, 'stroke-width': 1.2, fill: 'none' }, { s: FSD, sa: 0.6 });
-  L(g, 'rect', { x: 680, y: 550, width: 150, height: 6, rx: 2 }, { f: FSD });
-
-  // --- radar on the centre console
-  const RIM = 'Advanced:x236|y236|z236', GRID = 'Advanced:x237|y237|z237', cx = 800, cy = 752, rx = 175, ry = 66;
-  L(g, 'ellipse', { cx, cy, rx, ry }, { f: RIM, fa: 0.08 });
-  L(g, 'ellipse', { cx, cy, rx: rx + 16, ry: ry + 7, 'stroke-width': 1.2, fill: 'none' }, { s: RIM, sa: 0.55, b: 'Advanced:w236' });
-  L(g, 'ellipse', { cx, cy, rx, ry, 'stroke-width': 2.6, fill: 'none' }, { s: RIM, b: 'Advanced:w236' });
-  for (const k of [0.34, 0.67]) L(g, 'ellipse', { cx, cy, rx: rx * k, ry: ry * k, 'stroke-width': 1.2, fill: 'none' }, { s: GRID, b: 'Advanced:w237' });
-  for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; L(g, 'line', { x1: cx, y1: cy, x2: cx + Math.cos(a) * rx, y2: cy + Math.sin(a) * ry, 'stroke-width': 1 }, { s: GRID, sa: 0.6, b: 'Advanced:w237' }); }
-  const TRI = 'Advanced:x239|y239|z239|w239';
-  L(g, 'path', { d: `M${cx} ${cy - 9} L${cx + 8} ${cy + 6} L${cx - 8} ${cy + 6} Z`, 'stroke-width': 1.6 }, { s: TRI, f: TRI, fa: 0.3 });
-  const blip = (src, px, py, ht, hollow) => {
-    L(g, 'ellipse', { cx: px, cy: py, rx: 7, ry: 2.6, 'stroke-width': 1.3, fill: 'none' }, { s: src, sa: 0.8, b: 'Advanced:x113' });
-    L(g, 'line', { x1: px, y1: py, x2: px, y2: py - ht, 'stroke-width': 1.5 }, { s: src, b: 'Advanced:y115' });
-    L(g, 'rect', { x: px - 4.5, y: py - ht - 4.5, width: 9, height: 9, 'stroke-width': 1.5, fill: hollow ? 'none' : undefined }, hollow ? { s: src, b: 'Advanced:x114' } : { s: src, f: src, b: 'Advanced:x114' });
-  };
-  blip('Advanced:x245|y245|z245|w245', 720, 738, 34);
-  blip('Advanced:x245|y245|z245|w245', 880, 772, -18, true);
-  blip('Advanced:x246|y246|z246|w246', 770, 790, 22);
-  blip('Advanced:x247|y247|z247|w247', 858, 728, 42);
-  // heat (left) and speed (right) arcs beside the radar, with their readouts
-  const HEAT = 'Advanced:x221|y221|z221';
-  L(g, 'path', { d: 'M640 700 Q590 760 632 830', 'stroke-width': 4, fill: 'none' }, { s: HEAT, b: 'Advanced:w221' });
-  L(g, 'path', { d: 'M960 700 Q1010 760 968 830', 'stroke-width': 4, fill: 'none' }, { s: HEAT, b: 'Advanced:w221' });
-  L(g, 'path', { d: 'M960 700 Q985 730 992 760', 'stroke-width': 4, fill: 'none' }, { f: undefined, s: 'Advanced:x222|y222|z222', sa: 0.9 });
-  T(g, 662, 690, '27%', 16, 'text', { 'letter-spacing': 1 });
-  L(g, 'path', { d: 'M640 690 q4 -10 0 -16 q8 6 6 16 Z' }, { f: 'fixed:#ff3b30' });
-  T(g, 955, 700, '14', 16, 'text');
-  const ZOOM = 'Advanced:x240|y240|z240', LVL = 'Advanced:x231|y231|z231';
-  L(g, 'line', { x1: 904, y1: 744, x2: 904, y2: 836, 'stroke-width': 1.4 }, { s: ZOOM, b: 'Advanced:w240' });
-  for (let i = 0; i < 5; i++) L(g, 'line', { x1: 898, y1: 748 + i * 21, x2: 910, y2: 748 + i * 21, 'stroke-width': 1.2 }, { s: LVL, b: 'Advanced:w231' });
-
-  // --- lower left: target information and target hologram
-  const LOW = 'Advanced:x204|y204|z204|w204';
-  const tl = rot(-6, 70, 760);
-  L(tl, 'line', { x1: 64, y1: 728, x2: 356, y2: 728, 'stroke-width': 1.8 }, { s: LOW });
-  T(tl, 70, 752, 'GAGARIN VISTA', 16, 'text', { 'letter-spacing': 1 }, { fa: 0.5 });
-  ['1 | CENTAURI VALUES PARTY', 'ERLAZA SYSTEM', 'DEMOCRACY'].forEach((s, i) => T(tl, 70, 776 + i * 24, s, 16, 'text', { 'letter-spacing': 1 }));
-  T(tl, 70, 848, 'EXTRACTION', 16, 'text', { 'letter-spacing': 1 }, { fa: 0.5 });
-  const TH = 'Advanced:x72|y72|z72';
-  const rock = 'M440 700 L468 676 L506 684 L522 716 L512 752 L476 768 L446 752 L432 726 Z';
-  L(g, 'path', { d: rock }, { f: TH, fa: 0.14, b: 'Advanced:y73' });
-  L(g, 'path', { d: rock, 'stroke-width': 1.6, fill: 'none' }, { s: TH, b: 'Advanced:y73' });
-  L(g, 'path', { d: 'M468 676 L476 722 L512 752 M432 726 L476 722 L506 684', 'stroke-width': 1, fill: 'none' }, { s: TH, sa: 0.6, b: 'Advanced:y73' });
-  L(g, 'ellipse', { cx: 476, cy: 800, rx: 78, ry: 20, 'stroke-width': 2, fill: 'none' }, { s: 'Advanced:x226|y226|z226', b: 'Advanced:w226' });
-  L(g, 'ellipse', { cx: 476, cy: 812, rx: 56, ry: 13, 'stroke-width': 1.4, fill: 'none' }, { s: 'Advanced:x205|y205|z205|w205' });
-
-  // --- lower right: your ship hologram, shields, power distributor, fuel and status lights
-  const tr = rot(7, 1150, 760);
-  holoShip(tr, 1133, 728, 0.95, 'Advanced:x248|y248|z248', 'own');
-  for (const [rx2, ry2, which] of [[92, 60, 'outer'], [80, 52, 'middle'], [68, 44, 'inner']]) L(tr, 'ellipse', { cx: 1133, cy: 740, rx: rx2, ry: ry2, 'stroke-width': 3.2, fill: 'none' }, { s: 'shield:' + which, b: 'Advanced:w228' });
-  T(tr, 1150, 792, '100%', 15, 'Advanced:x88|y88|z88', { 'text-anchor': 'middle', 'letter-spacing': 1 }, { b: 'Advanced:w88' });
-  L(tr, 'path', { d: 'M1070 818 Q1133 842 1196 818', 'stroke-width': 2, fill: 'none' }, { s: 'Advanced:x226|y226|z226', b: 'Advanced:w226' });
-  T(tr, 1076, 836, '100%', 14, 'Advanced:x212|y212|z212', null, { b: 'Advanced:w212' });
-  const td = rot(5, 1290, 770);
-  [{ x: 1238, lab: 'SYS', fill: 5, pips: 2 }, { x: 1278, lab: 'ENG', fill: 8, pips: 3 }, { x: 1318, lab: 'WEP', fill: 5, pips: 1 }].forEach(c => {
-    for (let i = 0; i < 8; i++) {
-      const y = 788 - i * 11, on = i < c.fill;
-      L(td, 'rect', { x: c.x, y, width: 20, height: 8, 'stroke-width': 1, fill: on ? undefined : 'none' }, on ? { f: `dist:${i}:8` } : { s: `dist:${i}:8`, sa: 0.3 });
-    }
-    for (let p = 0; p < 4; p++) L(td, 'rect', { x: c.x + p * 5.5, y: 800, width: 4, height: 4 }, p < c.pips ? { f: 'Advanced:x214|y214|z214', b: 'Advanced:w214' } : { f: 'Advanced:x122|y122|z122|w122' });
-    T(td, c.x + 10, 820, c.lab, 12, 'text', { 'text-anchor': 'middle' }, { fa: 0.8 });
-  });
-  L(td, 'rect', { x: 1274, y: 826, width: 28, height: 14, 'stroke-width': 1.2, fill: 'none' }, { s: 'Advanced:x230|y230|z230', b: 'Advanced:w230' });
-  T(td, 1288, 837, 'RST', 11, 'text', { 'text-anchor': 'middle' });
-  L(td, 'rect', { x: 1272, y: 843, width: 32, height: 3 }, { f: 'Advanced:x227|y227|z227', b: 'Advanced:w227' });
-  const tf = rot(7, 1370, 770);
-  L(tf, 'line', { x1: 1366, y1: 748, x2: 1548, y2: 748, 'stroke-width': 1.6 }, { s: LOW });
-  T(tf, 1370, 766, 'FUEL', 15, 'text', { 'letter-spacing': 1 });
-  T(tf, 1544, 766, '1.31/h', 15, 'text', { 'text-anchor': 'end' });
-  L(tf, 'rect', { x: 1368, y: 772, width: 176, height: 7, 'stroke-width': 1, fill: 'none' }, { s: 'Advanced:x216|y216|z216', sa: 0.5 });
-  L(tf, 'rect', { x: 1368, y: 772, width: 150, height: 7 }, { f: 'Advanced:x216|y216|z216', b: 'Advanced:w216' });
-  L(tf, 'rect', { x: 1518, y: 772, width: 16, height: 7 }, { f: 'Advanced:x94|y94|z94', b: 'Advanced:w94' });
-  ['MASS LOCKED', 'LANDING GEAR', 'CARGO SCOOP'].forEach((s, i) => {
-    L(tf, 'rect', { x: 1372, y: 788 + i * 20, width: 10, height: 10 }, { f: i === 0 ? 'Advanced:x218|y218|z218|w218' : 'Advanced:x217|y217|z217|w217' });
-    T(tf, 1390, 798 + i * 20, s, 14, 'text', { 'letter-spacing': 1 });
-  });
-
-  // everything above is the cockpit page; the other pages are built beside it and shown one at a time
-  const vc = sv('g', { 'data-view': 'drawn', display: 'none' }, svg);
-  [...svg.childNodes].filter(n => n !== vc && n.nodeName !== 'defs').forEach(n => vc.appendChild(n));
-  buildPhoto(sv('g', { 'data-view': 'cockpit' }, svg));
+  // the cockpit page is our own picture (buildTheme); the other pages are built beside it and shown one at a time
+  buildTheme(sv('g', { 'data-view': 'theme', display: 'none' }, svg));
   buildStation(sv('g', { 'data-view': 'station', display: 'none' }, svg));
   buildGalaxy(sv('g', { 'data-view': 'galaxy', display: 'none' }, svg));
   buildFoot(sv('g', { 'data-view': 'foot', display: 'none' }, svg));
@@ -1296,19 +1142,31 @@ function buildSystemsPanel(v) {
   L(g, 'rect', { x: 820, y: 736, width: 612, height: 56 }, { f: ROW_BG, fa: 0.85 });
   L(g, 'circle', { cx: 1126, cy: 764, r: 16, 'stroke-width': 2.5, fill: 'none' }, { s: 'fixed:#e8ecf2' });
 }
-// --- Cockpit (photo). Two real screenshots (HUD on / HUD off) were split into a greyscale cockpit (img/cockpit-bg.jpg)
-// and a HUD-only layer (img/cockpit-hud.png, white with the HUD's brightness as alpha). Each zone below is a plain shape
-// in a setting's color, shown only where the HUD layer has pixels, so the game's own lines and text are recolored.
-// Coordinates are screenshot pixels (2000x1125), scaled to the 1600x900 preview.
-function buildPhoto(v) {
-  const W = 2000, H = 1125;
+// --- Cockpit (your theme), the one cockpit page. Our own picture, made from EDHM_UI's cockpit picture (HUD_Default.png,
+// kept with the script, not in the page) by C:\Users\Dunge\.elite-studio\edhm-ui\make-theme.ps1: the bare cockpit
+// (img/hud/theme-bare.jpg, without EDHM_UI's XML badge and commander portrait), the HUD alone (img/hud/theme-hud.png,
+// white with the HUD's brightness as alpha) and the cockpit's own orange lamps (img/hud/theme-lamps.png). Each zone
+// is a plain shape in a setting's colour, shown only where the HUD has light, so the picture shows the theme saved in
+// the game and follows every change. Coordinates are the picture's own pixels (1602x932). The reticle, the fire groups
+// and the target panel's bars are tied by EDHM_UI's pictures of each setting's part (best matches, not tested in game).
+function buildTheme(v) {
+  const W = 1602, H = 932, k = 900 / H;
   const defs = $('#hud defs');
-  const m = sv('mask', { id: 'hudmask', maskUnits: 'userSpaceOnUse', x: 0, y: 0, width: W, height: H, style: 'mask-type:alpha' }, defs);
-  sv('image', { href: 'img/cockpit-hud.png', width: W, height: H }, m);
-  const root = sv('g', { transform: 'scale(0.8)' }, v);
+  for (const [id, file] of [['theme-hud', 'img/hud/theme-hud.png'], ['theme-lamps', 'img/hud/theme-lamps.png']]) {
+    const m = sv('mask', { id, maskUnits: 'userSpaceOnUse', x: 0, y: 0, width: W, height: H, style: 'mask-type:alpha' }, defs);
+    sv('image', { href: file, width: W, height: H }, m);
+  }
+  const root = sv('g', { transform: `translate(${((1600 - W * k) / 2).toFixed(1)} 0) scale(${k.toFixed(5)})` }, v);
   sv('rect', { width: W, height: H, fill: '#020305' }, root);
-  sv('image', { href: 'img/cockpit-bg.jpg', width: W, height: H, opacity: 0.9 }, root);
-  const g = sv('g', { mask: 'url(#hudmask)' }, root);
+  sv('image', { href: 'img/hud/theme-bare.jpg', width: W, height: H }, root);
+  // the cockpit's own lamps and the glow they throw: Cabin Lighting (the same outlines the picture was cut with)
+  const lamps = sv('g', { mask: 'url(#theme-lamps)' }, root);
+  [[268, 462, 432, 500, 432, 552, 266, 504], [486, 514, 590, 532, 590, 562, 560, 572, 548, 646, 490, 646, 486, 560],
+   [345, 628, 566, 628, 566, 722, 520, 722, 345, 702], [566, 628, 700, 628, 700, 650, 640, 662, 566, 660],
+   [788, 540, 912, 428, 936, 438, 936, 556, 872, 578, 868, 646, 832, 646, 828, 578, 788, 566], [700, 620, 1250, 620, 1250, 642, 700, 646],
+   [1098, 676, 1262, 686, 1262, 722, 1155, 722, 1155, 712, 1098, 704], [432, 516, 486, 516, 486, 562, 466, 562, 466, 553, 432, 553]]
+    .forEach(p => L(lamps, 'polygon', { points: p.join(' '), stroke: 'none' }, { f: 'Advanced:x69|y69|z69' }));
+  const g = sv('g', { mask: 'url(#theme-hud)' }, root);
   const Z = (shape, src, b) => {
     const o = { f: src, b };
     if (Array.isArray(shape)) return L(g, 'polygon', { points: shape.join(' '), stroke: 'none' }, o);
@@ -1316,55 +1174,117 @@ function buildPhoto(v) {
     return L(g, 'rect', { x: shape.x, y: shape.y, width: shape.w, height: shape.h, stroke: 'none' }, o);
   };
   const R = (x, y, x2, y2) => ({ x, y, w: x2 - x, h: y2 - y });
-  // comms panel (top left): the two lines, then the icons between them
-  Z([80, 28, 635, 122, 635, 176, 80, 86], 'Advanced:x232|y232|z232|w232');
-  Z([100, 46, 620, 134, 620, 158, 100, 72], 'Advanced:x233|y233|z233|w233');
-  // info panel (top right): lines, INFO and the clock
-  Z([1325, 150, 1995, 28, 1995, 62, 1325, 172], 'Advanced:x208|y208|z208|w208');
-  Z(R(1325, 124, 1400, 162), 'text');
-  Z(R(1750, 26, 1915, 82), 'text');
-  // right side: fire-group arc, target marker, weapon name and ammo
-  Z(R(1628, 385, 1685, 728), 'unknown:#8a86ff');
-  Z(R(1470, 540, 1640, 580), 'unknown:#19b4ff');
-  Z(R(1628, 722, 1662, 782), 'unknown:#e0409a');
-  Z(R(1660, 728, 1875, 752), 'text');
-  Z(R(1662, 752, 1795, 761), 'Advanced:x45|y45|z45', 'Advanced:w45');
-  Z(R(1662, 761, 1760, 782), 'text');
-  // wing mate
-  Z(R(1515, 808, 1590, 876), 'unknown:#3fd6c8');
-  Z(R(1595, 820, 1680, 874), 'text');
-  // lower left: target information, target hologram and its base rings
-  Z(R(78, 892, 310, 1034), 'text');
-  Z(R(450, 820, 640, 958), 'Advanced:x72|y72|z72', 'Advanced:y73');
-  Z(R(400, 945, 640, 1090), 'Advanced:x226|y226|z226', 'Advanced:w226');
-  // radar: heat and speed arcs around it, the disc, your ship, a friendly contact, the readouts
-  Z(R(735, 900, 815, 1080), 'Advanced:x221|y221|z221', 'Advanced:w221');
-  Z(R(1185, 905, 1280, 1080), 'Advanced:x222|y222|z222');
-  Z({ cx: 1000, cy: 957, rx: 200, ry: 100 }, 'Advanced:x236|y236|z236', 'Advanced:w236');
-  Z(R(980, 925, 1020, 948), 'Advanced:x239|y239|z239|w239');
-  Z(R(1098, 956, 1146, 984), 'Advanced:x246|y246|z246|w246');
-  Z(R(800, 855, 895, 905), 'text');
-  Z(R(1178, 878, 1212, 908), 'text');
-  Z(R(895, 1045, 920, 1075), 'Advanced:x240|y240|z240', 'Advanced:w240');
-  // lower right: shield rings with your ship hologram inside, shield %, hull ring and hull %
-  Z({ cx: 1470, cy: 915, rx: 126, ry: 76, transform: 'rotate(9 1470 915)' }, 'shield:middle', 'Advanced:w228');
-  Z({ cx: 1468, cy: 912, rx: 92, ry: 42, transform: 'rotate(9 1468 912)' }, 'Advanced:x248|y248|z248', 'Advanced:z101');
-  Z(R(1455, 962, 1535, 992), 'Advanced:x88|y88|z88', 'Advanced:w88');
-  Z([1355, 992, 1455, 992, 1455, 998, 1600, 998, 1600, 1090, 1355, 1090], 'Advanced:x226|y226|z226', 'Advanced:w226');
-  Z(R(1382, 1022, 1432, 1058), 'Advanced:x212|y212|z212', 'Advanced:w212');
-  // power distributor: three columns of bars (bottom to top), then the labels
-  [[1638, 978], [1680, 968], [1723, 986]].forEach(([x, base]) => {
-    for (let i = 0; i < 8; i++) Z(R(x, base - (i + 1) * 10.5, x + 30, base - i * 10.5), `dist:${i}:8`);
+  const line = (x1, y1, x2, y2, t) => [x1, y1 - t, x2, y2 - t, x2, y2 + t, x1, y1 + t];   // a band t pixels either side of a line
+  const AMMO = ['Advanced:x45|y45|z45', 'Advanced:w45'];
+  // comms panel (top left): its two lines, the icons between them, CHAT | MAIN
+  Z([62, 55, 510, 139, 510, 176, 62, 96], 'Advanced:x232|y232|z232|w232');
+  Z([86, 68.5, 402, 129, 402, 146.5, 86, 90], 'Advanced:x233|y233|z233|w233');
+  Z([70, 102, 186, 114, 186, 136, 70, 124], 'text');
+  // info panel (top right): its two lines, the ship's name, INFO and the message under it
+  Z([1056, 126, 1528, 40, 1528, 92, 1056, 178], 'Advanced:x208|y208|z208|w208');
+  Z([1062, 117, 1149, 101, 1149, 119, 1062, 133.5], 'Advanced:x235|y235|z235');
+  Z([1068, 139, 1114, 131, 1114, 152, 1068, 160], 'text');
+  Z([1062, 167, 1192, 143, 1192, 172, 1062, 190], 'text');
+  // the reticle: large circle and its line, mouse dot, tri-bars, leading circle, weapon dots
+  Z(R(762, 230, 970, 342), 'Advanced:x58|y58|z58|w58');
+  Z(R(810, 278, 828, 296), 'Advanced:x61|y61|z61|w61');
+  Z(R(810, 333, 825, 382), 'Advanced:x57|y57|z57|w57');
+  Z(R(764, 434, 790, 452), 'Advanced:x57|y57|z57|w57');
+  Z(R(846, 432, 872, 452), 'Advanced:x57|y57|z57|w57');
+  Z(R(745, 380, 768, 455), 'Advanced:x59|y59|z59');
+  Z(R(868, 380, 892, 455), 'Advanced:x59|y59|z59');
+  Z(R(802, 408, 832, 447), 'Advanced:x60|y60|z60');
+  // fire groups beside the reticle: the left bracket is the Analysis HUD's, the right the Combat HUD's; their headings
+  // are AHUD text, the bars under each weapon's name are ammunition
+  Z(R(272, 286, 316, 598), 'Advanced:x54|y54|z54|w54');
+  Z(R(428, 266, 488, 598), 'Advanced:x54|y54|z54|w54');
+  Z(R(360, 266, 464, 287), 'Advanced:x144|y144|z144|w144');
+  Z(R(240, 553, 290, 570), 'text'); Z(R(182, 569, 288, 578), ...AMMO); Z(R(250, 578, 290, 593), 'text');
+  Z(R(350, 552, 467, 569), 'text'); Z(R(350, 569, 452, 577), ...AMMO);
+  Z(R(1118, 266, 1176, 596), 'Advanced:x55|y55|z55');
+  Z(R(1292, 284, 1340, 596), 'Advanced:x55|y55|z55');
+  Z(R(1140, 265, 1226, 286), 'Advanced:x144|y144|z144|w144');
+  Z(R(1170, 493, 1248, 511), 'text'); Z(R(1170, 511, 1273, 520), ...AMMO); Z(R(1172, 519, 1220, 536), 'text');
+  Z(R(1154, 550, 1234, 567), 'text'); Z(R(1152, 567, 1258, 576), ...AMMO); Z(R(1156, 576, 1204, 592), 'text');
+  Z(R(1322, 553, 1430, 567), 'text'); Z(R(1320, 567, 1424, 576), ...AMMO); Z(R(1322, 576, 1392, 592), 'text');
+  // target panel (lower left): its outer lines, the lines between its rows, the distance and speed bars, the
+  // alignment block, the words
+  Z(line(18, 681, 348, 656, 4), 'Advanced:x204|y204|z204|w204');
+  Z(line(40, 888, 360, 840, 4), 'Advanced:x204|y204|z204|w204');
+  for (const [x1, y1, x2, y2] of [[20, 720, 348, 692], [25, 766, 353, 732], [33, 807, 358, 771], [38, 861, 360, 817]]) Z(line(x1, y1, x2, y2, 4), 'Advanced:x79|y79|z79');
+  Z([196, 709, 332, 694, 350, 693, 350, 724, 196, 728], 'Advanced:x51|y51|z51');
+  Z([200, 753, 352, 736, 352, 756, 200, 770], 'Advanced:x51|y51|z51');
+  Z(R(333, 772, 351, 789), 'Advanced:x52|y52|z52');
+  Z([52, 690, 164, 680, 164, 703, 52, 713], 'text');            // the target's name
+  Z(R(282, 666, 332, 687), 'text');                              // its distance
+  Z([88, 738, 162, 730, 162, 748, 88, 756], 'text');            // DISTANCE
+  Z(R(272, 713, 334, 731), 'text');
+  Z([127, 778, 180, 772, 180, 786, 127, 792], 'text');          // SPEED
+  Z([260, 765, 336, 757, 336, 771, 260, 778], 'text');
+  Z([84, 830, 172, 818, 172, 838, 84, 850], 'text');            // ALIGNMENT
+  Z([92, 884, 208, 874, 208, 896, 92, 905], 'text');            // SHIPPING LANE
+  // the target's hologram (here a planet) and the swirls under it
+  Z([452, 705, 590, 705, 590, 812, 452, 812], 'Advanced:x72|y72|z72', 'Advanced:y73');
+  Z(R(450, 812, 585, 882), 'Advanced:x226|y226|z226', 'Advanced:w226');
+  // compass and its dot, beside the radar
+  Z([556, 652, 648, 652, 648, 736, 578, 736, 578, 700, 556, 690], 'Advanced:x219|y219|z219');
+  Z(R(601, 693, 616, 708), 'Advanced:x220|y220|z220');
+  // radar: outer rim, the grid inside it, your ship's triangle, the readouts, the ruler and zoom widget under it
+  Z({ cx: 801, cy: 783, rx: 153, ry: 96 }, 'Advanced:x236|y236|z236', 'Advanced:w236');
+  Z({ cx: 801, cy: 782, rx: 145, ry: 83 }, 'Advanced:x237|y237|z237');
+  Z(R(786, 751, 810, 771), 'Advanced:x239|y239|z239|w239');
+  Z(R(720, 860, 915, 884), 'Advanced:x231|y231|z231');
+  Z(R(721, 860, 736, 884), 'Advanced:x240|y240|z240', 'Advanced:w240');
+  Z(R(670, 696, 712, 719), 'text'); Z(R(940, 713, 961, 734), 'text');
+  // heat bar (left of the radar) and speed bar (right of it), with the optimal speed marker
+  Z([604, 728, 648, 728, 652, 790, 670, 836, 688, 858, 688, 882, 650, 882, 618, 836, 604, 790], 'Advanced:x221|y221|z221', 'Advanced:w221');
+  Z(R(943, 728, 980, 745), 'Advanced:x221|y221|z221', 'Advanced:w221');
+  Z(R(952, 745, 1010, 874), 'Advanced:x221|y221|z221', 'Advanced:w221');
+  Z(R(972, 834, 1010, 852), 'Advanced:x222|y222|z222');
+  // shields round your ship (rings by the shield mode), the swirls below, hull ring and hull %, shield %
+  Z(R(1010, 800, 1160, 872), 'Advanced:x226|y226|z226', 'Advanced:w226');
+  Z({ cx: 1075, cy: 760, rx: 66, ry: 50 }, 'shield:middle', 'Advanced:w228');
+  Z([1056, 816, 1156, 812, 1156, 868, 1056, 868], 'Advanced:x212|y212|z212', 'Advanced:w212');
+  Z(R(1023, 838, 1057, 853), 'Advanced:x212|y212|z212', 'Advanced:w212');
+  Z(R(1078, 802, 1112, 818), 'Advanced:x88|y88|z88', 'Advanced:w88');
+  // power distributor: three columns of bars (by the distributor's mode, bottom to top), pips, RST, labels
+  [[1266, 1290, 745, 800], [1301, 1325, 733, 790], [1338, 1364, 753, 810]].forEach(([x1, x2, top, base]) => {
+    const step = (base - top) / 8;
+    for (let i = 0; i < 8; i++) Z(R(x1, base - (i + 1) * step, x2, base - i * step), `dist:${i}:8`);
   });
-  Z(R(1632, 988, 1672, 1006), 'text'); Z(R(1676, 972, 1714, 1016), 'text'); Z(R(1718, 996, 1760, 1016), 'text');
-  // fuel and status lights
-  Z([1772, 928, 1955, 938, 1955, 960, 1772, 950], 'text');
-  Z([1772, 950, 1955, 960, 1955, 972, 1772, 962], 'Advanced:x216|y216|z216', 'Advanced:w216');
-  Z(R(1800, 968, 1955, 1036), 'text');
+  Z(R(1265, 801, 1291, 812), 'Advanced:x214|y214|z214'); Z(R(1300, 789, 1326, 798), 'Advanced:x214|y214|z214'); Z(R(1337, 810, 1364, 819), 'Advanced:x214|y214|z214');
+  Z(R(1296, 818, 1333, 826), 'Advanced:x227|y227|z227'); Z(R(1296, 834, 1333, 844), 'Advanced:x227|y227|z227');
+  Z(R(1264, 812, 1291, 828), 'text'); Z(R(1299, 799, 1326, 815), 'text'); Z(R(1298, 825, 1326, 836), 'text'); Z(R(1336, 824, 1365, 840), 'text');
+  // signature and fuel bars, status lights (MASS LOCKED is on, the other two off)
+  Z(R(1374, 744, 1524, 764), 'Advanced:x206|y206|z206');
+  Z([1452, 762, 1545, 762, 1545, 812, 1376, 812, 1376, 778, 1452, 778], 'Advanced:x216|y216|z216', 'Advanced:w216');
+  Z(R(1381, 762, 1454, 781), 'text');
+  Z(R(1382, 794, 1400, 810), 'Advanced:x218|y218|z218|w218');
+  Z(R(1382, 810, 1400, 841), 'Advanced:x217|y217|z217|w217');
+  Z(R(1402, 797, 1492, 850), 'text');
 }
+// The setting groups' names, as EDHM_UI's HUD areas name them (they used to come with its cockpit picture).
+const AREA_NAMES = { Panel_UP: 'Upper Panel', Reticle: 'Targeting Reticle', CHUD_AHUD: 'Combat & Analysis HUD', ShieldsHolo: 'Shield & Holograms', Power_Distributor: 'Power Distributor', FuelBars: 'Signature & Fuel Bars', RadarHUD: 'Radar & Common Group', Panel_Lower: 'Ship Panels', Lighting: 'Cabin Lighting', SpecialFX: 'Ship Systems', Settings: 'General Settings', Foot_HUD: 'Suit & Onfoot' };
+// The picture of the part a setting changes (EDHM_UI's, one per setting), shown while its row is pointed at.
+function showPart(e) {
+  const f = $('#partpic');
+  if (!e || !e.pic) { f.hidden = true; return; }
+  $('img', f).src = `img/parts/${e.pic}.jpg`;
+  $('figcaption', f).textContent = `${e.cat} › ${e.title}`;
+  f.hidden = false;
+}
+// What tests in the game showed, where it differs from what a name suggests. By file and first key.
+const TESTED = {
+  'Advanced:x91': 'Tested in game: this did not colour the mission board, the mission details or the Transactions tab. On the Navigation tab it coloured row icons when missions were active, most likely the icons of mission destinations.',
+  'Advanced:x146': 'Tested in game: the ship drawing on the Contacts tab, on the role panel (3), on the ship panel (4) and on the mission details window.',
+  'Advanced:x82': 'Tested in game: the briefing sentences and the destination line on the mission details window.',
+  'Startup-Profile:y108': 'Tested in game: the one switch that releases text with a preset colour. In Outfitting the yellow module list and headings follow the colour matrix; on the commodities market every word does, and the yellow and blue labels lose their own colours. Text then no longer uses Main Text.',
+  'Startup-Profile:w4': 'Tested in game: on the commodities market this keeps the supply bars and galactic average icons the game’s green. Off, the colour matrix recolours them. It changed nothing in Outfitting.',
+  'Startup-Profile:x5': 'Tested in game: on the commodities market this keeps the below-average icons the game’s red. Off, the colour matrix recolours them. It changed nothing in Outfitting.',
+  'Startup-Profile:y4': 'Tested in game: in Outfitting this keeps the module drawing and the size code beside the module’s name the game’s yellow. Off, the drawing takes Icons Color (Secondary).',
+};
 const VIEW_HINTS = {
-  cockpit: 'Your real cockpit: the HUD is recolored live from your settings · point at a part to see what it is, click it to edit',
-  drawn: 'Drawn cockpit: shows parts that are not in the photo (reticle, markers, frame shift bar) · point at a part, click it to edit',
+  theme: 'Your cockpit in your theme: the colours saved in the game, changing as you edit · point at a part to see its setting, click it to edit',
   station: 'Station menus: grey text is Elite’s own · row bars = Ship Panel Shadows · orange-based parts = XML matrix',
   galaxy: 'Galaxy map: windows = Elite’s grey tinted by XML “White becomes…”, buttons and lines = XML “Orange becomes…”, headings = Main Text · icon on a lit button is Elite’s black (not adjustable) · point at a part, click to edit',
   foot: 'On-foot suit HUD: panels, text, shields, O2 and energy · point at a part, click to edit',
@@ -1375,7 +1295,7 @@ const VIEW_HINTS = {
 function showView(name) {
   for (const n of $$('#hud [data-view]')) n.setAttribute('display', n.dataset.view === name ? 'inline' : 'none');
   for (const b of $$('#views button')) b.classList.toggle('active', b.dataset.view === name);
-  $('#hover-label').textContent = VIEW_HINTS[name] || VIEW_HINTS.cockpit;
+  $('#hover-label').textContent = VIEW_HINTS[name] || VIEW_HINTS.theme;
 }
 function holoShip(parent, cx, cy, s, src, kind) {
   const g2 = sv('g', { transform: `translate(${cx} ${cy}) scale(${s})` }, parent);
@@ -1432,9 +1352,10 @@ function describe(id) {
 function setupPreviewEvents() {
   const svg = $('#hud'), label = $('#hover-label');
   let cur = null;
-  const clear = () => { if (!cur) return; for (const n of nodesById.get(cur) || []) n.classList.remove('hl'); svg.classList.remove('focus'); cur = null; label.textContent = VIEW_HINTS[S.view] || VIEW_HINTS.cockpit; };
-  for (const b of $$('#views button')) b.addEventListener('click', () => { clear(); S.view = b.dataset.view; store.set('view', S.view); showView(S.view); });
-  S.view = store.get('view', 'cockpit');
+  const clear = () => { if (!cur) return; for (const n of nodesById.get(cur) || []) n.classList.remove('hl'); svg.classList.remove('focus'); cur = null; label.textContent = VIEW_HINTS[S.view] || VIEW_HINTS.theme; };
+  for (const b of $$('#views button')) b.addEventListener('click', () => { clear(); S.view = b.dataset.view; store.set('view2', S.view); showView(S.view); });
+  S.view = store.get('view2', 'theme');
+  if (!$$('#views button').some(b => b.dataset.view === S.view)) S.view = 'theme';   // a page that is gone (HUD map, the older cockpits)
   showView(S.view);
   svg.addEventListener('pointerover', e => {
     const t = e.target.closest('[data-id]');
@@ -1470,6 +1391,7 @@ function showTab(name) {
   if (name === 'themes') renderThemes();
   if (name === 'backups') renderBackups();
   if (name === 'edhm') renderEdhm();
+  if (name !== 'all') showPart(null);
 }
 function afterBulkChange() {
   renderPreview();
@@ -1609,7 +1531,7 @@ const GROUP_INFO = {
   Foot_HUD: { name: 'On-foot suit HUD', where: 'The HUD while walking around: suit shields, O2, energy and suit text.' },
   Prefs: { name: 'Personal preferences', where: 'Space dust, canopy effects and similar. Themes never change these. Colour Protection keeps some of Elite’s own colors (yellow, green, red…) out of the XML matrix. Tested in game: turning it off does NOT recolor the green rows and yellow text on the Transactions tab (claims); Elite draws those itself, so leave protection on.' },
 };
-const groupName = g => (GROUP_INFO[g.id] || {}).name || g.title;
+const groupName = g => AREA_NAMES[g.id] || (GROUP_INFO[g.id] || {}).name || g.title;   // a group is named as EDHM_UI names its HUD area
 // Where a part sits on screen, shown when you point at it in the preview.
 const WHERE = {
   'Advanced:x232|y232|z232|w232': 'Top-left comms panel', 'Advanced:x233|y233|z233|w233': 'Top-left comms panel',
@@ -1779,11 +1701,16 @@ function renderAllList() {
   const list = $('#all-list');
   if (!list) return;
   list.innerHTML = '';
+  showPart(null);
   const q = S.search.trim().toLowerCase();
   if (!q && S.group === 'XML') { list.append(xmlEditor()); return; }
   if (!q && S.group === 'Other') { list.append(othersEditor()); return; }
   let els;
-  if (q) els = S.els.filter(e => e.available && (e.title + ' ' + e.cat + ' ' + e.desc + ' ' + e.keys.join(' ')).toLowerCase().includes(q));
+  if (q) {
+    // every word must be found, in any order: in the setting's names, its description, its keys or what tests showed
+    const words = q.split(/\s+/);
+    els = S.els.filter(e => { const t = (e.title + ' ' + e.cat + ' ' + e.desc + ' ' + e.keys.join(' ') + ' ' + (TESTED[e.file + ':' + e.keys[0]] || '')).toLowerCase(); return e.available && words.every(w => t.includes(w)); });
+  }
   else { const g = S.groups.find(x => x.id === S.group) || S.groups[0]; els = g.els.filter(e => e.available); }
   if (S.onlyChanged) els = els.filter(isElDirty);
   if (!els.length) { list.append(h('p', { class: 'muted' }, S.onlyChanged ? 'No unsaved changes here.' : 'Nothing matches that search.')); return; }
@@ -1863,6 +1790,9 @@ function elRow(e) {
     d.addEventListener('click', () => d.classList.toggle('clamp'));
     row.append(d);
   }
+  const tested = TESTED[e.file + ':' + e.keys[0]];
+  if (tested) row.append(h('div', { class: 'tested' }, tested));
+  if (e.pic) { row.addEventListener('mouseenter', () => showPart(e)); row.addEventListener('mouseleave', () => showPart(null)); }
   refreshRow(row, e);
   return row;
 }
@@ -2526,7 +2456,8 @@ async function init() {
   setupPreviewEvents();
   wireTopbar();
   try {
-    const [cat, st] = await Promise.all([fetch('catalog.json', { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('catalog.json is missing'); return r.json(); }), api('GET', API + '/status')]);
+    const file = name => fetch(name, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(name + ' is missing'); return r.json(); });
+    const [cat, st] = await Promise.all([file('catalog.json'), api('GET', API + '/status')]);
     S.status = st;
     setupCatalog(cat);
     await loadDefaults();

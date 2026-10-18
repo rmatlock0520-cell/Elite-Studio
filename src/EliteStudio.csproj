@@ -36,6 +36,8 @@
     <EmbeddedResource Include="App\studio.ico" LogicalName="studio.ico" />
     <!-- The community's tables of ships, modules, materials and names; Core\GameData.cs reads them. -->
     <EmbeddedResource Include="Core\Data\*" LogicalName="Data.%(Filename)%(Extension)" />
+    <!-- The pictures of the kinds of station the overlay draws before a station's name; Market\StationPictures.cs reads them. -->
+    <EmbeddedResource Include="Market\Stations\*.png" LogicalName="Station.%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />

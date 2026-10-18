@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using EliteStudio.App;
@@ -121,6 +122,76 @@ public sealed record NavRoute(PlotRequest Request, string Job, DateTime PlottedU
 /// <param name="X">Where the system is, in light years (with <paramref name="Y"/> and <paramref name="Z"/>).</param>
 public sealed record NearSystem(string Name, double X, double Y, double Z);
 
+/// <summary>A system Spansh suggests for the letters typed in a name box, with where it is (<see cref="Spansh.Locate"/>).</summary>
+/// <param name="Id64">
+/// The game's own number for the system; 0 when Spansh gave none. Written as text, because these
+/// numbers can be larger than a web page can hold exactly.
+/// </param>
+/// <param name="X">Where the system is, in light years (with <paramref name="Y"/> and <paramref name="Z"/>).</param>
+public sealed record LocatedSystem(
+    string Name,
+    [property: JsonNumberHandling(JsonNumberHandling.WriteAsString | JsonNumberHandling.AllowReadingFromString)] long Id64,
+    double X, double Y, double Z);
+
+/// <summary>A system Spansh has under one of the exact names it was asked about (<see cref="Spansh.SystemsNamed"/>).</summary>
+/// <param name="Name">The name as Spansh spells it.</param>
+/// <param name="Id64">
+/// The game's own number for the system; 0 when Spansh gave none. Written as text, because these
+/// numbers can be larger than a web page can hold exactly.
+/// </param>
+/// <param name="X">
+/// Where the system is, in light years (with <paramref name="Y"/> and <paramref name="Z"/>); null when
+/// Spansh gave no place. Such a row still says Spansh has the system, so it is not left out.
+/// </param>
+public sealed record NamedSystem(
+    string Name,
+    [property: JsonNumberHandling(JsonNumberHandling.WriteAsString | JsonNumberHandling.AllowReadingFromString)] long Id64,
+    double? X, double? Y, double? Z);
+
+/// <summary>How many systems Spansh knows in a box of space (<see cref="Spansh.CountBox"/>).</summary>
+/// <param name="Capped">
+/// Spansh counts no further than <see cref="Spansh.CountCap"/>, so <paramref name="Count"/> is a
+/// floor: the box holds that many systems or more.
+/// </param>
+public sealed record BoxCount(int Count, bool Capped)
+{
+    /// <summary>
+    /// The pages <see cref="Spansh.ListBoxPage"/> takes to list them all: 0 for an empty box, and
+    /// all <see cref="Spansh.MostPages"/> for a capped one, which still leaves systems unlisted.
+    /// </summary>
+    public int Pages => Math.Min(Spansh.MostPages, (Count + Spansh.PageSize - 1) / Spansh.PageSize);
+}
+
+/// <summary>
+/// A system from a box listing (<see cref="Spansh.ListBoxPage"/>), with only the little the 3D map
+/// uses of all Spansh sends about it.
+/// </summary>
+/// <param name="Id64">
+/// The game's own number for the system. Written as text, because these numbers can be larger than
+/// a web page can hold exactly.
+/// </param>
+/// <param name="X">Where the system is, in light years (with <paramref name="Y"/> and <paramref name="Z"/>).</param>
+/// <param name="BodyCount">
+/// How many bodies the system has, as the game tells whoever scans it from afar on arrival (the
+/// discovery scan); null when nobody has passed that scan on to the databases.
+/// </param>
+/// <param name="Bodies">How many of its bodies the databases hold details of.</param>
+/// <param name="Updated">When Spansh last heard about the system; null when it did not say.</param>
+public sealed record BoxSystem(
+    string Name,
+    [property: JsonNumberHandling(JsonNumberHandling.WriteAsString | JsonNumberHandling.AllowReadingFromString)] long Id64,
+    double X, double Y, double Z, int? BodyCount, int Bodies, DateTime? Updated);
+
+/// <summary>One page of the systems Spansh knows in a box (<see cref="Spansh.ListBoxPage"/>).</summary>
+/// <param name="Page">Which page, counted from 0.</param>
+/// <param name="Count">How many systems Spansh said the box holds when it sent this page.</param>
+/// <param name="Systems">
+/// The page's systems in Spansh's order. That order is loose (it sorts by number, but not
+/// strictly), so a system can turn up on two pages: whoever puts pages together drops repeats by
+/// <see cref="BoxSystem.Id64"/>, and picks up again by page number, never after the last number seen.
+/// </param>
+public sealed record BoxPage(int Page, BoxCount Count, IReadOnlyList<BoxSystem> Systems);
+
 /// <summary>Spansh said no, went quiet or could not be reached. The message is written for the player.</summary>
 /// <param name="temporary">
 /// A hiccup on the way (no connection, no answer in time, an error page instead of an answer),
@@ -132,12 +203,15 @@ public sealed class SpanshException(string message, bool temporary = false) : Ex
 }
 
 /// <summary>
-/// Asks spansh.co.uk for routes, system names and the system nearest to a point in space. Spansh
-/// is one person's free service, so this is a careful guest: it says who it is, looks for a
-/// result at the unhurried pace other tools use, never asks twice for what it already has, and
-/// never sends a request a second time by itself.
+/// Asks spansh.co.uk for routes, system names, the system nearest to a point in space, and for the
+/// 3D map how many systems it knows in a box of space and which they are. Spansh is one person's
+/// free service, so this is a careful guest: it says who it is, looks for a result at the
+/// unhurried pace other tools use, never asks twice for what it already has, and never sends a
+/// request a second time by itself.
+/// The box calls are kept one at a time and within the 3D map's budget by the map's own gate, not
+/// here, so that route plotting and name suggestions never wait behind a long listing.
 /// Everything here is awaited, never blocked on; in the app it runs on the UI thread, apart from
-/// the sending of each call (see <see cref="Send"/>).
+/// the sending of each call and the reading of its answer (see <see cref="Send{T}"/>).
 /// </summary>
 /// <param name="handler">Tests pass a stand-in for the network; null means the real internet.</param>
 public sealed class Spansh(HttpMessageHandler? handler = null) : IDisposable
@@ -165,10 +239,45 @@ public sealed class Spansh(HttpMessageHandler? handler = null) : IDisposable
     /// </summary>
     const int GiveUpSeconds = 3 * SearchSeconds;
 
+    /// <summary>The seconds Spansh has to start answering a call.</summary>
+    const int AnswerSeconds = 20;
+
+    /// <summary>
+    /// The same for a page of a box listing, which takes Spansh longer to put together: 500 systems
+    /// with every body of each. Market searches give Spansh's pages of 500 a minute too.
+    /// </summary>
+    const int PageAnswerSeconds = 60;
+
+    /// <summary>
+    /// Once Spansh starts to answer, the seconds allowed for the rest of the answer to arrive. Room
+    /// for the largest, a page of a box listing: about 240 KB on the wire, over 2 MB unpacked.
+    /// </summary>
+    const int ReadSeconds = 60;
+
+    /// <summary>Spansh counts the systems in a box no further than this: a count of 10,000 means "10,000 or more".</summary>
+    public const int CountCap = 10_000;
+
+    /// <summary>
+    /// Systems asked for on one page of a box listing, and never more: asked for 501, Spansh
+    /// silently sends 25 (seen live in October 2026), which is also why the rows of every page are counted.
+    /// </summary>
+    public const int PageSize = 500;
+
+    /// <summary>Pages a box listing can have, numbered 0 to 19: Spansh fails a page that reaches past its 10,000th system.</summary>
+    public const int MostPages = CountCap / PageSize;
+
+    /// <summary>Exact names asked about in one request at most (<see cref="SystemsNamed"/>): a whole plotted route is asked in batches of this many.</summary>
+    public const int MostNames = 100;
+
     readonly HttpClient http = Client(handler);
     readonly Dictionary<PlotRequest, NavRoute> routes = [];
-    readonly Dictionary<string, IReadOnlyList<string>> names = new(StringComparer.OrdinalIgnoreCase);
+    readonly Dictionary<string, Suggestions> names = new(StringComparer.OrdinalIgnoreCase);
     readonly Dictionary<(long X, long Y, long Z), NearSystem?> near = [];
+
+    /// <summary>One answer to a name search: the names for a name box, and where those systems are.</summary>
+    sealed record Suggestions(IReadOnlyList<string> Names, IReadOnlyList<LocatedSystem> Located);
+
+    static readonly Suggestions NoSuggestions = new([], []);
 
     /// <summary>How far from a point <see cref="Nearest"/> looks, in light years: across most of one of the game's sectors.</summary>
     const int NearLy = 1000;
@@ -182,13 +291,35 @@ public sealed class Spansh(HttpMessageHandler? handler = null) : IDisposable
     /// System names that match the text, best match first, for a name box. Fewer than three
     /// letters give nothing without asking, and every answer is kept for the session.
     /// </summary>
-    public async Task<IReadOnlyList<string>> SystemNames(string text)
+    public async Task<IReadOnlyList<string>> SystemNames(string text) => (await Suggest(text)).Names;
+
+    /// <summary>
+    /// The systems <see cref="SystemNames"/> suggests for the same text, each with its number and
+    /// where it is, for the 3D map's star search. It is the same request and the same kept answer:
+    /// Spansh sends the positions with the names, so asking for both costs one call.
+    /// </summary>
+    /// <param name="fresh">
+    /// Ask Spansh even when an answer for the text is kept (the new one is kept in its place): for the 3D map's check
+    /// of a system, which its memory of checks asks again only when the answer it had is out of date, or the player
+    /// had it forgotten. A system not recorded an hour ago may be recorded now; the kept answer would still say not.
+    /// </param>
+    public async Task<IReadOnlyList<LocatedSystem>> Locate(string text, bool fresh = false) => (await Suggest(text, fresh)).Located;
+
+    async Task<Suggestions> Suggest(string text, bool fresh = false)
     {
         text = text.Trim();
-        if (text.Length < 3) return [];
-        if (names.TryGetValue(text, out IReadOnlyList<string>? known)) return known;
+        if (text.Length < 3) return NoSuggestions;
+        if (!fresh && names.TryGetValue(text, out Suggestions? known)) return known;
         JsonElement answer = await Send(HttpMethod.Get, "systems/field_values/system_names?q=" + Uri.EscapeDataString(text), null, CancellationToken.None);
-        return names[text] = [.. answer.List("values").Where(v => v.ValueKind == JsonValueKind.String).Select(v => v.GetString()!)];
+        return names[text] = new Suggestions(
+            [.. answer.List("values").Where(v => v.ValueKind == JsonValueKind.String).Select(v => v.GetString()!)],
+            // "min_max" holds one entry per name, with its number and position. One without a
+            // position is left out rather than placed at 0, 0, 0, which is Sol.
+            [
+                .. answer.List("min_max")
+                    .Where(found => found.Text("name").Length > 0 && Placed(found))
+                    .Select(found => new LocatedSystem(found.Text("name"), Address(found, "id64"), Number(found, "x"), Number(found, "y"), Number(found, "z"))),
+            ]);
     }
 
     /// <summary>
@@ -212,6 +343,166 @@ public sealed class Spansh(HttpMessageHandler? handler = null) : IDisposable
         JsonElement answer = await Send(HttpMethod.Post, "systems/search", new StringContent(search, Encoding.UTF8, "application/json"), CancellationToken.None);
         return near[point] = answer.List("results").Select(found => new NearSystem(found.Text("name"), Number(found, "x"), Number(found, "y"), Number(found, "z")))
             .FirstOrDefault(found => found.Name.Length > 0);
+    }
+
+    /// <summary>
+    /// How many systems Spansh knows in a box of space: one call, asking for a single system and
+    /// reading the total that comes with it. Exact below <see cref="CountCap"/>; at the cap it is
+    /// marked <see cref="BoxCount.Capped"/>. Nothing is kept here: the 3D map keeps what it asked.
+    /// </summary>
+    /// <exception cref="SpanshException">No count: the message says why in the player's words.</exception>
+    public async Task<BoxCount> CountBox(Box box, CancellationToken cancel = default)
+    {
+        BoxAnswer answer = await Send(HttpMethod.Post, "systems/search", BoxSearch(box, size: 1, page: 0), ReadBox, cancel);
+        return Total(answer);
+    }
+
+    /// <summary>
+    /// One page of the systems Spansh knows in a box, <see cref="PageSize"/> at a time. Page
+    /// <paramref name="page"/> holds systems page × 500 onwards, up to 500 of them; a box holding
+    /// more than 10,000 cannot be listed whole. Spansh's answer runs to over 2 MB, of which only a
+    /// few fields a system are read, as it arrives and away from the calling thread.
+    /// A page short of the systems it should hold (Spansh said how many the box has) is refused
+    /// rather than taken for the whole page. Repeats across pages are left for the caller to drop.
+    /// </summary>
+    /// <param name="page">0 to <see cref="MostPages"/> − 1.</param>
+    /// <exception cref="SpanshException">No page: the message says why in the player's words.</exception>
+    public async Task<BoxPage> ListBoxPage(Box box, int page, CancellationToken cancel = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(page);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(page, MostPages);
+        BoxAnswer answer = await Send(HttpMethod.Post, "systems/search", BoxSearch(box, PageSize, page), ReadBox, cancel, PageAnswerSeconds);
+        BoxCount count = Total(answer);
+        List<BoxRow?> rows = answer.Results ?? throw new SpanshException(Unreadable, temporary: true);
+
+        int due = Math.Clamp(count.Count - page * PageSize, 0, PageSize);
+        if (rows.Count != due)
+            throw new SpanshException(
+                $"Spansh sent {rows.Count} systems where it should have sent {due}. Try again in a moment.", temporary: true);
+
+        List<BoxSystem> systems = [];
+        foreach (BoxRow? row in rows)
+        {
+            // A row without a name, number or position cannot be placed or told apart, so it is
+            // left out; it still counts as sent above. (None has been seen.)
+            if (row is { Name: { Length: > 0 } name, Id64: > 0 and long id64, X: { } x, Y: { } y, Z: { } z })
+                systems.Add(new BoxSystem(name, id64, x, y, z, row.BodyCount, row.Bodies, When(row.UpdatedAt)));
+        }
+        if (systems.Count < rows.Count)
+            Log.Info($"Spansh box listing, page {page}: {rows.Count - systems.Count} of {rows.Count} rows had no name, number or position and were left out");
+        return new BoxPage(page, count, systems);
+    }
+
+    static BoxCount Total(BoxAnswer answer) =>
+        answer.Count is >= 0 and int count ? new BoxCount(count, count >= CountCap) : throw new SpanshException(Unreadable, temporary: true);
+
+    /// <summary>
+    /// The systems Spansh has under these exact names: its own system search with the list of names as the name
+    /// filter, one request for all of them (at most <see cref="MostNames"/>), asking for as many systems as names.
+    /// For the 3D map's check of a plotted route, whose stops the game names. Spansh's answer brings every body of
+    /// each system, of which nothing is kept: it is read as it arrives and away from the calling thread, as a page
+    /// of a box listing is. Nothing is kept here either: the 3D map keeps what it asked.
+    /// </summary>
+    /// <returns>
+    /// The systems, and whether that is all Spansh found: it found more than it sent when two systems share a name,
+    /// and a name missing from the answer may then be among those left out.
+    /// </returns>
+    /// <exception cref="SpanshException">No answer: the message says why in the player's words.</exception>
+    public async Task<(IReadOnlyList<NamedSystem> Systems, bool Complete)> SystemsNamed(IReadOnlyList<string> names, CancellationToken cancel = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfZero(names.Count);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(names.Count, MostNames);
+        BoxAnswer answer = await Send(HttpMethod.Post, "systems/search", NameSearch(names), ReadBox, cancel, PageAnswerSeconds);
+        BoxCount count = Total(answer);
+        List<BoxRow?> rows = answer.Results ?? throw new SpanshException(Unreadable, temporary: true);
+        // A row without a name cannot be matched to a stop; one without a place still says Spansh has the system.
+        List<NamedSystem> systems = [.. rows.OfType<BoxRow>().Where(row => row.Name is { Length: > 0 })
+            .Select(row => new NamedSystem(row.Name!, row.Id64 ?? 0, row.X, row.Y, row.Z))];
+        return (systems, count.Count <= rows.Count);
+    }
+
+    /// <summary>
+    /// The systems Spansh knows within <paramref name="radius"/> light years of a point, nearest first: its own system
+    /// search with a distance filter round the point (the search <see cref="Nearest"/> sends, and Studio Market's
+    /// Powerplay search), one page of <see cref="PageSize"/> at most. For the 3D map's "Within reach", which lists the
+    /// systems one jump away. Spansh's answer brings every body of each system, of which nothing is kept: it is read
+    /// as it arrives and away from the calling thread, as a page of a box listing is. Nothing is kept here either.
+    /// </summary>
+    /// <returns>
+    /// The systems (those Spansh gave no place for left out: they cannot be placed in the sphere), and how many Spansh
+    /// knows there: more than it sent when the answer was cut at <see cref="PageSize"/>.
+    /// </returns>
+    /// <exception cref="ArgumentOutOfRangeException">A radius that is not more than 0.</exception>
+    /// <exception cref="SpanshException">No answer: the message says why in the player's words.</exception>
+    public async Task<(IReadOnlyList<NamedSystem> Systems, int Count)> SystemsWithin(double x, double y, double z, double radius, CancellationToken cancel = default)
+    {
+        if (!(radius > 0) || !double.IsFinite(radius)) throw new ArgumentOutOfRangeException(nameof(radius), radius, "A distance of more than 0 light years.");
+        // As Spansh's own site sends it: the distance limits are text.
+        string search = JsonSerializer.Serialize(new
+        {
+            filters = new { distance = new { min = "0", max = radius.ToString("0.##", CultureInfo.InvariantCulture) } },
+            sort = new[] { new { distance = new { direction = "asc" } } },
+            size = PageSize,
+            page = 0,
+            reference_coords = new { x, y, z },
+        }, AsWritten);
+        BoxAnswer answer = await Send(HttpMethod.Post, "systems/search", new StringContent(search, Encoding.UTF8, "application/json"), ReadBox, cancel, PageAnswerSeconds);
+        BoxCount count = Total(answer);
+        List<BoxRow?> rows = answer.Results ?? throw new SpanshException(Unreadable, temporary: true);
+        List<NamedSystem> systems = [.. rows.OfType<BoxRow>().Where(row => row is { Name.Length: > 0, X: not null, Y: not null, Z: not null })
+            .Select(row => new NamedSystem(row.Name!, row.Id64 ?? 0, row.X, row.Y, row.Z))];
+        return (systems, Math.Max(count.Count, rows.Count));
+    }
+
+    /// <summary>
+    /// A search for systems by their exact names: Spansh's name filter given the names as a list, as many systems
+    /// asked for as names, the first page. The names go as written (see <see cref="AsWritten"/>): "Barnard's Star",
+    /// not "Barnard's Star".
+    /// </summary>
+    static StringContent NameSearch(IReadOnlyList<string> names)
+    {
+        string search = JsonSerializer.Serialize(new
+        {
+            filters = new { name = new { value = names } },
+            size = names.Count,
+            page = 0,
+        }, AsWritten);
+        return new StringContent(search, Encoding.UTF8, "application/json");
+    }
+
+    // "<=>" written as it is, the way Spansh's own site sends it: by default the < and > would go as
+    // escape codes, which mean the same to Spansh but make the request text differ from its own.
+    static readonly JsonSerializerOptions AsWritten = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    /// <summary>
+    /// A search for the systems in a box, sorted by number (the order Spansh pages in), as Spansh's
+    /// own site sends it.
+    /// </summary>
+    static StringContent BoxSearch(Box box, int size, int page)
+    {
+        if (!(box.X1 > box.X0 && box.Y1 > box.Y0 && box.Z1 > box.Z0))
+            throw new ArgumentException("A box needs some width, height and depth.", nameof(box));
+
+        // "<=>" takes in both ends, but a box owns only its near faces: a star on a far face
+        // belongs to the next box. Every position is a whole number of 32nds of a light year, so
+        // the far end sent is a 64th short of the first position on or past the face. For the
+        // game's grid, whose faces lie on whole light years, that is the face less 1/64 ly. (Seen
+        // live in October 2026: Sphuedu's sector holds 2,522 systems with its far faces, 2,521 without.)
+        static double[] Span(double from, double to) => [from, Math.Ceiling(to * 32) / 32 - 1.0 / 64];
+
+        string search = JsonSerializer.Serialize(new
+        {
+            filters = new
+            {
+                x = new { comparison = "<=>", value = Span(box.X0, box.X1) },
+                y = new { comparison = "<=>", value = Span(box.Y0, box.Y1) },
+                z = new { comparison = "<=>", value = Span(box.Z0, box.Z1) },
+            },
+            sort = new[] { new { id64 = new { direction = "asc" } } },
+            size,
+            page,
+        }, AsWritten);
+        return new StringContent(search, Encoding.UTF8, "application/json");
     }
 
     /// <summary>
@@ -269,42 +560,137 @@ public sealed class Spansh(HttpMessageHandler? handler = null) : IDisposable
     {
         var client = new HttpClient(handler ?? new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All })
         {
-            Timeout = TimeSpan.FromSeconds(20),   // for one call; the wait for a whole route is bounded by GiveUpSeconds
+            // Every call sets its own time limits (see Send); the wait for a whole route is bounded by GiveUpSeconds.
+            Timeout = Timeout.InfiniteTimeSpan,
         };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(Program.UserAgent);
         return client;
     }
 
     /// <summary>One call. Gives Spansh's JSON answer, or throws a <see cref="SpanshException"/> the player can read.</summary>
-    async Task<JsonElement> Send(HttpMethod method, string path, HttpContent? content, CancellationToken cancel)
+    Task<JsonElement> Send(HttpMethod method, string path, HttpContent? content, CancellationToken cancel) =>
+        Send(method, path, content, ReadWhole, cancel);
+
+    /// <summary>
+    /// One call, whose answer <paramref name="read"/> takes in as it arrives. Gives what that makes of
+    /// it, or throws a <see cref="SpanshException"/> the player can read.
+    /// </summary>
+    /// <param name="answerSeconds">How long Spansh has to start answering; <see cref="ReadSeconds"/> more are allowed for the rest.</param>
+    async Task<T> Send<T>(
+        HttpMethod method, string path, HttpContent? content, Func<Stream, CancellationToken, Task<T>> read, CancellationToken cancel,
+        int answerSeconds = AnswerSeconds)
     {
         try
         {
             using var message = new HttpRequestMessage(method, Api + path) { Content = content };
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+            limit.CancelAfter(TimeSpan.FromSeconds(answerSeconds));
             // Started on a background thread: before its first real wait, sending looks up Windows'
             // proxy settings, which on some networks takes seconds, and the UI thread must never
-            // stand still. What follows the await is back on the calling thread.
-            using HttpResponseMessage response = await Task.Run(() => http.SendAsync(message, cancel), cancel);
-            using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancel));
-            // Spansh explains every refusal in an "error" field, whatever the status code.
-            if (body.RootElement.Text("error") is { Length: > 0 } error) throw new SpanshException(Readable(error));
+            // stand still. The answer is read there too, as it arrives: a page of a box listing is
+            // over 2 MB once unpacked. What follows each await is back on the calling thread.
+            using HttpResponseMessage response = await Task.Run(() => http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, limit.Token), limit.Token);
+            limit.CancelAfter(TimeSpan.FromSeconds(ReadSeconds));
+            T answer = await Task.Run(async () =>
+            {
+                await using Stream body = await response.Content.ReadAsStreamAsync(limit.Token);
+                return await read(body, limit.Token);   // which turns an "error" field into a SpanshException, whatever the status code
+            }, limit.Token);
             if (!response.IsSuccessStatusCode)
                 throw new SpanshException($"Spansh answered with error {(int)response.StatusCode}. Try again in a moment.", temporary: (int)response.StatusCode >= 500);
-            return body.RootElement.Clone();
+            return answer;
         }
         catch (HttpRequestException)
         {
             throw new SpanshException("Spansh could not be reached. Check your internet connection and try again.", temporary: true);
         }
+        catch (IOException)
+        {
+            throw new SpanshException("The connection to Spansh broke off. Check your internet connection and try again.", temporary: true);
+        }
         catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
         {
             throw new SpanshException("Spansh did not answer in time. Try again in a moment.", temporary: true);
         }
-        catch (JsonException)
+        catch (Exception unreadable) when (unreadable is JsonException or InvalidDataException)
         {
             throw new SpanshException(Unreadable, temporary: true);   // an error page instead of JSON, most likely
         }
     }
+
+    /// <summary>A short answer, read whole. Spansh explains every refusal in an "error" field, whatever the status code.</summary>
+    static async Task<JsonElement> ReadWhole(Stream body, CancellationToken cancel)
+    {
+        using JsonDocument answer = await JsonDocument.ParseAsync(body, default, cancel);
+        if (answer.RootElement.Text("error") is { Length: > 0 } error) throw new SpanshException(Readable(error));
+        return answer.RootElement.Clone();
+    }
+
+    // Spansh is loose with types, so numbers sent as text are read too.
+    static readonly JsonSerializerOptions BoxReading = new() { NumberHandling = JsonNumberHandling.AllowReadingFromString };
+
+    /// <summary>
+    /// A box search's answer, read as it streams past: only the fields of <see cref="BoxAnswer"/> are
+    /// kept, and everything else (each body's own details, values, economy and so on) is passed over.
+    /// </summary>
+    static async Task<BoxAnswer> ReadBox(Stream body, CancellationToken cancel)
+    {
+        BoxAnswer answer = await JsonSerializer.DeserializeAsync<BoxAnswer>(body, BoxReading, cancel)
+            ?? throw new SpanshException(Unreadable, temporary: true);
+        if (answer.Error is { Length: > 0 } error) throw new SpanshException(Readable(error));
+        return answer;
+    }
+
+    /// <summary>What Studio reads of a box search's answer, under Spansh's own names.</summary>
+    sealed class BoxAnswer
+    {
+        [JsonPropertyName("error")] public string? Error { get; init; }
+        [JsonPropertyName("count")] public int? Count { get; init; }
+        [JsonPropertyName("results")] public List<BoxRow?>? Results { get; init; }
+    }
+
+    /// <summary>What Studio reads of one system in a box search's answer.</summary>
+    sealed class BoxRow
+    {
+        [JsonPropertyName("name")] public string? Name { get; init; }
+        [JsonPropertyName("id64")] public long? Id64 { get; init; }
+        [JsonPropertyName("x")] public double? X { get; init; }
+        [JsonPropertyName("y")] public double? Y { get; init; }
+        [JsonPropertyName("z")] public double? Z { get; init; }
+        [JsonPropertyName("body_count")] public int? BodyCount { get; init; }
+
+        // Only how many: the bodies' own details are most of a page.
+        [JsonPropertyName("bodies"), JsonConverter(typeof(Tally))] public int Bodies { get; init; }
+
+        [JsonPropertyName("updated_at")] public string? UpdatedAt { get; init; }
+    }
+
+    /// <summary>
+    /// Reads a list as the number of entries in it, keeping none of them; anything else as 0.
+    /// (TrySkip, not Skip: while an answer is still arriving Skip refuses to work, even though the
+    /// serializer has already gathered the whole list before handing it over.)
+    /// </summary>
+    sealed class Tally : JsonConverter<int>
+    {
+        public override int Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
+        {
+            if (reader.TokenType != JsonTokenType.StartArray)
+                return reader.TrySkip() ? 0 : throw new JsonException();
+            int entries = 0;
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+            {
+                entries++;
+                if (!reader.TrySkip()) throw new JsonException();   // past the whole entry
+            }
+            return entries;
+        }
+
+        public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options) => writer.WriteNumberValue(value);
+    }
+
+    // Spansh writes "2024-09-12T00:47:21Z"; anything it may write instead that does not read as a time counts as not said.
+    static DateTime? When(string? text) =>
+        DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime at) ? at : null;
 
     static string Readable(string error) =>
         error.Contains("starting system", StringComparison.OrdinalIgnoreCase)
@@ -377,4 +763,18 @@ public sealed class Spansh(HttpMessageHandler? handler = null) : IDisposable
     };
 
     static bool Yes(JsonElement e, string name) => e.Flag(name) || Number(e, name) != 0;
+
+    // A system's number to the last digit, whether it comes as a number or as text (never through a
+    // double, which cannot hold it); 0 when there is none.
+    static long Address(JsonElement e, string name) => e.Field(name) switch
+    {
+        { ValueKind: JsonValueKind.Number } number when number.TryGetInt64(out long whole) => whole,
+        { ValueKind: JsonValueKind.String } text
+            when long.TryParse(text.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out long whole) => whole,
+        _ => 0,
+    };
+
+    // The entry gives all three of x, y and z, as numbers or as text.
+    static bool Placed(JsonElement e) =>
+        new[] { "x", "y", "z" }.All(axis => e.Field(axis)?.ValueKind is JsonValueKind.Number or JsonValueKind.String);
 }

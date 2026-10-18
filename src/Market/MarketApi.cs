@@ -8,6 +8,7 @@ namespace EliteStudio.Market;
 /// Studio Market's routes, all under /api/market/: what the Market page shows of the hauling state
 /// and every operation it offers, plus the "market" live event whenever that state changes.
 ///   GET  hauling          everything the page shows, in one answer (see Picture below)
+///   GET  stations?system=Sol    {"stations":[...]}: the stations there that sell something, to pick the one to buy at from
 ///   POST search           search again
 ///   POST show             a row of the list: puts it on the overlay
 ///   POST accept           a row of the list: accepts it; with no row, the trade on the overlay
@@ -65,6 +66,8 @@ public static class MarketApi
                 nextStop = hauling.NextStop,
                 lookup = look is null ? null : new { look.Id, look.Name, look.Count, look.Paid, look.From, look.Source, look.Status },
                 settings = hauling.Settings,
+                // from a station to a system: the station the search buys at, the player's own choice or else where they are (or were last) docked
+                carryFrom = new { system = hauling.CarryFrom.System, station = hauling.CarryFrom.Station },
                 // what the search really uses, once the ship has had its say; and the ship's own say: the pad it
                 // needs, and how far it works out to jump with that cargo in the hold (0 while it is not known)
                 inUse = new
@@ -118,6 +121,9 @@ public static class MarketApi
         hauling.Changed += Push;
 
         web.Map("GET", "/api/market/hauling", _ => Answer());
+
+        web.Map("GET", "/api/market/stations", async request =>
+            WebResponse.Json(new { stations = await hauling.Stations(Trimmed(request.Query.GetValueOrDefault("system"))) }));
 
         web.Map("POST", "/api/market/search", _ =>
         {

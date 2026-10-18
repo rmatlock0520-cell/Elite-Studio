@@ -63,6 +63,11 @@ public sealed record OverlaySettings
 
     /// <summary>How solid the background is, 0.2 to 1. Text and border are always solid.</summary>
     public double Opacity { get; init; } = 0.92;
+    /// <summary>
+    /// How solid the two boxes that show a page are (Find by name and the route), 0.3 to 1. Such a
+    /// box cannot have a background of its own strength: the whole box, letters and all, is this solid.
+    /// </summary>
+    public double PageOpacity { get; init; } = 1;
     /// <summary>Show the boxes only while Elite (or Studio's own window) is in front.</summary>
     public bool OnlyWhenElite { get; init; } = true;
     /// <summary>Colour of the border and the headings, as #RRGGBB.</summary>
@@ -123,6 +128,7 @@ public sealed record OverlaySettings
             HotNav = KeyOr(HotNav, Defaults.HotNav),
             HotLoadouts = KeyOr(HotLoadouts, Defaults.HotLoadouts),
             Opacity = Math.Round(Math.Clamp(Opacity, 0.2, 1), 2),
+            PageOpacity = Math.Round(Math.Clamp(PageOpacity, 0.3, 1), 2),
             Accent = Accent is not null && Regex.IsMatch(Accent, "^#[0-9A-Fa-f]{6}$") ? Accent : Defaults.Accent,
         };
         foreach (string name in Boxes)
@@ -182,6 +188,34 @@ public sealed class OverlayHost : IDisposable
         public string Setting { get; set; } = "";
     }
 
+    /// <summary>The boxes that show a page of Studio's own, and the page each shows.</summary>
+    static readonly Dictionary<string, string> Pages = new() { ["market"] = "market/find.html", ["nav"] = "nav/" };
+
+    /// <summary>What a page in a box sends to have another box opened: the box, and what its page is to do ("?to=Sol"; "" for nothing).</summary>
+    sealed class OpenBody
+    {
+        public string Box { get; set; } = "";
+        public string Page { get; set; } = "";
+    }
+
+    /// <summary>
+    /// POST /api/overlay/open: a page shown in one box wants another box's page, with something for
+    /// it to do (Find by name's "Route" hands a system to the Routes page). That box is shown, with
+    /// its page opened so; the box that asked stays as it is, with its own key still its own. Only a
+    /// box that shows a page can be opened this way, and only with words for that page after a "?".
+    /// </summary>
+    WebResponse Open(WebRequest request)
+    {
+        OpenBody asked = request.Read<OpenBody>();
+        string name = (asked.Box ?? "").Trim(), doing = (asked.Page ?? "").Trim();
+        if (!Pages.TryGetValue(name, out string? page)) return WebResponse.Error("That part of Studio has no overlay to open.", 400);
+        if (doing.Length > 0 && !doing.StartsWith('?')) return WebResponse.Error("An overlay opens with words for its own page only.", 400);
+        if (!boxes.TryGetValue(name, out OverlayWindow? box)) return WebResponse.Error("The overlay is not running.", 409);
+        box.Open(web.Url + page + "?overlay" + (doing.Length > 1 ? "&" + doing[1..] : ""));
+        Apply(Settings.With(name, Settings.Box(name) with { On = true }));
+        return WebResponse.Json(Answer());
+    }
+
     /// <param name="headless">
     /// True for a run without windows: the settings and their routes work, nothing is shown and no key is
     /// taken. A page can still have a controller button listened for; in the game none does anything.
@@ -194,6 +228,7 @@ public sealed class OverlayHost : IDisposable
         web.Map("GET", "/api/overlay/settings", _ => WebResponse.Json(Answer()));
         web.Map("POST", "/api/overlay/settings", Change);
         web.Map("POST", "/api/overlay/listen", Listen);
+        web.Map("POST", "/api/overlay/open", Open);
         web.Map("POST", "/api/overlay/old-tool-read", _ =>
         {
             Apply(Settings with { CopiedFrom = null });
@@ -210,8 +245,8 @@ public sealed class OverlayHost : IDisposable
         {
             // Two boxes show a page of Studio's own, whole: Find by name with its results, and Routes with the route beside it.
             // "?overlay" tells a page it is in a box (see studio.js).
-            string? page = name switch { "market" => "market/find.html?overlay", "nav" => "nav/?overlay", _ => null };
-            var box = new OverlayWindow(name, Settings, page is null ? null : () => web.Url + page);
+            string? page = Pages.GetValueOrDefault(name);
+            var box = new OverlayWindow(name, Settings, page is null ? null : () => web.Url + page + "?overlay");
             box.Clicked += tag => Click(name, tag);
             box.Moved += (x, y) => Apply(Settings.With(name, Settings.Box(name) with { X = x, Y = y }));
             game.Changed += box.Redraw;

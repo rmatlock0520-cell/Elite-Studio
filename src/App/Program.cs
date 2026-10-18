@@ -175,8 +175,24 @@ public static class Program
         // (--offline: a practice run reaches neither Spansh nor EDAstro):
         using var spansh = new Nav.Spansh(options.ContainsKey("offline") ? new Offline() : null);
         Nav.NavRoutes route = Nav.NavApi.Map(web, watcher.State, settings, spansh);
-        Nav.ExploreTrip trip = Nav.ExploreApi.Map(web, watcher.State, settings, spansh,
-            new Nav.ExploreCoverage(Paths.DataDir, options.ContainsKey("offline") ? new Offline() : null));
+        // One copy of EDAstro's sector list for the flat map and the 3D map, so a new list reaches both.
+        var coverage = new Nav.ExploreCoverage(Paths.DataDir, options.ContainsKey("offline") ? new Offline() : null);
+        Nav.ExploreTrip trip = Nav.ExploreApi.Map(web, watcher.State, settings, spansh, coverage);
+        // The 3D map: the same Spansh client and sector list, and a folder of its own for what it keeps. Its detailed map
+        // reads Spansh's list of every system from that folder when the player has downloaded it there (no internet).
+        // Its "Check my targets" switch, what of a plotted route it checks, how long a recorded system is remembered and
+        // Within reach's switch and range are kept in settings.json; what its checks found, in heatmap\checks.json.
+        // Nav scan's switch and volume are kept there too, and the screenshots it has read in heatmap\navscan-read.json.
+        string heatmap = Path.Combine(Paths.DataDir, "heatmap");
+        var heatmapSurvey = new Nav.HeatmapSurvey(spansh, heatmap);
+        var fineMap = new Nav.FineMap(heatmap);
+        var routeCheck = new Nav.HeatmapFinds(watcher.State, heatmapSurvey, fineMap, settings);
+        // Nav scan watches the player's screenshot folders while it is on (off unless the player turns it on). A practice
+        // copy watches none: it must not read the player's real pictures.
+        using var navScan = new Nav.NavScan(watcher.State, routeCheck, heatmap, settings, places: Paths.Practice ? () => [] : null);
+        Nav.HeatmapApi.Map(web, watcher.State, trip, spansh, coverage, heatmapSurvey,
+            new Nav.NebulaList(heatmap, options.ContainsKey("offline") ? new Offline() : null), new Nav.FirstsLog(watcher.State, Paths.JournalDir, heatmap),
+            fineMap, settings, routeCheck, navScan: navScan);
         Loadouts.EngineeringPlanner planner = Loadouts.EngineeringApi.Map(web, watcher.State, settings);
         Loadouts.GuardianApi.Map(web, watcher.State, settings);
         // And Studio Market's: one for its two kinds of search, so they share one queue to the community's servers, one memory
@@ -186,8 +202,9 @@ public static class Program
         string? oldTool = Paths.Practice ? "" : null;
         var hauling = new Market.Hauling(watcher.State, settings, new Market.TradeSearch(marketData), oldSettingsFile: oldTool);
         Market.MarketApi.Map(web, hauling);
-        // Hauling and the route in the in-game overlay. It hooks itself onto the overlay's boxes and hauling's changes, and they keep it alive.
-        _ = new Market.HaulOverlay(overlay, hauling, route, trip, watcher.State, oldSettingsFile: oldTool);
+        // Hauling and the route in the in-game overlay, with the 3D map's check of the plotted route. It hooks itself onto
+        // the overlay's boxes and the changes it shows, and they keep it alive.
+        _ = new Market.HaulOverlay(overlay, hauling, route, trip, watcher.State, oldSettingsFile: oldTool, routeCheck: routeCheck, navScan: navScan);
         // The price list of every station whose commodities screen the player opens, kept for "Find by name" (the owner, 11 October 2026).
         var stationBook = new Market.StationBook(watcher.State, Path.Combine(Paths.DataDir, "stations.json"));
         Market.Finder finder = Market.FindApi.Map(web, watcher.State, hauling, marketData, book: stationBook);

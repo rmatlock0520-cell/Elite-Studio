@@ -36,6 +36,7 @@ public sealed class OverlayWindow : Window
     const int Layered = 0x80000, ClickThrough = 0x20, NeverActive = 0x8000000, NotInAltTab = 0x80;
     const int MainMonitorWidth = 0, MainMonitorHeight = 1;
     const uint KeepSize = 0x0001, DoNotActivate = 0x0010;
+    const uint WholeWindowAlpha = 0x2;   // LWA_ALPHA: one share of see-through for the whole window
     const int TagSearchSteps = 14;   // how far up from a clicked piece its tag is looked for, as in the Haul Overlay
     const string DragTag = "box:drag";
     static readonly IntPtr AboveEverything = new(-1);
@@ -59,6 +60,7 @@ public sealed class OverlayWindow : Window
     readonly Border strip = new();
     readonly StackPanel pageBox = new();
     bool loaded;
+    string? wanted;   // the address the page is to show in place of its own (see Open); null: its own
 
     /// <summary>
     /// How big a box with a page is at size 1: this share of the size its page is laid out at. The
@@ -79,7 +81,7 @@ public sealed class OverlayWindow : Window
     public OverlayWindow(string name, OverlaySettings look, Func<string>? page = null)
     {
         (this.name, this.look, this.page) = (name, look, page);
-        all.Add(this);
+        lock (all) all.Add(this);
 
         Title = "Elite Studio overlay";
         WindowStyle = WindowStyle.None;
@@ -147,8 +149,16 @@ public sealed class OverlayWindow : Window
     /// The player counts as being in the game: Elite is the window in front, or one of the boxes is
     /// while it takes clicks. A box that is shown in the game is itself the window in front, and the
     /// hotkeys and the boxes must not go away because of that.
+    /// Only the boxes of the thread asking are asked: a window can be asked only on its own thread. Studio makes every
+    /// box on its one UI thread, so that is all of them; the tests make boxes on several threads at once.
     /// </summary>
-    internal static bool InGame => EliteWindow.IsForeground || (EliteWindow.Running && all.Any(box => box.TakingClicks && box.IsInFront));
+    internal static bool InGame => EliteWindow.IsForeground || (EliteWindow.Running && Boxes().Any(box => box.CheckAccess() && box.TakingClicks && box.IsInFront));
+
+    /// <summary>Every box there is, as they are now: the list may grow on another thread while it is looked through.</summary>
+    static OverlayWindow[] Boxes()
+    {
+        lock (all) return [.. all];
+    }
 
     /// <summary>Shows a short line in the box's top strip for a few seconds ("✔ Sol copied").</summary>
     public void Say(string text)
@@ -357,6 +367,20 @@ public sealed class OverlayWindow : Window
         look = changed;
         Redraw();
         Place();   // a new position or gap moves the box without changing its size
+        // A box with a page is see-through as a whole (see SetStyles), and how much is one of the settings.
+        if (view is not null && new WindowInteropHelper(this).Handle is var handle && handle != IntPtr.Zero) SetStyles(handle);
+    }
+
+    /// <summary>
+    /// A box with a page shows another address: the same page with something for it to do ("Route"
+    /// on a station hands its system to the Routes page), or what it is to open with when it has not
+    /// been on screen yet. A box that draws its own content has no page to change.
+    /// </summary>
+    internal void Open(string address)
+    {
+        if (view is null) return;
+        wanted = address;
+        if (loaded && view.CoreWebView2 is { } core) core.Navigate(address);
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -412,11 +436,15 @@ public sealed class OverlayWindow : Window
     /// </summary>
     void SetStyles(IntPtr handle)
     {
-        // A box with a page is an ordinary solid window: "layered" would leave it undrawn, and it is never click-through.
+        // A box with a page is an ordinary window, never click-through. WPF's own see-through windows (each pixel with its
+        // own share) leave a web view undrawn, so such a box is see-through the plain Windows way instead: the whole
+        // window, page and letters alike, by one share. At full strength it is not "layered" at all, as it always was.
         int through = view is null ? ClickThrough : 0;
-        int styles = GetWindowLong(handle, ExtendedStyle) | NotInAltTab | (view is null ? Layered : 0);
+        bool faded = view is not null && look.PageOpacity < 1;
+        int styles = (GetWindowLong(handle, ExtendedStyle) | NotInAltTab) & ~(view is null ? 0 : Layered) | (view is null || faded ? Layered : 0);
         styles = TakingClicks ? styles & ~(ClickThrough | NeverActive) : styles | through | NeverActive;
         SetWindowLong(handle, ExtendedStyle, styles);
+        if (faded) SetLayeredWindowAttributes(handle, 0, (byte)Math.Round(look.PageOpacity * 255), WholeWindowAlpha);
     }
 
     /// <summary>
@@ -434,7 +462,7 @@ public sealed class OverlayWindow : Window
             view.CoreWebView2.Settings.AreDevToolsEnabled = false;
             view.CoreWebView2.Settings.IsStatusBarEnabled = false;
             view.CoreWebView2.NewWindowRequested += (_, e) => e.Handled = true;
-            view.CoreWebView2.Navigate(page!());
+            view.CoreWebView2.Navigate(wanted ?? page!());
         }
         catch (Exception problem)   // WebView2 reports a missing or broken engine with several unrelated exception types
         {
@@ -455,7 +483,7 @@ public sealed class OverlayWindow : Window
     void HandBack()
     {
         if (!IsInFront) return;
-        OverlayWindow? other = all.FirstOrDefault(box => box != this && box.IsVisible && box.TakingClicks);
+        OverlayWindow? other = Boxes().FirstOrDefault(box => box != this && box.CheckAccess() && box.IsVisible && box.TakingClicks);
         IntPtr next = other is null ? EliteWindow.Handle : new WindowInteropHelper(other).Handle;
         if (next != IntPtr.Zero) SetForegroundWindow(next);
     }
@@ -569,6 +597,9 @@ public sealed class OverlayWindow : Window
     static extern int SetWindowLong(IntPtr window, int index, int value);
 
     [DllImport("user32.dll")]
+    static extern bool SetLayeredWindowAttributes(IntPtr window, uint colourKey, byte alpha, uint flags);
+
+    [DllImport("user32.dll")]
     static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
 
     [DllImport("user32.dll")]
@@ -640,6 +671,27 @@ public static class Draw
         if (bold) run.FontWeight = FontWeights.SemiBold;
         if (size > 0) run.FontSize = size;
         line.Inlines.Add(run);
+        return line;
+    }
+
+    /// <summary>
+    /// Adds a small picture to a line, a little taller than its letters and in the colour of the text
+    /// (or the one given). Only the picture's shape is used. No picture adds nothing. A click on it
+    /// goes to what is behind it, as a click between two letters does.
+    /// </summary>
+    public static TextBlock Picture(this TextBlock line, ImageSource? picture, string? colour = null)
+    {
+        if (picture is null) return line;
+        double side = line.FontSize * 1.15;
+        var shape = new System.Windows.Shapes.Rectangle
+        {
+            Width = side, Height = side, Margin = new Thickness(0, 0, line.FontSize * 0.35, 0), IsHitTestVisible = false,
+            OpacityMask = new ImageBrush(picture) { Stretch = Stretch.Uniform },
+        };
+        if (colour is not null) shape.Fill = Brush(colour);
+        else shape.SetBinding(System.Windows.Shapes.Shape.FillProperty,
+            new System.Windows.Data.Binding { RelativeSource = System.Windows.Data.RelativeSource.Self, Path = new PropertyPath(TextElement.ForegroundProperty) });
+        line.Inlines.Add(new InlineUIContainer(shape) { BaselineAlignment = BaselineAlignment.Center });
         return line;
     }
 

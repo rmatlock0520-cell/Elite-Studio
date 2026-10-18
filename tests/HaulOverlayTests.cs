@@ -25,8 +25,10 @@ sealed class BoxRig : IDisposable
     /// <param name="oldSettings">A Haul Overlay settings file to copy from on that first run; none when left out.</param>
     /// <param name="route">A Studio Nav route saved earlier; none when left out.</param>
     /// <param name="market">Studio's own "market" settings as saved, as JSON; the standard ones when left out.</param>
+    /// <param name="routeCheck">The 3D map's check of the route plotted in the game, as it stands; none when left out.</param>
+    /// <param name="navScan">The 3D map's Nav scan line, as it stands; none (Nav scan off) when left out.</param>
     public BoxRig(IEnumerable<string>? history = null, Func<SearchRequest, SearchResult>? answer = null, OverlaySettings? overlay = null,
-        string? oldSettings = null, NavRoute? route = null, string? market = null)
+        string? oldSettings = null, NavRoute? route = null, string? market = null, Func<RouteCheckView?>? routeCheck = null, Func<NavScanLine?>? navScan = null)
     {
         Haul = new HaulRig(history ?? HaulRig.In(HaulRig.Alpha), answer ?? Trades, savedSettings: market is null ? null : $"{{ \"market\": {market} }}");
         // Its own file: the rig's Hauling keeps its settings in another one. In the app both share one.
@@ -51,6 +53,8 @@ sealed class BoxRig : IDisposable
                 return Task.CompletedTask;
             },
             Clickable = () => Clickable,
+            RouteCheck = routeCheck ?? (() => null),
+            NavScanNow = navScan ?? (() => null),
         };
     }
 

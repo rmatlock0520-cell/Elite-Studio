@@ -49,6 +49,9 @@ sealed class RecordedServices : HttpMessageHandler
     /// <summary>While set, requests whose address holds this text fail as if the service could not be reached.</summary>
     public string? Down { get; set; }
 
+    /// <summary>A refusal the service sends instead of an answer ("429 Too Many Requests"); null lets the request through.</summary>
+    public Func<string, HttpStatusCode?>? Refuse { get; set; }
+
     /// <summary>A test's own answer to a request; without one, or when it gives null, the recording answers.</summary>
     public Func<string, string?>? Instead { get; set; }
 
@@ -65,6 +68,7 @@ sealed class RecordedServices : HttpMessageHandler
             UserAgents.Add(request.Headers.UserAgent.ToString());
         }
         if (Down is not null && address.Contains(Down, StringComparison.Ordinal)) throw new HttpRequestException("No such host is known.");
+        if (Refuse?.Invoke(asked) is { } refusal) return new HttpResponseMessage(refusal) { Content = new StringContent("", Encoding.UTF8, "text/plain") };
         (int status, string body) = Instead?.Invoke(asked) is { } own ? (200, own)
             : Answers.TryGetValue(asked, out (int Status, string Body) recorded) ? recorded
             : (404, "{\"error\":\"Not Found\"}");
@@ -81,7 +85,7 @@ sealed class RecordedServices : HttpMessageHandler
 /// </summary>
 public sealed class FindTests : IDisposable
 {
-    const string Ardent = "https://api.ardent-insight.com/v2", Spansh = "https://spansh.co.uk/api/stations";
+    const string Ardent = "https://api.ardent-insight.com/v2", Spansh = "https://spansh.co.uk/api/stations", Edsm = "https://www.edsm.net/api-system-v1/stations/shipyard";
     const string GoldAroundSol = Ardent + "/system/name/Sol/commodity/name/gold/nearby/exports?maxDistance=500&maxDaysAgo=2&minVolume=100&sort=distance&fleetCarriers=false";
     const string GoldInSol = Ardent + "/system/name/Sol/commodity/name/gold?maxDaysAgo=2";
 
@@ -102,7 +106,7 @@ public sealed class FindTests : IDisposable
     {
         data = new MarketData(net);
         web = new WebServer(rig.Game.JournalDir);   // no page is asked for here: any folder will do
-        FindApi.Map(web, rig.Watcher.State, rig.Hauling, data, () => clock);
+        FindApi.Map(web, rig.Watcher.State, rig.Hauling, data, () => clock).EdsmGap = TimeSpan.Zero;
     }
 
     public void Dispose()
@@ -275,7 +279,9 @@ public sealed class FindTests : IDisposable
         // As picked from the list, as somebody might type it, and the service's own code.
         foreach (string typed in (string[])["Low Temperature Diamonds", " low temperature diamonds ", "LowTemperatureDiamonds", "lowtemperaturediamond"])
             Assert.Equal("Where to buy Low Temperature Diamonds", (await Find("commodity", JsonSerializer.Serialize(new { name = typed }))).GetProperty("what").GetString());
-        Assert.Equal([Ardent + "/commodities", diamonds + "/nearby/exports?maxDistance=500&maxDaysAgo=2&minVolume=100&sort=distance&fleetCarriers=false", diamonds + "?maxDaysAgo=2"], Asked());
+        // (The third question is the one a list that comes back short brings: what the filters may have left out.)
+        Assert.Equal([Ardent + "/commodities", diamonds + "/nearby/exports?maxDistance=500&maxDaysAgo=2&minVolume=100&sort=distance&fleetCarriers=false",
+            diamonds + "/nearby/exports?maxDistance=500&maxDaysAgo=30&minVolume=100&sort=distance", diamonds + "?maxDaysAgo=2"], Asked());
 
         JsonElement medicines = await Find("commodity", """{ "name": "agri-medicines", "side": "sell" }""");
         Assert.Equal("Where to sell Agri-Medicines", medicines.GetProperty("what").GetString());
@@ -342,7 +348,10 @@ public sealed class FindTests : IDisposable
 
         // Fleet carriers, the price age in days and the least supply are part of the question itself.
         found = await Find("commodity", """{ "name": "Gold", "filters": { "carriers": true } }""");
-        Assert.Equal(GoldAroundSol.Replace("&fleetCarriers=false", ""), net.Asked[^1]);
+        Assert.Contains(GoldAroundSol.Replace("&fleetCarriers=false", ""), net.Asked);
+        // The carriers found bring one more question, to Spansh: who may dock at them. (Not recorded: nothing is known of these two.)
+        Assert.Equal(Spansh + """/search {"filters":{"type":{"value":["Drake-Class Carrier"]},"name":{"value":["G2M-BQQ","H1M-21L"]}},"size":2,"page":0}""", net.Asked[^1]);
+        Assert.All(Rows(found), row => Assert.Equal(row.GetProperty("type").GetString() == "Drake-Class Carrier" ? "access not known" : "", row.GetProperty("access").GetString()));
         Assert.Equal(["G2M-BQQ | Duamta | 9.88 | 1285.10882 | L | Drake-Class Carrier |  | 2356 | 1796 | 2026-10-08T01:52:59Z",
             "H1M-21L | Gendalla | 16.55 | 66.60763 | L | Drake-Class Carrier |  | 1508029 | 249 | 2026-10-08T17:56:37Z"],
             Rows(found).Where(row => row.GetProperty("type").GetString() == "Drake-Class Carrier").Select(Line));
@@ -361,6 +370,201 @@ public sealed class FindTests : IDisposable
         Assert.Equal(changes, rig.Changes);
         Assert.Equal(new MarketSettings(), rig.Hauling.Settings with { Presets = new MarketSettings().Presets });
         Assert.Equal(42, Rows(await Find("commodity", """{ "name": "Gold" }""")).Length);
+    }
+
+    [Fact]
+    public async Task A_station_found_by_name_comes_with_what_spansh_knows_of_it_for_its_own_sheet()
+    {
+        // A made-up fleet carrier as Spansh sends one, cut down to what the sheet reads.
+        const string carrier = """
+            {"count":1,"results":[{"name":"VBY-LXV","carrier_name":"ARGOS","type":"Drake-Class Carrier","carrier_docking_access":"Squadron Friends","system_name":"Fong Wang",
+              "distance":68.9863,"distance_to_arrival":18.2,"large_pads":8,"medium_pads":4,"small_pads":4,"market_id":3706813440,"market_updated_at":"2026-10-11T18:03:42Z",
+              "updated_at":"2026-10-11T18:05:00Z","outfitting_updated_at":"2026-07-17T16:00:10Z","government":"Private Ownership","controlling_minor_faction":"FleetCarrier",
+              "economies":[{"name":"Private Enterprise","share":100.0}],"system_controlling_power":"Yuri Grom","system_power_state":"Stronghold","system_population":11147154,
+              "material_trader":"Raw","services":[{"name":"Dock"},{"name":"Market"},{"name":"Refuel"},{"name":"Material Trader"},{"name":"Market"}],
+              "market":[{"commodity":"Gold","buy_price":45000,"sell_price":44000,"supply":10,"demand":0}]}]}
+            """;
+        net.Instead = asked => asked.StartsWith(Spansh + "/search ", StringComparison.Ordinal) && asked.Contains("\"name\":{\"value\":\"Argos\"}", StringComparison.Ordinal) ? carrier : null;
+        await Find("station", """{ "name": "Argos" }""");
+
+        var (status, prices) = await Call(web, "GET", "/api/market/find/prices?id=3706813440");
+        Assert.Equal(200, status);
+        JsonElement sheet = prices.GetProperty("details");
+        string Text(string name) => sheet.GetProperty(name).GetString()!;
+        Assert.Equal(("VBY-LXV", "ARGOS", "Fong Wang", "Drake-Class Carrier", "squadron and friends only"), (Text("station"), Text("carrierName"), Text("system"), Text("type"), Text("access")));
+        Assert.Equal((18.2, 68.99, 8, 4, 4), (sheet.GetProperty("starLs").GetDouble(), sheet.GetProperty("distanceLy").GetDouble(),
+            sheet.GetProperty("largePads").GetInt32(), sheet.GetProperty("mediumPads").GetInt32(), sheet.GetProperty("smallPads").GetInt32()));
+        // Each service once; a material trader says which kind. An economy that is all of the station needs no share.
+        Assert.Equal(["Dock", "Market", "Refuel", "Material Trader (Raw)"], Texts(sheet.GetProperty("services")));
+        Assert.Equal(["Private Enterprise"], Texts(sheet.GetProperty("economies")));
+        Assert.Equal(("Private Ownership", "", "FleetCarrier", "Yuri Grom", "Stronghold", ""), (Text("government"), Text("allegiance"), Text("faction"), Text("power"), Text("powerState"), Text("state")));
+        Assert.Equal(11147154, sheet.GetProperty("population").GetInt64());
+        Assert.Equal(new DateTime(2026, 10, 11, 18, 3, 42, DateTimeKind.Utc), sheet.GetProperty("marketUpdated").GetDateTime().ToUniversalTime());
+        Assert.Equal(JsonValueKind.Null, sheet.GetProperty("shipyardUpdated").ValueKind);   // it has no shipyard to report
+    }
+
+    [Fact]
+    public async Task A_station_name_opens_the_sheet_of_the_station_of_that_exact_name_in_that_system()
+    {
+        // Two stations of one name, as Spansh sends them for the name alone; the system named picks between them.
+        const string namesakes = """
+            {"count":2,"results":[{"name":"Smith Hub","type":"Coriolis Starport","system_name":"Far Away","market_id":11,"large_pads":5,"services":[{"name":"Market"}]},
+              {"name":"Smith Hub","type":"Outpost","system_name":"Near By","market_id":22,"medium_pads":3,"government":"Democracy","services":[{"name":"Refuel"}],
+               "market":[{"commodity":"Gold","buy_price":45000,"sell_price":44000,"supply":10,"demand":0}]}]}
+            """;
+        net.Instead = asked => asked.StartsWith(Spansh + "/search ", StringComparison.Ordinal) && asked.Contains("\"name\":{\"value\":[\"Smith Hub\"]}", StringComparison.Ordinal) ? namesakes : null;
+
+        var (status, sheet) = await Call(web, "GET", "/api/market/inspect/station?name=" + Uri.EscapeDataString(" Smith Hub ") + "&system=" + Uri.EscapeDataString("near by"));
+        Assert.Equal(200, status);
+        Assert.Equal(("Smith Hub", "Near By", "Outpost", "Democracy", 3), (sheet.GetProperty("station").GetString(), sheet.GetProperty("system").GetString(),
+            sheet.GetProperty("type").GetString(), sheet.GetProperty("government").GetString(), sheet.GetProperty("mediumPads").GetInt32()));
+        // The system goes into the question too, and Sol by where it lies (the game has said).
+        Assert.Equal(Spansh + """/search {"filters":{"name":{"value":["Smith Hub"]},"system_name":{"value":["near by"]}},"size":5,"page":0,"reference_coords":{"x":0,"y":0,"z":0}}""", net.Asked[^1]);
+        // Its price list came with it, and can be opened from the sheet without another question.
+        int asked = net.Asked.Count;
+        Assert.Equal("Smith Hub", (await Call(web, "GET", "/api/market/find/prices?id=22")).Json.GetProperty("station").GetString());
+        Assert.Equal(asked, net.Asked.Count);
+
+        // Without a system, the first one Spansh sends. A name it does not know, or not in that system, is said so.
+        Assert.Equal("Far Away", (await Call(web, "GET", "/api/market/inspect/station?name=Smith%20Hub")).Json.GetProperty("system").GetString());
+        var (missing, why) = await Call(web, "GET", "/api/market/inspect/station?name=Smith%20Hub&system=Nowhere");
+        Assert.Equal((404, "Spansh knows no station called \"Smith Hub\" in Nowhere."), (missing, why.GetProperty("error").GetString()));
+        Assert.Equal(400, (await Call(web, "GET", "/api/market/inspect/station?name=%20")).Status);
+    }
+
+    [Fact]
+    public async Task A_system_name_opens_the_sheet_of_that_star_system_with_its_factions_and_its_stations()
+    {
+        const string systems = "https://spansh.co.uk/api/systems/search";
+        const string star = """
+            {"count":1,"results":[{"name":"Fong Wang","allegiance":"Federation","government":"Corporate","security":"High","population":11147154,"primary_economy":"Refinery",
+              "secondary_economy":"Industrial","controlling_power":"Yuri Grom","power_state":"Stronghold","power":["Yuri Grom","Felicia Winters"],
+              "controlling_minor_faction":"Fong Wang Limited","controlling_minor_faction_state":"Boom","region":"Inner Orion Spur","needs_permit":false,"x":3,"y":4,"z":0,
+              "body_count":27,"updated_at":"2026-10-12T20:39:30Z",
+              "minor_faction_presences":[{"name":"Allied Fong Wang Front","allegiance":"Independent","government":"Dictatorship","influence":0.074597,"state":"None"},
+                {"name":"Fong Wang Limited","allegiance":"Federation","government":"Corporate","influence":0.5512,"state":"Boom"}],
+              "stations":[{"name":"VBY-LXV","type":"Drake-Class Carrier","distance_to_arrival":18.2,"large_pads":8,"has_market":true},
+                {"name":"Far Port","type":"Coriolis Starport","distance_to_arrival":900.4,"large_pads":4,"has_market":true,"has_shipyard":true,"has_outfitting":true},
+                {"name":"Near Post","type":"Outpost","distance_to_arrival":58.6,"medium_pads":2,"has_market":true}]}]}
+            """;
+        // (As typed, capitals and all: Spansh does not mind them. A name it does not know brings an empty list.)
+        net.Instead = asked => !asked.StartsWith(systems + " ", StringComparison.Ordinal) ? null
+            : asked.Contains("\"fong wang\"", StringComparison.Ordinal) ? star : """{"count":0,"results":[]}""";
+
+        var (status, sheet) = await Call(web, "GET", "/api/market/inspect/system?name=fong%20wang");
+        Assert.Equal(200, status);
+        string Text(string name) => sheet.GetProperty(name).GetString()!;
+        Assert.Equal(("Fong Wang", "Federation", "Corporate", "High", "Refinery, Industrial", "Yuri Grom", "Stronghold", "Fong Wang Limited", "Boom", "Inner Orion Spur"),
+            (Text("name"), Text("allegiance"), Text("government"), Text("security"), Text("economy"), Text("power"), Text("powerState"), Text("faction"), Text("factionState"), Text("region")));
+        Assert.Equal((5.0, 11147154, 27, false), (sheet.GetProperty("distanceLy").GetDouble(), sheet.GetProperty("population").GetInt64(), sheet.GetProperty("bodies").GetInt32(), sheet.GetProperty("needsPermit").GetBoolean()));
+        Assert.Equal(["Yuri Grom", "Felicia Winters"], Texts(sheet.GetProperty("powers")));
+        // The factions by their influence, in hundredths; a faction in no state has none to show.
+        Assert.Equal(["Fong Wang Limited 55.1 Boom", "Allied Fong Wang Front 7.5 "],
+            sheet.GetProperty("factions").EnumerateArray().Select(faction => $"{faction.GetProperty("name").GetString()} {faction.GetProperty("influence").GetDouble()} {faction.GetProperty("state").GetString()}"));
+        // Stations nearest the star first, fleet carriers after them.
+        Assert.Equal(["Near Post Outpost M market", "Far Port Coriolis Starport L market shipyard outfitting", "VBY-LXV Drake-Class Carrier L market"],
+            sheet.GetProperty("stations").EnumerateArray().Select(station => string.Join(" ", new[] { station.GetProperty("name").GetString(), station.GetProperty("type").GetString(), station.GetProperty("pad").GetString(),
+                station.GetProperty("market").GetBoolean() ? "market" : null, station.GetProperty("shipyard").GetBoolean() ? "shipyard" : null, station.GetProperty("outfitting").GetBoolean() ? "outfitting" : null }.OfType<string>())));
+
+        var (missing, why) = await Call(web, "GET", "/api/market/inspect/system?name=Nowhere");
+        Assert.Equal((404, "Spansh knows no system called \"Nowhere\"."), (missing, why.GetProperty("error").GetString()));
+    }
+
+    [Fact]
+    public async Task A_sector_lists_the_systems_whose_names_start_with_what_was_typed_nearest_first()
+    {
+        const string systems = "https://spansh.co.uk/api/systems/search";
+        // Spansh's best matches for "Wregoe YV-W": three of that sector, and one whose name is only like it.
+        const string matches = """
+            {"count":4,"results":[
+              {"name":"Wregoe YV-W b56-4","distance":341.2,"population":0,"body_count":3,"updated_at":"2026-10-01T10:00:00Z"},
+              {"name":"Wregoe YV-W b56-10","distance":12.456,"population":52000,"allegiance":"Empire","government":"Corporate","security":"Low","primary_economy":"Industrial",
+               "secondary_economy":"Extraction","controlling_power":"A. Lavigny-Duval","body_count":14,"stations":[{"name":"One"},{"name":"Two"}]},
+              {"name":"Wregoe XV-W b56-0","distance":1.0,"population":0},
+              {"name":"wregoe yv-w b2-0","distance":900.0}]}
+            """;
+        net.Instead = asked => asked.StartsWith(systems + " ", StringComparison.Ordinal) ? matches : null;
+
+        var (status, found) = await Call(web, "POST", "/api/market/find/sector", """{ "name": " Wregoe YV-W " }""");
+        Assert.Equal(200, status);
+        Assert.Equal(("Systems of Wregoe YV-W", "Sol", "Spansh"), (found.GetProperty("what").GetString(), found.GetProperty("from").GetString(), found.GetProperty("source").GetString()));
+        // Nearest first; the one of another sector is left out, and capitals are not minded.
+        Assert.Equal(["Wregoe YV-W b56-10 12.46", "Wregoe YV-W b56-4 341.2", "wregoe yv-w b2-0 900"],
+            Rows(found).Select(row => $"{row.GetProperty("system").GetString()} {row.GetProperty("distanceLy").GetDouble()}"));
+        JsonElement lived = Rows(found)[0];
+        Assert.Equal((52000, "Empire", "Low", "Industrial, Extraction", "A. Lavigny-Duval", 2, 14), (lived.GetProperty("population").GetInt64(), lived.GetProperty("allegiance").GetString(),
+            lived.GetProperty("security").GetString(), lived.GetProperty("economy").GetString(), lived.GetProperty("power").GetString(), lived.GetProperty("stations").GetInt32(), lived.GetProperty("bodies").GetInt32()));
+        Assert.Equal(JsonValueKind.Null, Rows(found)[1].GetProperty("population").ValueKind);   // nobody lives there
+        Assert.Equal(JsonValueKind.Null, found.GetProperty("more").ValueKind);                   // a page that was not full is the last
+        // The question: names like the one typed, best match first, and Sol by where it lies.
+        Assert.Equal(systems + """ {"filters":{"name":{"value":"Wregoe YV-W"}},"size":50,"page":0,"reference_coords":{"x":0,"y":0,"z":0}}""", net.Asked[^1]);
+
+        // Only where people live: that goes into the question, and the heading says so.
+        (_, found) = await Call(web, "POST", "/api/market/find/sector", """{ "name": "Wregoe YV-W", "inhabited": true }""");
+        Assert.Equal("Systems of Wregoe YV-W where people live", found.GetProperty("what").GetString());
+        Assert.Contains("\"population\":{\"comparison\":\"<=>\",\"value\":[1,1000000000000]}", net.Asked[^1]);
+
+        // Nothing that starts so, and no name at all.
+        (_, found) = await Call(web, "POST", "/api/market/find/sector", """{ "name": "Nowhere" }""");
+        Assert.Equal("No system whose name starts with \"Nowhere\" is known. Check its spelling, or type less of it.", found.GetProperty("note").GetString());
+        Assert.Equal((400, "Type a sector's name, or the start of one: Wregoe, Col 285 Sector."), await Refused("sector", """{ "name": " " }"""));
+    }
+
+    [Fact]
+    public async Task Fleet_carriers_that_do_not_let_everyone_dock_are_left_out_unless_any_is_asked_for()
+    {
+        // Spansh knows who may dock at the two carriers that sell gold near Sol: everyone at one, its owner's squadron at the other.
+        const string carriers = """{"count":2,"results":[{"name":"G2M-BQQ","type":"Drake-Class Carrier","carrier_docking_access":"All"},{"name":"H1M-21L","type":"Drake-Class Carrier","carrier_docking_access":"Squadron"}]}""";
+        net.Instead = asked => asked.StartsWith(Spansh + "/search ", StringComparison.Ordinal) && asked.Contains("\"name\":{\"value\":[\"G2M-BQQ\"", StringComparison.Ordinal) ? carriers : null;
+        static string[] Carriers(JsonElement answer) =>
+            [.. Rows(answer).Where(row => row.GetProperty("type").GetString() == "Drake-Class Carrier").Select(row => $"{row.GetProperty("station").GetString()}: {row.GetProperty("access").GetString()}")];
+
+        // As the page asks unless told otherwise: the carrier open to all stays and says so, the other goes, and the line says one went.
+        JsonElement found = await Find("commodity", """{ "name": "Gold", "filters": { "carriers": true } }""");
+        Assert.Equal(["G2M-BQQ: open to all"], Carriers(found));
+        Assert.Equal("1 fleet carrier that does not let everyone dock was left out.", found.GetProperty("note").GetString());
+
+        // Any: both, each with who may dock there. The same carriers are not asked about twice.
+        int asked = net.Asked.Count;
+        found = await Find("commodity", """{ "name": "Gold", "docking": "any", "filters": { "carriers": true } }""");
+        Assert.Equal(["G2M-BQQ: open to all", "H1M-21L: squadron only"], Carriers(found));
+        Assert.Equal(JsonValueKind.Null, found.GetProperty("note").ValueKind);
+        Assert.Equal(asked, net.Asked.Count);
+
+        // A station that is no carrier has no such thing to say, and without carriers Spansh is not asked at all.
+        found = await Find("commodity", """{ "name": "Gold" }""");
+        Assert.All(Rows(found), row => Assert.Equal("", row.GetProperty("access").GetString()));
+        Assert.DoesNotContain(net.Asked.Skip(asked), question => question.StartsWith(Spansh, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_short_list_says_how_many_more_the_price_age_and_the_carriers_filter_leave_out()
+    {
+        // A list that is long enough asks nothing more: gold near Sol, as recorded.
+        Assert.Equal(42, Rows(await Find("commodity", """{ "name": "Gold" }""")).Length);
+        Assert.DoesNotContain(net.Asked, question => question.Contains("maxDaysAgo=30", StringComparison.Ordinal));
+
+        // Made-up sellers of silver, each a light year farther from Sol: fresh or days old, a starport or a fleet carrier.
+        string Seller(int id, string type, double hoursOld) => Invariant(
+            $$"""{"commodityName":"silver","marketId":{{id}},"stationName":"Seller {{id}}","stationType":"{{type}}","distanceToArrival":100,"maxLandingPadSize":3,"systemName":"Far {{id}}","systemX":{{id}},"systemY":0,"systemZ":0,"buyPrice":45000,"stock":500,"sellPrice":0,"demand":0,"meanPrice":47000,"updatedAt":"{{clock.AddHours(-hoursOld):yyyy-MM-ddTHH:mm:ss.fffZ}}","distance":{{id}}}""");
+        string fresh = "[" + Seller(1, "Coriolis", 1) + "]";
+        // Thirty days of prices, carriers and all: the fresh one again, three starports with old prices (one of them with
+        // small pads only, which the pad filter would leave out anyway), and two carriers, one fresh and one old.
+        string wide = "[" + string.Join(",", Seller(1, "Coriolis", 1), Seller(2, "Coriolis", 200), Seller(3, "Orbis", 300),
+            Seller(4, "Outpost", 300).Replace("\"maxLandingPadSize\":3", "\"maxLandingPadSize\":1"), Seller(5, "FleetCarrier", 2), Seller(6, "FleetCarrier", 400)) + "]";
+        string around = GoldAroundSol.Replace("/gold/", "/silver/"), inSol = GoldInSol.Replace("/gold?", "/silver?");
+        const string wideQuestion = Ardent + "/system/name/Sol/commodity/name/silver/nearby/exports?maxDistance=500&maxDaysAgo=30&minVolume=100&sort=distance";
+        net.Instead = asked => asked == around ? fresh : asked == wideQuestion ? wide : asked.StartsWith(inSol[..^1], StringComparison.Ordinal) ? "[]" : null;
+
+        JsonElement found = await Find("commodity", """{ "name": "Silver" }""");
+        Assert.Equal(["Seller 1"], Stations(found));
+        Assert.Equal("Your filters leave out 2 more with prices up to 30 days old and 2 more on fleet carriers. Change the price age or the carriers filter to see them.",
+            found.GetProperty("note").GetString());
+
+        // With carriers in and thirty days of prices allowed there is nothing the two filters could leave out, so nothing more is asked.
+        int asked = net.Asked.Count(question => question == wideQuestion);
+        await Find("commodity", """{ "name": "Silver", "docking": "any", "filters": { "carriers": true, "maxAgeHours": 720 } }""");
+        Assert.Equal(asked, net.Asked.Count(question => question == wideQuestion));
     }
 
     [Fact]
@@ -492,14 +696,93 @@ public sealed class FindTests : IDisposable
     [Fact]
     public async Task A_ship_lists_the_nearest_stations_that_sell_it()
     {
+        // EDSM, which each station is checked against, was not recorded: unasked, it has no list for any of them.
+        net.Instead = asked => asked.StartsWith(Edsm, StringComparison.Ordinal) ? "{}" : null;
         JsonElement found = await Find("ship", """{ "name": "python mkii" }""");
 
         Assert.Equal("Stations that sell the Python MkII", found.GetProperty("what").GetString());
-        Assert.Equal([Spansh + "/field_values/ships", Spansh + """/search {"filters":{"ships":[{"name":{"value":["Python MkII"]}}],""" + NearSol], net.Asked);
+        Assert.Equal([Spansh + "/field_values/ships", Spansh + """/search {"filters":{"ships":[{"name":{"value":["Python MkII"]}}],""" + NearSol],
+            net.Asked.Where(asked => asked.StartsWith(Spansh, StringComparison.Ordinal)));
         // The age is that of the station's shipyard list.
         Assert.Equal("Furukawa Enterprise | Sol | 0 | 232.382846 | L | Planetary Outpost |  | 67527360 | - | 2026-10-08T22:41:00Z", Line(Rows(found)[0]));
         Assert.Equal(["Furukawa Enterprise", "Galileo", "Mars High", "Daedalus", "M.Gorbachev", "Li Qing Jao", "Columbus", "Abraham Lincoln"], Stations(found));
         Assert.All(Rows(found), row => Assert.Equal(67527360, row.GetProperty("price").GetInt64()));
+        Assert.All(Rows(found), row => Assert.Equal("no list", row.GetProperty("edsm").GetString()));
+        Assert.EndsWith("EDSM has no shipyard list for 8 of them, so those may not have it.", found.GetProperty("note").GetString());
+    }
+
+    [Fact]
+    public async Task A_ship_search_leaves_out_the_stations_EDSM_says_do_not_sell_it()
+    {
+        // Spansh's shipyard lists name ships a station is not selling right now (the owner, 16 October 2026: three stations in
+        // Wolf 397 "sold" a Corsair that none of them had). EDSM keeps the ships on sale only. Here it lists the Python MkII at
+        // Galileo by the game's number for it, and at Daedalus by its name in its own spelling; Mars High and Columbus sell other
+        // ships only; it knows nothing of the rest, and does not answer for Abraham Lincoln.
+        net.Instead = asked => !asked.StartsWith(Edsm, StringComparison.Ordinal) ? null
+            : asked.Contains("stationName=Galileo", StringComparison.Ordinal) ? """{"name":"Sol","sName":"Galileo","ships":[{"id":129030464,"name":"Python MkII"},{"id":128049249,"name":"Sidewinder"}]}"""
+            : asked.Contains("stationName=Daedalus", StringComparison.Ordinal) ? """{"name":"Sol","sName":"Daedalus","ships":[{"name":"Python Mk II"}]}"""
+            : asked.Contains("stationName=Mars%20High", StringComparison.Ordinal) || asked.Contains("stationName=Columbus", StringComparison.Ordinal)
+                ? """{"name":"Sol","ships":[{"id":128049249,"name":"Sidewinder"},{"id":128049339,"name":"Python"}]}"""
+            : asked.Contains("stationName=Abraham%20Lincoln", StringComparison.Ordinal) ? "not json"
+            : "{}";
+
+        JsonElement found = await Find("ship", """{ "name": "Python MkII" }""");
+
+        // Asked by the station's name and its system's, for the recorded stations come without their market numbers.
+        Assert.Contains(Edsm + "?systemName=Sol&stationName=Mars%20High", net.Asked);
+        Assert.Equal(["Furukawa Enterprise: no list", "Galileo: confirmed", "Daedalus: confirmed", "M.Gorbachev: no list", "Li Qing Jao: no list", "Abraham Lincoln: not checked"],
+            Rows(found).Select(row => $"{row.GetProperty("station").GetString()}: {row.GetProperty("edsm").GetString()}"));
+        Assert.Equal("The nearest 6 of more than 10,000 stations. 2 stations Spansh lists were left out: EDSM says their shipyards do not sell it right now. "
+            + "EDSM has no shipyard list for 3 of them, so those may not have it. 1 was not checked with EDSM and may well not have it.",
+            found.GetProperty("note").GetString());
+
+        // The same search minutes later asks EDSM nothing again.
+        int asked = net.Asked.Count(one => one.StartsWith(Edsm, StringComparison.Ordinal));
+        clock = clock.AddMinutes(3);
+        await Find("ship", """{ "name": "Python MkII" }""");
+        Assert.Equal(asked + 1, net.Asked.Count(one => one.StartsWith(Edsm, StringComparison.Ordinal)));   // only Abraham Lincoln's, which had failed
+    }
+
+    [Fact]
+    public async Task EDSM_is_left_alone_for_ten_minutes_when_it_asks_Studio_to_slow_down()
+    {
+        // EDSM turns a PC away after too many questions. Its first answer here is that refusal: nothing more is asked of it.
+        net.Instead = asked => asked.StartsWith(Edsm, StringComparison.Ordinal) ? "{}" : null;
+        net.Refuse = asked => asked.StartsWith(Edsm, StringComparison.Ordinal) ? HttpStatusCode.TooManyRequests : null;
+        JsonElement found = await Find("ship", """{ "name": "Python MkII" }""");
+        Assert.Single(net.Asked, asked => asked.StartsWith(Edsm, StringComparison.Ordinal));
+        Assert.Equal(8, Rows(found).Length);   // every station Spansh sent, none of them checked
+        Assert.All(Rows(found), row => Assert.Equal("not checked", row.GetProperty("edsm").GetString()));
+        Assert.EndsWith("8 were not checked with EDSM and may well not have it. EDSM asked Studio to slow down, so it is asked again in a few minutes.",
+            found.GetProperty("note").GetString());
+
+        // Nine minutes on, another ship (another question to Spansh) still asks EDSM nothing; eleven minutes on, it is asked again.
+        net.Refuse = null;
+        clock = clock.AddMinutes(9);
+        await Find("ship", """{ "name": "Python MkII" }""");
+        Assert.Single(net.Asked, asked => asked.StartsWith(Edsm, StringComparison.Ordinal));
+        clock = clock.AddMinutes(2);
+        await Find("ship", """{ "name": "Python MkII" }""");
+        Assert.Equal(9, net.Asked.Count(asked => asked.StartsWith(Edsm, StringComparison.Ordinal)));
+    }
+
+    [Theory]
+    // EDSM knows none of the 30: it is asked about the nearest 25, and Spansh for no second page.
+    [InlineData("{}", 25, "no list", 25)]
+    // EDSM says all 30 sell it: five make a list, and the rest are not asked about.
+    [InlineData("""{"ships":[{"id":129030464,"name":"Python MkII"}]}""", 5, "confirmed", 5)]
+    public async Task A_ship_search_asks_EDSM_about_25_stations_at_most_and_stops_at_5_that_sell_it(string edsmAnswer, int askedEdsm, string nearest, int checkedRows)
+    {
+        // Thirty stations that sell the ship, as Spansh sends them on its first page (it was asked for 20, but its answer counts).
+        string stations = string.Join(",", Enumerable.Range(1, 30).Select(n => Invariant(
+            $$"""{"name":"Port {{n}}","system_name":"Sol","market_id":{{n}},"type":"Orbis Starport","distance":0,"distance_to_arrival":{{n}},"large_pads":1,"ships":[{"name":"Python MkII","price":1,"symbol":"Python_NX"}]}""")));
+        net.Instead = asked => asked.StartsWith(Edsm, StringComparison.Ordinal) ? edsmAnswer
+            : asked.StartsWith(Spansh + "/search", StringComparison.Ordinal) ? $$"""{"count":90,"results":[{{stations}}]}""" : null;
+        JsonElement found = await Find("ship", """{ "name": "Python MkII" }""");
+        Assert.Equal([.. Enumerable.Range(1, askedEdsm).Select(n => Invariant($"{Edsm}?marketId={n}"))], net.Asked.Where(asked => asked.StartsWith(Edsm, StringComparison.Ordinal)));
+        Assert.Single(net.Asked, asked => asked.StartsWith(Spansh + "/search", StringComparison.Ordinal));
+        Assert.Equal(30, Rows(found).Length);
+        Assert.Equal([.. Enumerable.Repeat(nearest, checkedRows), .. Enumerable.Repeat("not checked", 30 - checkedRows)], Rows(found).Select(row => row.GetProperty("edsm").GetString()));
     }
 
     [Theory]
@@ -562,7 +845,7 @@ public sealed class FindTests : IDisposable
             : asked.Contains("\"modules\":[", StringComparison.Ordinal) ? RecordedServices.Recorded("\"class\":{\"value\":[\"5\"]}") : null;
 
         JsonElement ships = await Find("ship", """{ "name": "Python MkII", "filters": { "surface": "none" } }""");
-        Assert.Contains("\"Asteroid base\",\"Mega ship\",\"Planetary Outpost\"]}", net.Asked[^1]);
+        Assert.Contains("\"Asteroid base\",\"Mega ship\",\"Planetary Outpost\"]}", net.Asked.Last(asked => asked.StartsWith(Spansh + "/search", StringComparison.Ordinal)));
         Assert.Contains("\"name\":\"Furukawa Enterprise\"", RecordedServices.Recorded("Python MkII", "reference_coords"));
         Assert.Equal(["Galileo", "Mars High", "Daedalus", "M.Gorbachev", "Li Qing Jao", "Columbus", "Abraham Lincoln"], Stations(ships));
 

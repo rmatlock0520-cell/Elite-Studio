@@ -2,11 +2,13 @@
   <PropertyGroup>
     <!-- Compiler output goes outside OneDrive (one folder per checkout) so sync never locks build files. -->
     <ArtifactsPath>$(UserProfile)\.elite-studio\build\$([System.IO.Path]::GetFileName($([System.IO.Path]::GetDirectoryName($(MSBuildThisFileDirectory)))))</ArtifactsPath>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Windows 10 version 2004 and later: the version number brings Windows' own APIs into reach, such as the text
+         reader (Windows.Media.Ocr) that Nav scan reads the game's Navigation panel with (Nav\NavScanOcr.cs). -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <Version>1.7.4</Version>
+    <Version>1.8.0</Version>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 </Project>

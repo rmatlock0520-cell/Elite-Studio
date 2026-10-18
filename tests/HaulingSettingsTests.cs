@@ -220,7 +220,7 @@ public class HaulingSettingsTests
         Assert.False(hauling.StepSetting("jumpRange", 1));          // not on the menu
         Assert.Equal(("Any", "The system I am in"), (hauling.SettingLines[6].Text, hauling.SettingLines[3].Text));
 
-        Assert.True(hauling.StepSetting("startMode", -1));          // "anywhere" has no distance from the player
+        Assert.True(hauling.StepSetting("startMode", 1));           // "anywhere" has no distance from the player
         Assert.Equal(("Anywhere in the galaxy", false, "Not used when trades start anywhere"),
             (hauling.SettingLines[5].Text, hauling.SettingLines[3].Usable, hauling.SettingLines[3].Text));
         Assert.False(hauling.StepSetting("buyLy", 1));

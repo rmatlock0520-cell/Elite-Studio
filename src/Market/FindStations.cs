@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Net;
+using System.Net.Http;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using EliteStudio.Core;
@@ -24,9 +26,27 @@ public sealed record Seller(
 sealed partial class Finder
 {
     const string Stations = "https://spansh.co.uk/api/stations";
+    const string EdsmShipyard = "https://www.edsm.net/api-system-v1/stations/shipyard", EdsmName = "EDSM";
+    // EDSM turns a PC away for a while ("429 Too Many Requests") after a dozen questions sent at once (16 October 2026).
+    // So it is asked one station at a time, a second apart, and left alone for ten minutes when it says so. Spansh lists
+    // most large shipyards for a new ship: around Wolf 397 the first station EDSM confirmed for the Corsair was the
+    // seventeenth. So a search checks up to 25 stations, nearest first, and stops once it has 5 that sell the ship.
+    const int EdsmMost = 25;                // stations one search asks EDSM about; the farther ones are "not checked"
+    const int ShipsWanted = 5;              // stations confirmed to sell the ship that make a list
+    const double EdsmQuietMinutes = 10;
+
+    /// <summary>What EDSM says of a station and the ship looked for.</summary>
+    enum EdsmSays { NotAsked, NoList, Sells, DoesNotSell }
+
+    /// <summary>How long to wait after each question to EDSM before the next. Tests set none.</summary>
+    internal TimeSpan EdsmGap { get; set; } = TimeSpan.FromSeconds(1);
+
+    DateTime edsmQuietUntil;                // EDSM asked to be left alone until then
     const int MostSellers = 20, Nearest = 10;   // stations asked of Spansh at a time; one runs to 100,000 letters, for it comes with its whole price list
     const int MostPages = 3;                // one search asks for them this often at most: again only when the station filters left too few of the page before
     const double StationMinutes = 10;       // how long the same question gets the remembered answer
+    const string CarrierType = "Drake-Class Carrier";   // Spansh's name for a player's fleet carrier
+    const int CarriersAtOnce = 100;         // fleet carriers one question asks the docking access of
 
     // The services with a quick button: the name on it, Spansh's filter, and the value to filter by.
     // Material traders and technology brokers have filters of their own, which is what tells their kinds apart.
@@ -54,17 +74,29 @@ sealed partial class Finder
         double? LargePads, double? MediumPads, double? SmallPads, string? MaterialTrader, string? TechnologyBroker,
         string? UpdatedAt, string? OutfittingUpdatedAt, string? ShipyardUpdatedAt,
         List<Entry?>? Services, List<Entry?>? Modules, List<Entry?>? Ships,
-        long? MarketId = null, string? MarketUpdatedAt = null, List<Good?>? Market = null);
+        long? MarketId = null, string? MarketUpdatedAt = null, List<Good?>? Market = null, string? CarrierDockingAccess = null,
+        // what the station's own page shows besides (FindByStation.cs)
+        string? CarrierName = null, string? Allegiance = null, string? Government = null, string? ControllingMinorFaction = null, List<Part?>? Economies = null,
+        string? SystemControllingPower = null, string? SystemPowerState = null, string? State = null, double? SystemPopulation = null);
+
+    /// <summary>One of a station's economies and how much of the station it is, in hundredths.</summary>
+    sealed record Part(string? Name, double? Share);
 
     /// <summary>One line of a station's price list as Spansh sends it: the commodity by its name in words.</summary>
     sealed record Good(string? Commodity, double? BuyPrice, double? SellPrice, double? Supply, double? Demand);
 
     /// <summary>A module or a ship on sale, or a service by its name.</summary>
     /// <param name="EdSymbol">Modules: the game's own code for it.</param>
-    sealed record Entry(string? Name, string? EdSymbol, double? Class, string? Rating, double? Price);
+    /// <param name="Symbol">Ships: the game's own code for it ("Krait_MkII").</param>
+    sealed record Entry(string? Name, string? EdSymbol, double? Class, string? Rating, double? Price, string? Symbol = null);
 
     /// <summary>What one station has of the thing looked for.</summary>
-    sealed record Listing(string Item, long? Price, string? Updated);
+    /// <param name="Ship">Ships: Spansh's name for the ship; null for everything else.</param>
+    /// <param name="Code">Ships: the game's own code for the ship, when Spansh gave it; null for everything else.</param>
+    sealed record Listing(string Item, long? Price, string? Updated, string? Ship = null, string? Code = null);
+
+    /// <summary>The ships EDSM says a station's shipyard sells: by the game's number for each, and by the letters of each name. Empty when EDSM has no list.</summary>
+    sealed record EdsmShips(HashSet<long> Ids, HashSet<string> Names);
 
     /// <summary>What a stations search looks for: the words for it, Spansh's filter, how many stations to ask for at a time, and how to find it in a station (null: not there).</summary>
     sealed record Sought(string What, string Field, object Filter, int Size, Func<Station, Listing?> At);
@@ -147,6 +179,7 @@ sealed partial class Finder
         // Spansh sends its stations a page at a time, nearest first. A first search starts at page 0; "more" is the page after
         // the last one the answer before was made of.
         int first = Math.Max(0, request.More), next = first, seen = 0, strangers = 0, known = 0;
+        int notSold = 0, sold = 0, noList = 0, notChecked = 0, edsmAsked = 0;   // ships: what EDSM said of the stations, and how many it was asked about
         bool last;   // the page just read is Spansh's last: shorter than was asked for
         string? searchName = null;
         DateTime asked = default;
@@ -158,12 +191,38 @@ sealed partial class Finder
 
             Station[] sent = [.. page.Results?.OfType<Station>() ?? []];
             seen += sent.Length;
+            var found = new List<(Station Station, (string Type, int? Pad) Kept, Listing Has)>();
             foreach (Station station in sent)
             {
                 if (sought.At(station) is not { } has) { strangers++; continue; }
                 if (Kept(station, filter) is not { } kept) continue;
+                found.Add((station, kept, has));
+            }
+            // Spansh's shipyard lists hold the ships a station is not selling right now too (the tools that report
+            // a shipyard add the game's "unavailable" list, as EDDN asks them to), and the owner flew to three
+            // stations in Wolf 397 for a Corsair none of them had (16 October 2026). EDSM keeps the same reports
+            // with the ships on sale only, so the nearest stations are checked there, one after the other.
+            foreach ((Station station, (string Type, int? Pad) kept, Listing has) in found)
+            {
+                EdsmSays says = EdsmSays.NotAsked;
+                if (kind == "ship" && sold < ShipsWanted && edsmAsked < EdsmMost)
+                {
+                    (says, bool askedEdsm) = await SellsShip(station, has, ask);
+                    if (askedEdsm) edsmAsked++;
+                }
+                string edsm = "";
+                if (kind == "ship")
+                {
+                    switch (says)
+                    {
+                        case EdsmSays.DoesNotSell: notSold++; continue;
+                        case EdsmSays.Sells: sold++; edsm = "confirmed"; break;
+                        case EdsmSays.NoList: noList++; edsm = "no list"; break;
+                        default: notChecked++; edsm = "not checked"; break;
+                    }
+                }
                 rows.Add(new FoundPlace(station.Name ?? "", station.SystemName ?? "", Math.Round(station.Distance ?? 0, 2), station.DistanceToArrival,
-                    StationFilter.PadLetter(kept.Pad), Shown(kept.Type), has.Item, has.Price, null, MarketData.Time(has.Updated)));
+                    StationFilter.PadLetter(kept.Pad), Shown(kept.Type), has.Item, has.Price, null, MarketData.Time(has.Updated), Edsm: edsm));
             }
             // A filter Spansh does not understand it drops without a word, and then sends the nearest stations of any kind.
             if (seen > 0 && strangers == seen) throw new InvalidDataException("It sent stations that do not have what was asked for.");
@@ -171,7 +230,10 @@ sealed partial class Finder
             // filters have left less than half a list: every page is another long answer from a free service.
             last = sent.Length < sought.Size;
         }
-        while (!last && rows.Count < sought.Size / 2 && next < first + MostPages);
+        // A ship's list is long enough once EDSM confirmed enough stations, or there is nothing more to check them with.
+        while (!last && next < first + MostPages && (kind == "ship"
+            ? sold < ShipsWanted && edsmAsked < EdsmMost && utcNow() >= edsmQuietUntil
+            : rows.Count < sought.Size / 2));
 
         bool more = known > first * sought.Size + seen;
         var notes = new List<string>();
@@ -185,11 +247,62 @@ sealed partial class Finder
                 : "No station that passes your filters is known to have this." + (kind == "module" ? " Not every module comes in every class and rating." : ""));
         }
         if (rows.Any(row => row.Price is null && row.Item.Contains(' '))) notes.Add("Pick a class and a rating to see one price for each station.");
+        if (notSold > 0)
+            notes.Add(Invariant($"{notSold} {(notSold == 1 ? "station Spansh lists was" : "stations Spansh lists were")} left out: {EdsmName} says {(notSold == 1 ? "its shipyard does" : "their shipyards do")} not sell it right now."));
+        if (noList > 0)
+            notes.Add(Invariant($"{EdsmName} has no shipyard list for {noList} of them, so {(noList == 1 ? "that one" : "those")} may not have it."));
+        if (notChecked > 0)
+            notes.Add(Invariant($"{notChecked} {(notChecked == 1 ? "was" : "were")} not checked with {EdsmName} and may well not have it.")
+                + (utcNow() < edsmQuietUntil ? $" {EdsmName} asked Studio to slow down, so it is asked again in a few minutes." : ""));
         // The name is put into an address, so it has to be the kind of name Spansh gives out and nothing else.
         string? link = Guid.TryParse(searchName, out Guid reference) ? $"https://spansh.co.uk/stations/search/{reference.ToString().ToUpperInvariant()}/1" : null;
         return new FindAnswer(sought.What, from, [.. rows.OrderBy(row => row.DistanceLy)], SpanshName, link, notes.Count > 0 ? string.Join(" ", notes) : null,
             more && !last ? next : null, asked);
     }
+
+    /// <summary>
+    /// Who may dock at each of these fleet carriers, as their owners have set it and Spansh last
+    /// heard: "All", "Squadron", "Friends", "Squadron Friends" or "None", by the carrier's name. A
+    /// carrier Spansh does not know, or knows nothing of the kind about, is not in the answer. Ardent
+    /// Insight, which finds the carriers, does not say. One question names up to a hundred carriers,
+    /// and its answer is short: a carrier sells little. When Spansh gives no answer nobody's access
+    /// is known, which is written to the log and is no reason to fail a search.
+    /// </summary>
+    async Task<Dictionary<string, string>> CarrierAccess(IEnumerable<string> carriers, MarketData.Asking ask)
+    {
+        var access = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            // In the order of their names, so the same carriers make the same question, which is then not asked twice.
+            foreach (string[] names in carriers.Where(name => name.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).Chunk(CarriersAtOnce))
+            {
+                var question = new Dictionary<string, object>
+                {
+                    ["filters"] = new Dictionary<string, object> { ["type"] = Value(CarrierType), ["name"] = Value(names) },
+                    ["size"] = names.Length, ["page"] = 0,
+                };
+                (StationPage page, _) = await Page(question, null, ask);
+                foreach (Station carrier in page.Results?.OfType<Station>() ?? [])
+                    if (carrier is { Name.Length: > 0, CarrierDockingAccess.Length: > 0 }) access[carrier.Name] = carrier.CarrierDockingAccess;
+            }
+        }
+        catch (Exception problem) when (Lost(problem))
+        {
+            App.Log.Error("Who may dock at the fleet carriers found could not be fetched from Spansh, so none of them says", problem);
+        }
+        return access;
+    }
+
+    /// <summary>A carrier's docking access in words for a row; "" when it is not known.</summary>
+    internal static string AccessWords(string? access) => access switch
+    {
+        "All" => "open to all",
+        "Squadron Friends" => "squadron and friends only",
+        "Squadron" => "squadron only",
+        "Friends" => "friends only",
+        "None" => "closed to everyone",
+        _ => "",
+    };
 
     /// <summary>
     /// A question for Spansh's stations search: what is looked for, nearest first from a system. The
@@ -255,7 +368,53 @@ sealed partial class Finder
     {
         string name = Picked(known.Names, request.Name, "ship");
         return new Sought($"Stations that sell the {name}", "ships", new[] { new { name = Value(name) } }, MostSellers,
-            station => OnSale(station.Ships, entry => Same(entry.Name, name), station.ShipyardUpdatedAt));
+            station => OnSale(station.Ships, entry => Same(entry.Name, name), station.ShipyardUpdatedAt) is { } has
+                ? has with { Ship = name, Code = station.Ships?.OfType<Entry>().FirstOrDefault(entry => Same(entry.Name, name))?.Symbol }
+                : null);
+    }
+
+    /// <summary>
+    /// What EDSM says of the station's shipyard and the ship. Not asked: EDSM did not answer, or asked
+    /// to be left alone. EDSM is a third service the player never picked, so its failing only leaves the
+    /// station unchecked and is written to the log. Sent: a question really went out (an answer from
+    /// memory costs EDSM nothing).
+    /// </summary>
+    async Task<(EdsmSays Says, bool Sent)> SellsShip(Station station, Listing has, MarketData.Asking ask)
+    {
+        if (utcNow() < edsmQuietUntil) return (EdsmSays.NotAsked, false);
+        string url = station.MarketId is > 0 and long market
+            ? Invariant($"{EdsmShipyard}?marketId={market}")
+            : $"{EdsmShipyard}?systemName={Uri.EscapeDataString(station.SystemName ?? "")}&stationName={Uri.EscapeDataString(station.Name ?? "")}";
+        int before = ask.Urls.Count;
+        EdsmShips ships;
+        try
+        {
+            (ships, _) = await ask.Answer(url, null, StationMinutes, async (body, stop) =>
+            {
+                using JsonDocument answer = await JsonDocument.ParseAsync(body, default, stop).ConfigureAwait(false);
+                // A station EDSM does not know is "{}"; one it knows comes with "ships".
+                JsonElement[] listed = [.. answer.RootElement.List("ships")];
+                return new EdsmShips([.. listed.Select(ship => ship.Whole("id")).Where(id => id != 0)], [.. listed.Select(ship => Letters(ship.Text("name")))]);
+            });
+        }
+        catch (Exception problem) when (Lost(problem))
+        {
+            if (problem is HttpRequestException { StatusCode: HttpStatusCode.TooManyRequests })
+            {
+                edsmQuietUntil = utcNow().AddMinutes(EdsmQuietMinutes);
+                App.Log.Error($"{EdsmName} asked Studio to slow down; ship searches leave it alone for {EdsmQuietMinutes} minutes", problem);
+            }
+            else App.Log.Error($"{EdsmName} could not say whether {station.Name} sells the {has.Ship}", problem);
+            return (EdsmSays.NotAsked, true);
+        }
+        bool sent = ask.Urls.Count > before;
+        if (sent && EdsmGap > TimeSpan.Zero) await Task.Delay(EdsmGap);
+        if (ships.Ids.Count == 0 && ships.Names.Count == 0) return (EdsmSays.NoList, sent);
+        // By the game's number for the ship where its code is known, else by the letters of its name ("Cobra MkIII" is EDSM's "Cobra Mk III").
+        bool sells = has.Code is { } code && GameData.Ships.TryGetValue(code, out GameData.Ship? known)
+            ? ships.Ids.Contains(known.Id) || ships.Names.Contains(Letters(known.Name))
+            : ships.Names.Contains(Letters(has.Ship ?? ""));
+        return (sells ? EdsmSays.Sells : EdsmSays.DoesNotSell, sent);
     }
 
     static Sought Service(FindRequest request)

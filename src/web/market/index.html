@@ -86,7 +86,13 @@ td.dest{color:var(--muted)}
     <details class="sec card" data-sec="basic">
       <summary><b>BASIC</b><span id="sum-basic"></span></summary>
       <div class="body">
-        <div class="field"><label>Where trades can start<select data-set="startMode"><option value="near">Near me (within the distance below)</option><option value="anywhere">Anywhere: the best in the galaxy</option></select></label></div>
+        <div class="field"><label>Where trades can start<select data-set="startMode"><option value="near">Near me (within the distance below)</option><option value="anywhere">Anywhere: the best in the galaxy</option><option value="carry">From a station to a system I name</option></select></label></div>
+        <div id="carry" hidden>
+          <div class="field"><label title="The system you are travelling to. Studio lists what to buy here and which of that system's stations pays most for it.">To system<input data-set="toSystem" list="to-names" autocomplete="off" spellcheck="false" placeholder="Type the system's name"></label><datalist id="to-names"></datalist></div>
+          <p class="small muted" id="carry-from"></p>
+          <div class="field"><label title="Only to plan from a station you are not docked at. Leave both boxes empty to buy where you are docked.">Buy at another station: its system<input data-set="fromSystem" list="from-names" autocomplete="off" spellcheck="false" placeholder="Empty: where I am docked"></label><datalist id="from-names"></datalist></div>
+          <div class="field"><label>… and the station<input data-set="fromStation" list="from-stations" autocomplete="off" spellcheck="false" placeholder="Pick it from the list"></label><datalist id="from-stations"></datalist></div>
+        </div>
         <div class="field"><label title="0 = only the system you are in">Buy within this distance of me (ly)<input data-set="buyLy" data-kind="whole" inputmode="numeric" autocomplete="off"></label></div>
         <div class="field"><label>Max. route distance, buy to sell (ly)<input data-set="maxLy" data-kind="whole" inputmode="numeric" autocomplete="off"></label></div>
         <div class="field"><label>Cargo capacity (tons, 0 = read from my ship)<input data-set="cargoOverride" data-kind="whole" inputmode="numeric" autocomplete="off"></label></div>
@@ -187,7 +193,8 @@ td.dest{color:var(--muted)}
         <p class="small muted">The "controller" boxes are for a stick, HOTAS or gamepad. Click one, then press a button on the controller, or hold one button and press another: a pair like that leaves every single button to the game. Click the box again to clear it. Studio only listens, so the game still sees these buttons too.</p>
         <p class="small muted">Keys and controller buttons work while Elite is the active window, so they never block other programs.</p>
         <label class="check"><input type="checkbox" data-ov="onlyWhenElite">Only while Elite is the active window</label>
-        <label class="slide">Background opacity<output></output><input type="range" data-ov="opacity" data-kind="decimal" min="0.2" max="1" step="0.01"></label>
+        <label class="slide" title="The Hauling and Loadouts overlays: how solid their background is. Their text always stays solid.">Background opacity<output></output><input type="range" data-ov="opacity" data-kind="decimal" min="0.2" max="1" step="0.01"></label>
+        <label class="slide" title="The Find by name and Route overlays show a whole page, so the whole box fades, its text too.">Find by name and Route overlays: opacity<output></output><input type="range" data-ov="pageOpacity" data-kind="decimal" min="0.3" max="1" step="0.01"></label>
         <div class="field"><label title="The order of the short trade list on the Hauling overlay. In the game the list's own Order line changes it too.">Order of the Hauling overlay's trade list<select data-set="listSort"></select></label></div>
         <p class="small muted">Elite must be in Borderless (Options › Graphics › Display › Window mode) for an overlay to show over the game.</p>
       </div>
@@ -222,7 +229,7 @@ td.dest{color:var(--muted)}
 <script>
 (() => {
 'use strict';
-const { $, h, options, toast, whole, count, dot, wideDot } = Studio;
+const { $, h, stationIcon, options, toast, whole, count, dot, wideDot } = Studio;
 const all = selector => [...document.querySelectorAll(selector)];
 
 let view = null;    // the app's whole picture of hauling: the newest answer or "market" event
@@ -290,14 +297,14 @@ const columns = [
   { head: 'Commodity', key: 'commodity' },
   { head: 'Per hour', key: 'perHour', text: whole, look: 'profit', hide: 'look' },
   { head: 'Profit /t', key: 'profitPerTon', text: whole, look: 'profit' },
-  { head: 'Buy at', key: 'buyStation', hide: 'look' },
-  { head: 'Buy system', key: 'buySystem', hide: 'look' },
+  { head: 'Buy at', key: 'buyStation', kind: 'buyType', system: 'buySystem', hide: 'look' },
+  { head: 'Buy system', key: 'buySystem', star: true, hide: 'look' },
   { head: 'From you ly', key: 'buyDistanceLy', text: n1, hide: 'look' },
   { head: 'Jumps empty', key: 'jumpsToBuy', text: plain, hide: 'look' },
   { head: 'Buy cr', key: 'buyPrice', text: whole, hide: 'look' },
   { head: 'Supply', key: 'stock', text: whole, hide: 'look' },
-  { head: 'Sell at', key: 'sellStation', look: 'dest' },
-  { head: 'Sell system', key: 'sellSystem', look: 'dest' },
+  { head: 'Sell at', key: 'sellStation', kind: 'sellType', system: 'sellSystem', look: 'dest' },
+  { head: 'Sell system', key: 'sellSystem', star: true, look: 'dest' },
   { head: 'Pad', key: 'sellPad', look: 'dest' },
   { head: 'Star ls', key: 'sellStarLs', text: whole, look: 'dest' },
   { head: 'Sell cr', key: 'sellPrice', text: whole },
@@ -356,7 +363,9 @@ function drawList() {
     const accepted = !view.lookup && same(row, view.accepted);
     return h('tr', { class: [row === onOverlay && 'shown', accepted && 'accepted', same(row, picked) && 'picked'].filter(Boolean).join(' '), onclick: e => clickRow(row, e) },
       !view.lookup && h('td', { class: 'tick', title: tickTip }, h('input', { type: 'checkbox', checked: accepted, 'aria-label': 'Accept ' + row.commodity + ' to ' + row.sellStation })),
-      cols.map(c => h('td', { class: [c.text && 'r', c.look].filter(Boolean).join(' ') || null }, c.text ? c.text(row[c.key]) : row[c.key])));
+      cols.map(c => h('td', { class: [c.text && 'r', c.look].filter(Boolean).join(' ') || null }, c.kind && stationIcon(row[c.kind]),
+        // A station and a star system are names that open (Studio.link): a click on one opens its sheet and leaves the row alone.
+        c.system ? Studio.link('station', row[c.key], row[c.system]) : c.star ? Studio.link('system', row[c.key]) : c.text ? c.text(row[c.key]) : row[c.key])));
   }));
 }
 
@@ -402,8 +411,9 @@ function summaries() {
   };
   const active = view.presets.find(p => p.active);
   return {
-    basic: [s.startMode === 'anywhere' ? 'Buy anywhere' : 'Buy within ' + s.buyLy + ' ly', 'routes to ' + s.maxLy + ' ly', u.cargoTons + ' t',
-      'prices under ' + s.maxAgeHours + ' h', s.returns ? 'round trips' : 'one way'].join(dot),
+    basic: (s.startMode === 'carry' ? ['To ' + (s.toSystem || 'a system not named yet'), u.cargoTons + ' t', 'prices under ' + s.maxAgeHours + ' h', 'one way']
+      : [s.startMode === 'anywhere' ? 'Buy anywhere' : 'Buy within ' + s.buyLy + ' ly', 'routes to ' + s.maxLy + ' ly', u.cargoTons + ' t',
+        'prices under ' + s.maxAgeHours + ' h', s.returns ? 'round trips' : 'one way']).join(dot),
     station: ['Pad ' + u.pad, s.maxStarLs > 0 ? whole(s.maxStarLs) + ' ls' : 'any distance', { none: 'space only', horizons: 'no settlements' }[s.surface] || 'surface too',
       'supply ' + volume(s.minSupply), 'demand ' + volume(s.minDemand)].join(dot),
     power: [side('Buy', s.srcPower, s.srcState), side('Sell', s.dstPower, s.dstState)].filter(Boolean).join(dot) || 'Any (not used)',
@@ -416,7 +426,7 @@ function drawStatus() {
   const where = game.starSystem ? game.starSystem + (game.docked && game.station ? ' (docked at ' + game.station + ')' : '') : 'unknown (start Elite)';
   write($('#status-text'), [
     'System: ' + where, 'Ship: ' + (game.shipType || 'unknown ship'), 'Cargo: ' + u.cargoTons + ' t', 'Pad: ' + u.pad,
-    'Jump: ' + u.jumpEmpty + ' ly empty, ' + u.jumpFull + ' ly full', s.startMode === 'anywhere' ? 'Anywhere' : 'Within ' + s.buyLy + ' ly',
+    'Jump: ' + u.jumpEmpty + ' ly empty, ' + u.jumpFull + ' ly full', s.startMode === 'anywhere' ? 'Anywhere' : s.startMode === 'carry' ? 'To ' + (s.toSystem || 'a system not named yet') : 'Within ' + s.buyLy + ' ly',
     view.lastSearch ? 'last search ' + view.lastSearch : 'not searched yet',
   ].join(wideDot));
   write($('#status-accepted'), view.accepted ? wideDot + '✔ ACCEPTED: ' + view.accepted.commodity + ' to ' + view.accepted.sellStation : '');
@@ -464,7 +474,9 @@ function drawSettings() {
   for (const key of ['minSupply', 'minDemand']) options($('[data-set=' + key + ']'), line(key).choices.map(c => [c.value, tons(c.value)]));
   options($('[data-set=listSort]'), view.listSorts.map(order => [order.key, order.name]));
   for (const el of all('[data-set]')) put(el, s[el.dataset.set]);
-  $('[data-set=buyLy]').disabled = !line('buyLy').usable;   // "anywhere" has no distance from the player
+  // "anywhere" has no distance from the player; from a station to a system, both ends are named and it is one way
+  for (const key of ['buyLy', 'maxLy', 'returns']) $('[data-set=' + key + ']').disabled = !line(key).usable;
+  drawCarry();
   // The ranking choices are worded for the kind of trip.
   const rank = $('[data-set=rankBy]').options;
   write(rank[0], s.returns ? 'Profit per hour (round trip)' : 'Profit per hour (one way)');
@@ -472,6 +484,42 @@ function drawSettings() {
   const filtered = [s.srcPower, s.dstPower, s.srcState, s.dstState].some(isSet);
   $('#pp-note').className = 'small ' + (filtered && s.startMode === 'anywhere' ? 'warn' : 'muted');
   drawPresets();
+}
+
+// From a station to a system: its boxes show only for that choice. The line between them says where the search buys:
+// the station named below it, else the one the player is docked at (or was docked at last).
+let stationsOf = null;   // the system whose stations the list under "and the station" holds
+function drawCarry() {
+  const s = view.settings, from = view.carryFrom;
+  $('#carry').hidden = s.startMode !== 'carry';
+  if (s.startMode !== 'carry') return;
+  const named = !!(s.fromSystem && s.fromStation);
+  write($('#carry-from'), from.station ? 'Buying at ' + from.station + ' in ' + from.system + (named ? ' (the station named below).' : game.docked ? ' (where you are docked).' : ' (where you were docked last).')
+    : 'Dock at the station you are buying at, or name it below.');
+  const system = (s.fromSystem || '').trim();
+  if (system.toLowerCase() === (stationsOf || '').toLowerCase()) return;
+  stationsOf = system;
+  $('#from-stations').replaceChildren();
+  if (system) Studio.api('GET', '/api/market/stations?system=' + encodeURIComponent(system)).then(answer => {
+    if (stationsOf === system) $('#from-stations').replaceChildren(...answer.stations.map(name => h('option', { value: name })));
+  }, () => {});
+}
+
+// System names while typing, through the browser's own list. The app asks Spansh, and only from three letters on.
+function suggest(input, list) {
+  let timer = 0;
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const text = input.value.trim();
+    if (text.length < 3) { list.replaceChildren(); return; }
+    if ([...list.options].some(o => o.value === text)) return;   // a name just picked from the list
+    timer = setTimeout(async () => {
+      let names;
+      try { names = (await Studio.api('GET', '/api/nav/systems?q=' + encodeURIComponent(text))).systems; } catch (e) { return; }
+      if (input.value.trim() !== text) return;   // typed on meanwhile: a newer answer is coming
+      list.replaceChildren(...names.map(name => h('option', { value: name })));
+    }, 300);
+  });
 }
 
 let presetWanted = '';   // the preset to select as soon as the list has it: the one just saved
@@ -679,6 +727,8 @@ for (const el of all('input[data-set]')) {
   for (const done of ['change', 'blur']) el.addEventListener(done, () => { delete el.dataset.busy; });
 }
 for (const el of all('[data-set]')) el.addEventListener('change', () => changeSetting(el));
+suggest($('[data-set=toSystem]'), $('#to-names'));
+suggest($('[data-set=fromSystem]'), $('#from-names'));
 for (const el of all('[data-ov]:not([type=range])')) el.addEventListener('change', () => setOverlay({ [el.dataset.ov]: valueOf(el) }));
 // The overlay follows a slider while it moves (it shows while Studio is in front), without a save for every step.
 // What is sent is where the slider stood when it last moved, and the slider stays the player's until the app has

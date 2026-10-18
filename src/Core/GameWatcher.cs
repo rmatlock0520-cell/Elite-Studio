@@ -59,7 +59,7 @@ public sealed class GameWatcher(string journalDir, string bindingsDir, Func<stri
         (string vehicle, int screen) = (State.Status.Mode, State.Status.GuiFocus);
         ReadJson(status, e => State.SetStatus(GameStatus.Parse(e)));
         changed |= (State.Status.Mode, State.Status.GuiFocus) != (vehicle, screen);
-        changed |= ReadJson(cargo, e => { var (tons, items) = CargoItem.ParseHold(e); State.SetCargo(tons, items); });
+        changed |= ReadJson(cargo, e => { var (tons, items, ship) = CargoItem.ParseHold(e); State.SetCargo(tons, items, ship); });
         changed |= ReadJson(market, e => State.SetMarket(StationMarket.Parse(e)));
         changed |= ReadJson(route, e => State.SetRoute(RouteStop.ParseRoute(e)));
         if (display.Changed(out string settings))

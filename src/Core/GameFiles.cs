@@ -174,12 +174,13 @@ public sealed record CargoItem(string Id, string Name, int Count)
 {
     /// <summary>
     /// Cargo.json: tons on board, and the hold's contents biggest first with limpets left out.
-    /// While the player drives an SRV the file describes the SRV, which counts as an empty hold.
+    /// While the player drives an SRV the file describes the SRV, which counts as an empty hold;
+    /// Ship then says false: the ship parked meanwhile still carries what it carried.
     /// </summary>
-    internal static (int Tons, IReadOnlyList<CargoItem> Items) ParseHold(JsonElement e)
+    internal static (int Tons, IReadOnlyList<CargoItem> Items, bool Ship) ParseHold(JsonElement e)
     {
         string vessel = e.Text("Vessel");
-        if (vessel.Length > 0 && !vessel.Equals("Ship", StringComparison.OrdinalIgnoreCase)) return (0, []);
+        if (vessel.Length > 0 && !vessel.Equals("Ship", StringComparison.OrdinalIgnoreCase)) return (0, [], false);
         CargoItem[] items =
         [
             .. e.List("Inventory")
@@ -189,7 +190,7 @@ public sealed record CargoItem(string Id, string Name, int Count)
                 // the game leaves the display name out when it is just the code with a capital letter
                 .Select(i => new CargoItem(i.Id, i.Shown.Length > 0 ? i.Shown : CultureInfo.InvariantCulture.TextInfo.ToTitleCase(i.Id), i.Count)),
         ];
-        return ((int)e.Whole("Count"), items);
+        return ((int)e.Whole("Count"), items, true);
     }
 }
 

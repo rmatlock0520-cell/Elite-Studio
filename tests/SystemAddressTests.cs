@@ -8,7 +8,7 @@ namespace EliteStudio.Tests;
 /// <summary>
 /// A system's address against a position claimed for it, and the price listings that are left out
 /// when the two cannot both be true. The case that started it is the first test: real figures of
-/// 11 October 2026.
+/// 11 October 2026. Then the cube an address names, for the 3D map, and the other systems of a cube.
 /// </summary>
 public sealed class SystemAddressTests
 {
@@ -60,6 +60,61 @@ public sealed class SystemAddressTests
             }
             foreach (JsonProperty part in at.EnumerateObject()) Walk(part.Value);
         }
+    }
+
+    // Systems near the player, as Spansh recorded them on 14 October 2026 (tests\Fixtures\nav\boxel-verification.csv).
+    const long Suhte = 5306264359626, Maia = 8216113749, VkN18 = 5031386452682, VkN17 = 4756508545738, VkN23 = 6405775987402;
+
+    [Fact]
+    public void An_address_names_the_sector_the_cube_and_the_systems_number_in_the_cube()
+    {
+        // Sol: mass code d, so cubes of 80 ly; the 14th cube north in sector 39, 32, 18, number 0 in it.
+        CubePlace sol = SystemAddress.Place(Sol.Address)!;
+        Assert.Equal(new CubePlace(39, 32, 18, 0, 0, 13, 3, 0), sol);
+        Assert.Equal((80.0, (-65.0, -25.0, -25.0), (-25.0, 15.0, 15.0)), (sol.CubeLy, sol.Corner, sol.Centre));
+
+        // Suhte, next to the player: mass code c, cubes of 40 ly, and the 20th system of its cube.
+        CubePlace suhte = SystemAddress.Place(Suhte)!;
+        Assert.Equal((38, 32, 18, 2, 40.0, 19L), (suhte.SectorX, suhte.SectorY, suhte.SectorZ, suhte.Mass, suhte.CubeLy, suhte.Number));
+        Assert.Equal((-165.0, 35.0, -45.0), suhte.Centre);
+        // Maia in the Pleiades: mass code f, cubes of 320 ly.
+        CubePlace maia = SystemAddress.Place(Maia)!;
+        Assert.Equal((5, 320.0, (-225.0, -185.0, -265.0)), (maia.Mass, maia.CubeLy, maia.Centre));
+
+        // The parts give the address back, and every system lies within half a cube of its cube's centre.
+        foreach ((long address, double x, double y, double z) in new[] { Sol, Hip74116, Col285 })
+        {
+            CubePlace place = SystemAddress.Place(address)!;
+            Assert.Equal(address, place.Address);
+            (double cx, double cy, double cz) = place.Centre;
+            Assert.True(Math.Max(Math.Abs(x - cx), Math.Max(Math.Abs(y - cy), Math.Abs(z - cz))) <= place.CubeLy / 2, $"{address} lies outside its cube");
+        }
+        Assert.Equal([Suhte, Maia], new[] { suhte.Address, maia.Address });
+
+        // A body's address (the body's number above the system's) names the system's cube and number.
+        Assert.Equal(suhte, SystemAddress.Place(Suhte | (7L << 55)));
+        // An address that is not known names nothing.
+        Assert.Null(SystemAddress.Place(0));
+        Assert.Null(SystemAddress.Place(-1));
+    }
+
+    [Fact]
+    public void Another_number_in_the_same_cube_is_another_system_of_that_cube()
+    {
+        // Col 285 Sector VK-N c7-18, c7-17 and c7-23 share Suhte's cube, as Spansh recorded them.
+        Assert.Equal(VkN17, SystemAddress.WithNumber(VkN18, 17));
+        Assert.Equal(VkN23, SystemAddress.WithNumber(VkN18, 23));
+        Assert.Equal(Suhte, SystemAddress.WithNumber(VkN18, 19));
+        Assert.Equal(VkN18, SystemAddress.WithNumber(VkN18 | (3L << 55), 18));   // from a body's address: the system's, no body
+        Assert.Equal(SystemAddress.Place(VkN18)! with { Number = 0 }, SystemAddress.Place(SystemAddress.WithNumber(VkN18, 0)));
+
+        // Mass code c keeps 17 bits for the number: 0 to 131,071, and no more.
+        Assert.Equal(131071, SystemAddress.Place(SystemAddress.WithNumber(VkN18, 131071))!.Number);
+        Assert.Throws<ArgumentOutOfRangeException>(() => SystemAddress.WithNumber(VkN18, 131072));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SystemAddress.WithNumber(VkN18, -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => SystemAddress.WithNumber(0, 1));
+        // Sol's cube (mass code d) keeps 20 bits.
+        Assert.Equal((1L << 20) - 1, SystemAddress.Place(SystemAddress.WithNumber(Sol.Address, (1L << 20) - 1))!.Number);
     }
 
     [Fact]

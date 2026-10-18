@@ -103,7 +103,7 @@ body{overflow:auto}
         <th class="r" title="To buy: tons the station has on sale. To sell: tons the station wants">Supply / demand (t)</th>
         <th title="By this PC's clock">Last time run</th><th>Found</th>
         <th title="The station with the best price among those found">Best station</th><th>System</th><th title="Light years from the system you are in">Distance (ly)</th>
-        <th class="r" title="What that station asks, or pays">Its price (cr)</th><th class="r" title="Tons that station has on sale; for a search to sell, the tons it wants">Supply (t)</th><th></th>
+        <th class="r" title="What that station asks, or pays">Its price (cr)</th><th class="r" title="To buy: tons that station has on sale. To sell: tons that station wants">Supply / demand (t)</th><th></th>
       </tr></thead>
       <tbody id="searches"></tbody>
     </table>
@@ -125,7 +125,7 @@ body{overflow:auto}
 <script>
 (() => {
 'use strict';
-const { $, h, whole, count, ago, wideDot } = Studio;
+const { $, h, stationIcon, whole, count, ago, wideDot } = Studio;
 
 let side = 'buy';
 let picture = null;        // the app's picture of the saved searches
@@ -177,6 +177,8 @@ async function save() {
   };
   try {
     await call('POST', '/api/market/sniffer/save', search);
+    // The next search starts from these filters, not from the Trades page's: what suits a watch is not what suits a trade run.
+    try { localStorage.setItem(Kept, JSON.stringify({ pad: search.pad, maxStarLs: search.maxStarLs, surface: search.surface, carriers: search.carriers, maxAgeHours: search.maxAgeHours })); } catch (e) {}
     Studio.toast('Saved. Studio runs it within a minute or two, then every hour.');
     $('#name').value = $('#price').value = $('#tons').value = $('#avg').value = '';
   } catch (e) { Studio.toast(e.message, true); }
@@ -278,6 +280,8 @@ async function remove(line) {
 // narrows the list to that search's; "Show all" brings the rest back.
 const matches = {};   // by a search's id: { ran, answer }, the stations its run of that time found
 let only = '';        // the id of the one search whose stations are listed; '' for all that are met
+let bothSides = false;   // the stations listed are of searches to buy and of searches to sell
+const Kept = 'studio.sniffer.filters';   // where this browser keeps the filters of the search saved last
 let fetching = 0;
 
 function show(id) {
@@ -304,17 +308,15 @@ async function readMatches() {
 // ============================================================ drawing
 const columns = {
   commodity: { title: 'Commodity', value: r => r.commodity, text: r => [h('strong', null, r.commodity), ' ', h('span', { class: 'muted small' }, r.selling ? 'to sell' : 'to buy')] },
-  station: { title: 'Station', value: r => r.station },
-  system: { title: 'System', value: r => r.system },
-  copy: { title: '', text: r => [
-    h('button', { class: 'btn small', title: 'Then paste it into the galaxy map\'s search box with Ctrl+V', onclick: () => Studio.copyName(r.system) }, 'Copy system'), ' ',
-    h('button', { class: 'btn small', title: 'Opens Studio Nav with this system under To, ready to plot', onclick: () => Studio.open('nav', '?to=' + encodeURIComponent(r.system)) }, 'Route')] },
+  station: { title: 'Station', value: r => r.station, text: r => [stationIcon(r.type), Studio.link('station', r.station, r.system)] },
+  system: { title: 'System', value: r => r.system, text: r => Studio.link('system', r.system) },
   ly: { title: 'Distance (ly)', num: true, value: r => r.distanceLy, text: r => r.distanceLy.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
   ls: { title: 'From star (ls)', num: true, value: r => r.starLs, text: r => r.starLs == null ? '' : whole(r.starLs) },
   pad: { title: 'Pad', value: r => r.pad ? 'SML'.indexOf(r.pad) : null, text: r => r.pad || '?' },
   type: { title: 'Station type', value: r => r.type },
   price: { title: 'Price (cr)', num: true, value: r => r.price, text: r => whole(r.price) },
-  tons: { title: 'Supply (t)', num: true, value: r => r.tons, text: r => [whole(r.tons), r.selling && h('div', { class: 'muted small' }, 'demand')], hint: 'Tons the station has on sale; for a search to sell, the tons it wants' },
+  // Its title says which: supply for searches to buy, demand for searches to sell. Only a list of both says it on each line.
+  tons: { title: 'Supply (t)', num: true, value: r => r.tons, text: r => [whole(r.tons), bothSides && h('div', { class: 'muted small' }, r.selling ? 'demand' : 'supply')] },
   age: { title: 'Reported', value: r => r.updated ? -Date.parse(r.updated) : null, text: r => r.updated ? ago(r.updated) : '' },
 };
 
@@ -342,12 +344,11 @@ function render() {
       h('td', { class: 'muted', title: line.ranUtc ? ago(line.ranUtc) : null }, line.ranUtc ? clock(line.ranUtc) : ''),
       h('td', { class: met(line) ? 'met' : null }, found(line)),
       // What triggered it: the station with the best price, its system ready to copy, and what it offers.
-      h('td', null, met(line) ? line.bestStation : ''),
-      h('td', null, met(line) && [line.bestSystem, ' ',
-        h('button', { class: 'btn small', title: 'Then paste it into the galaxy map\'s search box with Ctrl+V', onclick: () => Studio.copyName(line.bestSystem) }, 'Copy')]),
+      h('td', null, met(line) ? Studio.link('station', line.bestStation, line.bestSystem) : ''),
+      h('td', null, met(line) && Studio.link('system', line.bestSystem)),
       h('td', null, met(line) && line.bestLy != null ? line.bestLy.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''),
       h('td', { class: 'r' }, met(line) ? whole(line.bestPrice) : ''),
-      h('td', { class: 'r' }, met(line) ? [whole(line.bestTons), selling && h('div', { class: 'muted small' }, 'demand')] : ''),
+      h('td', { class: 'r' }, met(line) ? [whole(line.bestTons), h('div', { class: 'muted small' }, selling ? 'demand' : 'supply')] : ''),
       changing ? h('td', null,
         h('button', { class: 'btn small primary', title: 'Keeps the price and the amount as typed. What the search found before is forgotten', onclick: () => saveRow(s) }, 'Save'), ' ',
         h('button', { class: 'btn small', onclick: () => edit(null) }, 'Cancel')) :
@@ -378,6 +379,10 @@ function render() {
     !only && metLines.length > 1 ? wideDot + 'Press Show on a search above to list only its stations' : null,
     wideDot + 'Click a column title to sort by it',
     listed.some(line => matches[line.search.id].answer.rows.length >= 100) ? wideDot + 'A search lists its 100 best prices' : null));
+  const selling = all.some(r => r.selling);
+  bothSides = selling && all.some(r => !r.selling);
+  columns.tons.title = bothSides ? 'Supply / demand (t)' : selling ? 'Demand (t)' : 'Supply (t)';
+  columns.tons.hint = bothSides ? 'To buy: tons the station has on sale. To sell: tons the station wants' : selling ? 'Tons the station wants' : 'Tons the station has on sale';
   const keys = Object.keys(columns);
   $('#heads').replaceChildren(...keys.map(key => !columns[key].value ? h('th') : h('th', {
       class: 'sort' + (sort.key === key ? sort.down ? ' down' : ' up' : ''), title: columns[key].hint,
@@ -407,14 +412,17 @@ const call = Studio.follow('sniffer', '/api/market/sniffer', p => {
   readMatches();   // of a search that was run since: its stations are read again
 });
 Studio.api('GET', '/api/market/find/names?kind=commodity').then(list => $('#names').replaceChildren(...list.names.map(name => h('option', { value: name }))), () => {});
-// The filters start as the player's own; a search handed over in the address (Find by name's "Save to Sniffer") lays its own on top.
+// The filters start as those of the search saved last on this page, or the first time as the Trades page's; a search
+// handed over in the address (Find by name's "Save to Sniffer") lays its own on top.
+let last = {};
+try { last = JSON.parse(localStorage.getItem(Kept) || '{}') || {}; } catch (e) { last = {}; }
 const asked = new URLSearchParams(location.search);
 const handed = {};
 for (const key of ['name', 'side', 'pad', 'surface']) if (asked.has(key)) handed[key] = asked.get(key);
 for (const key of ['price', 'tons', 'maxStarLs', 'maxAgeHours']) if (asked.has(key)) handed[key] = Math.max(0, Math.round(Number(asked.get(key)) || 0));
 if (asked.has('carriers')) handed.carriers = asked.get('carriers') === 'true';
 Studio.api('GET', '/api/market/hauling').then(mine => mine.settings, () => ({})).then(own => {
-  fill({ pad: own.pad, maxStarLs: own.maxStarLs, surface: own.surface, carriers: own.carriers, maxAgeHours: own.maxAgeHours, ...handed,
+  fill({ pad: own.pad, maxStarLs: own.maxStarLs, surface: own.surface, carriers: own.carriers, maxAgeHours: own.maxAgeHours, ...last, ...handed,
     name: handed.name || $('#name').value, side: handed.side || side, price: handed.price || number('#price'), tons: handed.tons || number('#tons') });
   if (handed.name) $('#price').focus();
 });

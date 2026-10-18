@@ -15,7 +15,23 @@ public sealed record PriceRow(string Name, int Buy, int Supply, int Sell, int De
 /// <param name="Mine">True when the list is the one the player saw there themselves; false when it is the service's.</param>
 /// <param name="Updated">When the list was seen or reported (UTC); null when not known.</param>
 /// <param name="Here">The station the player is docked at, whose prices the two profit columns are worked out against; null when there is none to compare with.</param>
-public sealed record StationPrices(long MarketId, string Station, string System, bool Mine, DateTime? Updated, string? Here, IReadOnlyList<PriceRow> Rows);
+/// <param name="Details">What Spansh knows of the station besides its prices; null for a station only the player's own visit is known of.</param>
+public sealed record StationPrices(long MarketId, string Station, string System, bool Mine, DateTime? Updated, string? Here, IReadOnlyList<PriceRow> Rows, StationDetails? Details = null);
+
+/// <summary>
+/// A station as its own page shows it, from Spansh: where and what it is, what it offers, who runs
+/// it and when each part was last reported. A text that is not known is "", a number null. Nobody
+/// publishes who owns a fleet carrier, so that is not here.
+/// </summary>
+/// <param name="Type">The kind of station, in Spansh's words.</param>
+/// <param name="CarrierName">A fleet carrier's own name ("ARGOS"); its <paramref name="Station"/> is then its call sign.</param>
+/// <param name="Access">A fleet carrier: who may dock, in words (see Finder.AccessWords).</param>
+/// <param name="Services">Every service there by Spansh's name for it; the kind of a material trader or a technology broker stands with it ("Material Trader (Raw)").</param>
+/// <param name="Economies">Each with its share: "High Tech 67%".</param>
+public sealed record StationDetails(
+    string Station, string System, string Type, string CarrierName, string Access, double? StarLs, double? DistanceLy, int LargePads, int MediumPads, int SmallPads,
+    IReadOnlyList<string> Services, IReadOnlyList<string> Economies, string Government, string Allegiance, string Faction, string Power, string PowerState, string State,
+    long? Population, DateTime? Updated, DateTime? MarketUpdated, DateTime? ShipyardUpdated, DateTime? OutfittingUpdated);
 
 // The part of Finder that finds a station by its name and shows its price list (the owner, 11 October
 // 2026: "add a function to search via station to the find by name tab"). Spansh's stations search
@@ -30,6 +46,7 @@ sealed partial class Finder
     sealed record Listed(string Station, string System, DateTime? Updated, IReadOnlyList<PriceRow> Rows);
 
     readonly Dictionary<long, Listed> listed = [];   // by market id
+    readonly Dictionary<long, StationDetails> details = [];   // by market id: what Spansh said of each station found by name this session
 
     /// <summary>The stations with a name like the one typed: the player's own visits first, then Spansh's, its best match first.</summary>
     async Task<FindAnswer> Named(FindRequest request, string from, double[]? here, MarketData.Asking ask)
@@ -60,15 +77,7 @@ sealed partial class Finder
                 if (station.Name is not { Length: > 0 } name) continue;
                 long id = station.MarketId ?? 0;
                 DateTime? reported = MarketData.Time(station.MarketUpdatedAt);
-                if (id != 0 && station.Market is { Count: > 0 } goods)
-                {
-                    listed[id] = new Listed(name, station.SystemName ?? "", reported,
-                    [
-                        .. from good in goods.OfType<Good>()
-                           where good.Commodity is { Length: > 0 }
-                           select new PriceRow(good.Commodity!, Whole(good.BuyPrice), Whole(good.Supply), Whole(good.SellPrice), Whole(good.Demand), null, null),
-                    ]);
-                }
+                Remember(station);
                 int at = id == 0 ? -1 : rows.FindIndex(row => row.MarketId == id);
                 int? pad = station.LargePads > 0 ? 3 : station.MediumPads > 0 ? 2 : station.SmallPads > 0 ? 1 : null;
                 // A station the player visited is listed once, with what Spansh knows of it besides; the time stays the newer of the two.
@@ -87,8 +96,42 @@ sealed partial class Finder
         note ??= rows.Count == 0 ? $"No station with a name like \"{typed}\" is known. Check its spelling, or type less of it."
             : "Press Prices on a station to see what it sells and buys. The best match is listed first.";
         return new FindAnswer($"Stations called \"{typed}\"", from, rows, SpanshName, null, note, null, asked);
+    }
+
+    /// <summary>Keeps what Spansh said of a station for the session: its sheet, and its price list when it sent one. A station without a market id cannot be asked for again, so it is not kept.</summary>
+    void Remember(Station station)
+    {
+        if (station.MarketId is not { } id || id == 0 || station.Name is not { Length: > 0 } name) return;
+        details[id] = Details(station, name);
+        if (station.Market is not { Count: > 0 } goods) return;
+        listed[id] = new Listed(name, station.SystemName ?? "", MarketData.Time(station.MarketUpdatedAt),
+        [
+            .. from good in goods.OfType<Good>()
+               where good.Commodity is { Length: > 0 }
+               select new PriceRow(good.Commodity!, Whole(good.BuyPrice), Whole(good.Supply), Whole(good.SellPrice), Whole(good.Demand), null, null),
+        ]);
 
         static int Whole(double? number) => (int)Math.Clamp(Math.Round(number ?? 0), 0, int.MaxValue);
+    }
+
+    /// <summary>What Spansh says of one station, as its own page shows it.</summary>
+    static StationDetails Details(Station station, string name)
+    {
+        static int Count(double? pads) => (int)Math.Clamp(Math.Round(pads ?? 0), 0, 999);
+        // A material trader's and a technology broker's kind is a field of its own; it is put beside the service's name.
+        string Service(string service) =>
+            Letters(service) == "materialtrader" && station.MaterialTrader is { Length: > 0 } trades ? $"{service} ({trades})"
+            : Letters(service) == "technologybroker" && station.TechnologyBroker is { Length: > 0 } broker ? $"{service} ({broker})"
+            : service;
+        Part[] economies = [.. (station.Economies ?? []).OfType<Part>().Where(part => part.Name is { Length: > 0 })];
+        return new StationDetails(name, station.SystemName ?? "", station.Type ?? "", station.CarrierName ?? "", AccessWords(station.CarrierDockingAccess),
+            station.DistanceToArrival, station.Distance is { } ly ? Math.Round(ly, 2) : null, Count(station.LargePads), Count(station.MediumPads), Count(station.SmallPads),
+            [.. (station.Services ?? []).Select(service => service?.Name).OfType<string>().Where(service => service.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Select(Service)],
+            // One economy needs no share. Several each have their own, and those of a colony's station need not add up to a hundred.
+            [.. economies.Select(part => economies.Length > 1 && part.Share is > 0 ? Invariant($"{part.Name} {Math.Round(part.Share.Value)}%") : part.Name!)],
+            station.Government ?? "", station.Allegiance ?? "", station.ControllingMinorFaction ?? "", station.SystemControllingPower ?? "", station.SystemPowerState ?? "",
+            station.State ?? "", station.SystemPopulation is > 0 ? (long)Math.Round(station.SystemPopulation.Value) : null,
+            MarketData.Time(station.UpdatedAt), MarketData.Time(station.MarketUpdatedAt), MarketData.Time(station.ShipyardUpdatedAt), MarketData.Time(station.OutfittingUpdatedAt));
     }
 
     /// <summary>
@@ -120,8 +163,9 @@ sealed partial class Finder
                },
         ];
         Log.Info(Invariant($"Prices of {(mine ? own!.Station : theirs!.Station)} ({marketId}): {shown.Length} lines, {(mine ? "the player's own" : "Spansh's")}"));
-        return mine ? new StationPrices(marketId, own!.Station, own.System, true, own.SeenUtc, docked?.Station, shown)
-            : new StationPrices(marketId, theirs!.Station, theirs.System, false, theirs.Updated, docked?.Station, shown);
+        StationDetails? known = details.GetValueOrDefault(marketId);
+        return mine ? new StationPrices(marketId, own!.Station, own.System, true, own.SeenUtc, docked?.Station, shown, known)
+            : new StationPrices(marketId, theirs!.Station, theirs.System, false, theirs.Updated, docked?.Station, shown, known);
 
         static PriceRow Line(MarketItem item) =>
             new(item.Name.Length > 0 ? item.Name : GameData.CommodityName(item.Id), item.BuyPrice, item.Stock, item.SellPrice, item.Demand, null, null);

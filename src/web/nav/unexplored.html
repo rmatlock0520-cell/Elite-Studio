@@ -18,6 +18,8 @@
   The page only draws what the app says. GET /api/nav/explore/trip and every "explore" event carry the
   count and where the commander is; .../coverage carries the map; POST .../waypoint answers with the
   square and the system to head for. Shown inside the shell (..\index.html) and also works on its own.
+  The "Flat map | 3D map" switch above the map opens heatmap.html, the same sectors in 3D layer by layer, on the
+  column of the thinly known square found (or the commander's own).
 -->
 <style>
 /* Only what is this page's own; the shared look (buttons, boxes, badges, fields...) is in ../studio.css. */
@@ -44,6 +46,7 @@
 .credit{margin:18px 0 0;padding-top:14px;border-top:1px solid var(--line)}
 
 .chart{display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;padding:16px}
+.maps{align-self:flex-start;flex:none}
 .mapbox{flex:1;min-height:0;position:relative;background:var(--bg2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .mapbox canvas{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
 #no-map{position:absolute;inset:0;margin:auto;height:fit-content;max-width:470px;padding:0 16px;text-align:center;color:var(--muted)}
@@ -97,6 +100,7 @@
   </aside>
 
   <main class="chart">
+    <div class="seg maps" role="group" aria-label="Which map"><button type="button" class="active" aria-pressed="true">Flat map</button><button type="button" id="to-3d" title="Opens the 3D map">3D map</button></div>
     <div class="mapbox">
       <canvas id="map" title="Click to look in that direction from where you are" hidden></canvas>
       <p id="no-map">No map on this PC yet. Press "Get the map from EDAstro" on the left: Studio fetches one list of about 1.5 MB and draws the galaxy from above, shaded by how many systems are known in each part.</p>
@@ -106,7 +110,7 @@
       <span><i class="known"></i>Better known, brighter with more</span>
       <span><i class="you"></i>You, and the way you are looking</span>
     </p>
-    <p class="muted small" id="meaning" hidden>Read it as "how busy", not "how finished". The galaxy has some 400 billion systems and about 100 million are known, so every square is mostly unexplored. An orange or dark square has had few visitors, and towards the rim it also has few stars; a bright one is well travelled, yet most of its stars are still nobody's. So you need not fly to an orange square to be first: a few hundred light years off the busy routes there are undiscovered systems almost anywhere, and the count on the left proves each one. The waypoint is for when you want a whole region that few have seen.</p>
+    <p class="muted small" id="meaning" hidden>Read it as "how busy", not "how finished". The galaxy has some 400 billion systems and about 100 million are known, so every square is mostly unexplored. An orange or dark square has had few visitors, and towards the rim it also has few stars; a bright one is well travelled, yet most of its stars are still nobody's. So you need not fly to an orange square to be first: a few hundred light years off the busy routes there are systems nobody has recorded almost anywhere, and the count on the left proves each one. The waypoint is for when you want a whole sector that few have seen.</p>
   </main>
 </div>
 
@@ -309,6 +313,7 @@ function showWay() {
   $('#way-note').hidden = !note;
   $('#way-note').textContent = note;
   $('#way-note').className = refused || (way && way.problem) ? 'card bad' : 'card';
+  show3d();
 }
 
 // A click on the map: look from the commander towards that place.
@@ -323,6 +328,25 @@ function pick(e) {
   suggest();
 }
 
+// ============================================================ the 3D map
+// The switch above the map opens the 3D map on one column of sectors: the thinly known square found (the waypoint's,
+// or the one clicked towards), else the one the commander is in, else the app's own choice (also the commander's).
+// The column is the game's grid, as in Galaxy.cs and heat-grid.js: sector corners at x -49,985 and z -24,105 plus
+// 1,280 ly a step.
+function where3d() {
+  const square = way && way.square, here = trip && trip.position;
+  const at = square && typeof square.x === 'number' ? [square.x, square.z] : here ? [here[0], here[2]] : null;
+  return { at, square: !!(square && !square.here && typeof square.x === 'number') };
+}
+function show3d() {
+  const w = where3d();
+  $('#to-3d').title = w.square ? 'Opens the 3D map on the thinly known square found that way' : w.at ? 'Opens the 3D map on the sectors around you' : 'Opens the 3D map';
+}
+function open3d() {
+  const { at } = where3d();
+  location.href = 'heatmap.html' + (at ? '?ix=' + Math.floor((at[0] + 49985) / 1280) + '&iz=' + Math.floor((at[1] + 24105) / 1280) : '');
+}
+
 // ============================================================ start-up
 if (!Studio.served) return;
 $('#reset').addEventListener('click', async () => {
@@ -334,6 +358,7 @@ $('#suggest').addEventListener('click', suggest);
 $('#follow').addEventListener('click', () => { picked = null; if (trip && trip.heading != null) suggest(); else { way = null; refused = ''; showLook(); showWay(); draw(); } });
 $('#map').addEventListener('click', pick);
 $('#copy').addEventListener('click', () => { if (way && way.system) Studio.copyName(way.system.name); });
+$('#to-3d').addEventListener('click', open3d);
 new ResizeObserver(draw).observe($('#map'));   // also when this page comes (back) on show: hidden, it has no size to draw in
 setInterval(everyMinute, 60000);
 const call = Studio.follow('explore', '/api/nav/explore/trip', showTrip);
