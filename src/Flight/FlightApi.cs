@@ -19,10 +19,14 @@ public sealed record TrainerShip(string Id, string Name, double Speed, double Bo
 ///
 /// Routes: GET /api/flight (everything the pages show: settings, the game's flight bindings,
 /// Gremlin's profile, the ships, Flight Assist now); POST /api/flight/settings (the named settings
-/// changed); POST /api/flight/progress ({"exercise":"spin-1","successes":3,"attempts":5}, one set of
+/// changed); POST /api/flight/progress ({"exercise":"chase-1","successes":3,"attempts":5}, one set of
 /// the trainer flown); POST /api/flight/stream (the stick readings as "flight-input" events for the
-/// next few seconds); POST /api/flight/gremlin (writes the FA Off profile for Joystick Gremlin). The
-/// live event "flight" carries what GET answers whenever any of it changes.
+/// next few seconds); POST /api/flight/gremlin (writes the FA Off profile for Joystick Gremlin);
+/// GET /api/flight/vjoy (looks for vJoy and says what state it is in, see <see cref="VJoyState"/>),
+/// POST /api/flight/vjoy/folder (the player points to vJoy's folder by hand, the only way to set it),
+/// POST /api/flight/vjoy/forget (forgets that folder) and POST /api/flight/vjoy/configure (opens vJoy's
+/// own settings program). The live event "flight" carries
+/// what GET /api/flight answers whenever any of it changes.
 /// </summary>
 public sealed class FlightApi : IDisposable
 {
@@ -45,14 +49,22 @@ public sealed class FlightApi : IDisposable
     FlightControls controls;
     bool? faOff;   // Flight Assist off at the last look; null before the first, so the first look always counts
 
+    readonly Func<string?, VJoyInstall> findVJoy;
+    readonly Func<string, Task<VJoyProbeResult?>> askVJoy;
+
     /// <param name="overlay">The overlay, for its flight box; null for none.</param>
     /// <param name="gremlinProfile">Where Gremlin's profile is (null: the one Gremlin last opened); tests hand in their own.</param>
     /// <param name="sticks">How sticks are read; tests hand in their own (see <see cref="FlightReader"/>).</param>
+    /// <param name="findVJoy">How vJoy is looked for in what Windows keeps (null: <see cref="VJoyFinder.Look"/>); tests hand in their own.</param>
+    /// <param name="askVJoy">How vJoy's library is asked (null: Studio's helper, <see cref="VJoyHelper.Ask"/>); tests hand in their own.</param>
     public FlightApi(WebServer web, StudioSettings settings, GameState game, OverlayHost? overlay, string bindingsDir, Func<string?>? gameDir,
-        Func<string?>? gremlinProfile = null, Func<bool, IReadOnlyList<StickState>>? sticks = null, Func<int, bool>? held = null)
+        Func<string?>? gremlinProfile = null, Func<bool, IReadOnlyList<StickState>>? sticks = null, Func<int, bool>? held = null,
+        Func<string?, VJoyInstall>? findVJoy = null, Func<string, Task<VJoyProbeResult?>>? askVJoy = null)
     {
         (this.web, file, this.game, this.overlay, this.bindingsDir, this.gameDir) = (web, settings, game, overlay, bindingsDir, gameDir);
         this.gremlinProfile = gremlinProfile ?? (() => Gremlin.LastProfile());
+        this.findVJoy = findVJoy ?? VJoyFinder.Look;
+        this.askVJoy = askVJoy ?? VJoyHelper.Ask;
         try
         {
             Current = settings.Get<FlightSettings>(Section).Cleaned();
@@ -79,6 +91,11 @@ public sealed class FlightApi : IDisposable
             return WebResponse.Json(new { ok = true });
         });
         web.Map("POST", "/api/flight/gremlin", _ => SaveGremlin());
+        // vJoy: looked for only when the Stick setup page asks (never at start-up, so a player with no stick never loads any of it).
+        web.Map("GET", "/api/flight/vjoy", async _ => WebResponse.Json(await CheckVJoy()));
+        web.Map("POST", "/api/flight/vjoy/folder", _ => PickVJoyFolder());
+        web.Map("POST", "/api/flight/vjoy/forget", _ => ForgetVJoyFolder());
+        web.Map("POST", "/api/flight/vjoy/configure", _ => OpenConfigureVJoy());
 
         game.Changed += OnGameChanged;
         if (overlay is not null)
@@ -256,7 +273,9 @@ public sealed class FlightApi : IDisposable
             if (JsonNode.Parse(request.Body) is not JsonObject given) throw new JsonException("Send the settings to change as one JSON object.");
             JsonObject all = JsonSerializer.SerializeToNode(Current, StudioSettings.Json)!.AsObject();
             foreach ((string name, JsonNode? value) in given)
-                if (all.ContainsKey(name) && name is not "progress" and not "shownForFaOff") all[name] = value?.DeepClone();
+                // Not these: the progress has its own route, the marker is Studio's, and vJoy's folder is set only through
+                // Windows' folder picker (POST /api/flight/vjoy/folder), which checks it is vJoy's and on this PC.
+                if (all.ContainsKey(name) && name is not "progress" and not "shownForFaOff" and not "vJoyFolder") all[name] = value?.DeepClone();
             changed = all.Deserialize<FlightSettings>(StudioSettings.Json)!.Cleaned();
         }
         catch (JsonException problem)
@@ -265,6 +284,75 @@ public sealed class FlightApi : IDisposable
         }
         Save(changed);
         return WebResponse.Json(Answer());
+    }
+
+    /// <summary>
+    /// Looks for vJoy: what Windows keeps (read off the UI thread), then vJoy's library through the helper when a library
+    /// was found, and the verdict for the axes Elite's flight bindings use on vJoy.
+    /// </summary>
+    internal async Task<VJoyState> CheckVJoy()
+    {
+        string chosen = Current.VJoyFolder;
+        VJoyInstall found;
+        try
+        {
+            found = await Task.Run(() => findVJoy(chosen));
+        }
+        catch (Exception problem) when (problem is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            Log.Error("Studio Flight: looking for vJoy failed", problem);
+            found = VJoyInstall.None;
+        }
+        VJoyProbeResult? probe = found.Dll is { } dll ? await askVJoy(dll) : null;
+        (string[] need, bool fromBinds) = VJoyState.AxesFor(binds);
+        return VJoyState.Judge(found, probe, need, fromBinds, chosen);
+    }
+
+    /// <summary>The player points Studio to vJoy's folder by hand (Windows' folder picker, over the Studio window).</summary>
+    async Task<WebResponse> PickVJoyFolder()
+    {
+        App.MainWindow? window = null;
+        try
+        {
+            window = System.Windows.Application.Current?.MainWindow as App.MainWindow;
+        }
+        catch (InvalidOperationException) { }   // asked from another thread than the window's (tests): no window here
+        if (window is null) return WebResponse.Error("Studio has no window to show the folder picker over.", 409);
+        window.BringToFront();
+        var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Choose the folder vJoy is installed in" };
+        if (dialog.ShowDialog(window) != true) return WebResponse.Json(await CheckVJoy());
+        string picked = dialog.FolderName;
+        if (await Task.Run(() => VJoyFinder.WhyNotVJoy(picked)) is { } why) return WebResponse.Error(why, 400);
+        Save(Current with { VJoyFolder = picked });
+        return WebResponse.Json(await CheckVJoy());
+    }
+
+    /// <summary>Forgets the folder the player picked by hand, and looks again where Windows says.</summary>
+    async Task<WebResponse> ForgetVJoyFolder()
+    {
+        if (Current.VJoyFolder.Length > 0) Save(Current with { VJoyFolder = "" });
+        return WebResponse.Json(await CheckVJoy());
+    }
+
+    /// <summary>Opens vJoy's own settings program ("Configure vJoy"), which asks Windows for permission itself.</summary>
+    async Task<WebResponse> OpenConfigureVJoy()
+    {
+        string chosen = Current.VJoyFolder;
+        VJoyInstall found = await Task.Run(() => findVJoy(chosen));
+        if (found.Configure is not { } program || !VJoyFinder.LocalFolder(Path.GetDirectoryName(program)))
+            return WebResponse.Error("Studio found no \"Configure vJoy\" program (vJoyConf.exe) in vJoy's folder. Open it from the Start menu, or install vJoy again with its configuration program.", 404);
+        try
+        {
+            // Off the UI thread: Windows' permission question holds the starting thread until it is answered, and Studio's
+            // pages and overlay must not stop meanwhile.
+            await Task.Run(() => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(program) { UseShellExecute = true })?.Dispose());
+            return WebResponse.Json(new { ok = true });
+        }
+        catch (System.ComponentModel.Win32Exception problem)
+        {
+            // 1223: the player said no to Windows' permission question.
+            return WebResponse.Error(problem.NativeErrorCode == 1223 ? "Windows did not open Configure vJoy: permission was not given." : "Configure vJoy did not open: " + problem.Message, 409);
+        }
     }
 
     sealed class SetBody
@@ -278,7 +366,7 @@ public sealed class FlightApi : IDisposable
     WebResponse Progress(WebRequest request)
     {
         SetBody set = request.Read<SetBody>();
-        if (!System.Text.RegularExpressions.Regex.IsMatch(set.Exercise ?? "", "^(spin|tunnel|track)-[1-3]$") || set.Attempts is < 1 or > 5 || set.Successes < 0 || set.Successes > set.Attempts)
+        if (!System.Text.RegularExpressions.Regex.IsMatch(set.Exercise ?? "", "^(chase|tunnel|track)-[1-3]$") || set.Attempts is < 1 or > 5 || set.Successes < 0 || set.Successes > set.Attempts)
             return WebResponse.Error("That is not a set of the trainer.", 400);
         ExerciseRecord was = Current.Progress.GetValueOrDefault(set.Exercise!) ?? new ExerciseRecord();
         bool passed = set.Successes >= 3;

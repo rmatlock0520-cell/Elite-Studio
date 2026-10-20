@@ -23,9 +23,12 @@ internal sealed record RunningCopy(int Port, string Token, int Pid);
 /// with --data-dir it is a practice copy, whose first run copies nothing in from the older tools),
 /// --port N, --headless (no window or tray icon; ends on POST /api/app/quit), --smoke (opens the
 /// window, writes SMOKE READY or SMOKE FAILED to the log, and leaves with exit code 0 or 1),
-/// --offline (no community service is reached, for practice runs) and --render-shots FOLDER (draws
+/// --offline (no community service is reached, for practice runs), --render-shots FOLDER (draws
 /// the overlay to PNG files and leaves; no window, no data folder, no log, works while Studio is
-/// already open).
+/// already open), --vjoy-probe DLL (Studio Flight's helper: asks vJoy's library about vJoy, writes
+/// the answer as JSON to its output and leaves; likewise no window, data folder or log), --gimbalyn
+/// [--with PID] [--start] (runs Gimbalyn, the stick shaper, see Gimbalyn\Host.cs) and --gimbalyn-centre
+/// (centres vJoy once and leaves).
 /// </summary>
 public static class Program
 {
@@ -99,6 +102,16 @@ public static class Program
 
     static int Start(Dictionary<string, string> options)
     {
+        // Gimbalyn, Studio Flight's stick shaper, runs as its own process from Studio's own program (so a problem in Studio
+        // can never leave vJoy deflected, and its feeding never waits on Studio): --gimbalyn runs it, --gimbalyn-centre centres
+        // vJoy once. Answered first, before Studio's own handlers below: those would end the process before Gimbalyn's own
+        // could centre vJoy and say why in its log. Both use the data folder, but not Studio's log or its one-copy check.
+        if (options.ContainsKey(Gimbalyn.Host.Option) || options.ContainsKey(Gimbalyn.Host.CentreOption))
+        {
+            Paths.Init(options);
+            return options.ContainsKey(Gimbalyn.Host.Option) ? Gimbalyn.Host.Run(options, Paths.DataDir) : Gimbalyn.Host.Centre(Paths.DataDir);
+        }
+
         // (Until the log is started below, what these two write goes nowhere; leaving quietly still holds.)
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
@@ -117,6 +130,10 @@ public static class Program
         // bring that one's window forward (perhaps over the game) and then leave with 0 as if the pictures
         // were drawn.
         if (options.TryGetValue("render-shots", out string? shots)) return Overlay.OverlayWindow.RenderShots(shots);
+        // --vjoy-probe <dll>: the short-lived helper Studio Flight runs to ask vJoy's library about vJoy (so the library is
+        // never loaded into Studio itself). Answered here for the same reasons: no data folder, no log, no window, and
+        // never the running Studio's business.
+        if (options.TryGetValue(Flight.VJoyProbe.Option, out string? vjoy)) return Flight.VJoyProbe.Run(vjoy);
 
         Paths.Init(options);
         Log.Start(Paths.DataDir);

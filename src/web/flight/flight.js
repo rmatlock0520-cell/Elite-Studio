@@ -40,7 +40,7 @@ function stream(onFrame) {
 //   pitch (nose up), roll (right wing down), yaw (nose right), lateral (right), vertical (up), ahead (forward thrust),
 //   plus the throttle as set (kept between readings, from its axis or the speed buttons), boost (pressed just now),
 //   pressed (the flight actions held) and real (the stick before any curve, for the pictures).
-// info is GET /api/flight; useStick: the real stick with Studio's FA Off curves (else what the game gets, Gremlin's vJoy).
+// info is GET /api/flight; useStick: the real stick with Studio's FA Off curves (else what the game gets, through vJoy).
 // read.reset() puts the throttle back to zero, for a new attempt.
 function reader() {
   let throttle = 0, before = new Set(), lastTime = 0;
@@ -211,7 +211,7 @@ function keyText(key) {
   return name.replace(/^Numpad_/, 'Numpad ');
 }
 // "LogitechExtreme3DPro" → "Logitech Extreme 3D Pro"
-const deviceText = device => device === 'vJoy' ? 'vJoy (Gremlin)' : String(device || '').replace(/([a-z])([A-Z0-9])/g, '$1 $2').replace(/([A-Z0-9])([A-Z][a-z])/g, '$1 $2');
+const deviceText = device => device === 'vJoy' ? 'vJoy' : String(device || '').replace(/([a-z])([A-Z0-9])/g, '$1 $2').replace(/([A-Z0-9])([A-Z][a-z])/g, '$1 $2');
 function pressText(k) {
   if (k.device === 'Keyboard') return keyText(k.key) + ' key';
   if (k.device === 'Mouse') return k.key.replace(/^Mouse_/, 'Mouse ');

@@ -72,12 +72,28 @@ table.binds td:first-child{color:var(--muted);white-space:nowrap;width:150px}
 .check-history>summary{cursor:pointer;font-family:var(--hud);font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .check-earlier{margin:10px 0 14px}
 .check-earlier p{margin:4px 0}
+/* vJoy (vjoy.js): one line when all is well, the way to get it ready when not */
+#vjoy-card h2 .small{font-family:inherit;letter-spacing:0;text-transform:none}
+.vjoy-status{font-weight:600;margin:4px 0 6px}
+.vjoy-status.good{color:var(--good)}
+.vjoy-status.warn{color:var(--warn)}
+#vjoy-card.vjoy-todo{border-color:var(--warn)}
+#vjoy-body p{margin:4px 0 8px}
+.vjoy-get{margin:4px 0 10px;padding-left:18px}
+.vjoy-get li{margin:2px 0}
+.vjoy-get a{color:var(--link,var(--accent))}
 </style>
 </head>
 <body>
 <nav class="subtabs"><a href="./">Trainer</a><a class="active" href="setup.html">Stick setup</a></nav>
 <div class="page"><div class="grid">
   <div>
+    <section class="card" id="vjoy-card">
+      <h2>vJoy <span class="small muted">the virtual joystick your curves reach the game through</span></h2>
+      <p class="vjoy-status" id="vjoy-status">Looking for vJoy…</p>
+      <div id="vjoy-body"></div>
+    </section>
+
     <section class="card" id="check-card">
       <h2>Stick check <span class="small muted">guided, about 2½ minutes</span></h2>
       <p class="small muted">With Flight Assist off, anything the stick gives at rest keeps turning the ship faster and faster, and an old stick seldom comes back to exactly the middle. This check finds where yours rests, by itself and with your hand resting on it as in flight, and how far it reaches, then sets your Flight Assist off dead zones to match (and, for a worn stick that never reaches its end, how far it travels), with a button to put back the ones before. The trainer's exercises are then for tuning the curves. Pick the device, press Start, and follow the steps on screen: each moves on by itself.</p>
@@ -150,6 +166,7 @@ table.binds td:first-child{color:var(--muted);white-space:nowrap;width:150px}
 <script src="../studio.js"></script>
 <script src="flight.js"></script>
 <script src="check.js"></script>
+<script src="vjoy.js"></script>
 <script>
 (() => {
 'use strict';
@@ -170,6 +187,9 @@ const call = Studio.follow('flight', '/api/flight', answer => {
 const overlay = Studio.follow('overlay', '/api/overlay/settings', answer => { ov = answer; drawOverlay(); });
 Flight.stream(f => { frame = f; });
 FlightCheck.init({ getInfo: () => info, getFrame: () => frame, call, toast, flush });
+// Looks for vJoy now, as the page opens (never at Studio's start). Its answers are not the flight data, so it calls Studio
+// directly (Studio.api), not through "call", which would take every answer for that data.
+FlightVJoy.init({ call: Studio.api, toast });
 const accent = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff7100';
 
 // ============================================================ drawing what the app says

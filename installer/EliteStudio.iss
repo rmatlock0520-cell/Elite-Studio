@@ -5,7 +5,8 @@
 ;   WebView2Setup  Microsoft's small WebView2 Runtime installer, run only on a PC that lacks the engine Studio's window shows its pages with
 ; and TestBuild for a copy of the installer to try it with: "Elite Studio (test)", with an ID of its own and no shortcuts. It
 ; never closes or deletes anything of the player's real Studio: the Studio it closes, and whose files it offers to remove, is
-; a practice copy started on %LOCALAPPDATA%\Elite Studio (test) (EliteStudio.exe --data-dir "that folder").
+; a practice copy started on %LOCALAPPDATA%\Elite Studio (test) (EliteStudio.exe --data-dir "that folder"), and the only one it
+; may end is one run from its own install folder.
 ;
 ; What it does: installs Studio for every user of the PC in Program Files (Windows asks once for an administrator's yes), with a
 ; Start menu entry and, if wanted, a desktop shortcut; it is listed in Windows' Apps with its icon, so it is uninstalled the
@@ -75,8 +76,9 @@ WizardImageFile=wizard-1x.bmp,wizard-2x.bmp
 WizardSmallImageFile=wizard-small-1x.bmp,wizard-small-2x.bmp
 LicenseFile=..\LICENSE
 
-; A Studio still running when its files are to be replaced is closed first (CloseStudio below); should that fail, Windows'
-; own way of closing programs is offered. It is not started again by itself: the last page offers that.
+; A Studio still running when its files are to be replaced is closed first (CloseStudio below), and one run from this folder
+; that cannot be asked is ended (EndStuckStudio); should that fail, Windows' own way of closing programs is offered. It is not
+; started again by itself: the last page offers that.
 CloseApplications=yes
 RestartApplications=no
 
@@ -200,23 +202,92 @@ begin
   Sleep(500);   // a moment for it to let go of its files
 end;
 
+// How many Studios are running from the folder being installed to or uninstalled from; with EndThem, they are ended too.
+// Only this folder's: a Studio run from anywhere else is not this setup's to end. Never Gimbalyn (the same EliteStudio.exe,
+// started with --gimbalyn): ended abruptly it could not centre vJoy first, and the ship would keep its last stick input. It
+// is left to Windows' own closing step, which asks the player.
+function StudiosInFolder(EndThem: Boolean): Integer;
+var
+  Locator, Wmi, Found, Proc: Variant;
+  Folder, Path, Command: String;
+  I, Pid: Integer;
+begin
+  Result := 0;
+  Folder := AddBackslash(ExpandConstant('{app}'));
+  try
+    Locator := CreateOleObject('WbemScripting.SWbemLocator');
+    Wmi := Locator.ConnectServer('.', 'root\CIMV2');
+    Found := Wmi.ExecQuery('SELECT ProcessId, ExecutablePath, CommandLine FROM Win32_Process WHERE Name = ''EliteStudio.exe''');
+    for I := 0 to Found.Count - 1 do
+    begin
+      Proc := Found.ItemIndex(I);
+      if VarIsNull(Proc.ExecutablePath) then Continue;
+      Path := Proc.ExecutablePath;
+      if CompareText(Copy(Path, 1, Length(Folder)), Folder) <> 0 then Continue;
+      Command := '';
+      if not VarIsNull(Proc.CommandLine) then Command := Proc.CommandLine;
+      Command := Lowercase(Command);
+      if Pos('--gimbalyn', Command) > 0 then
+      begin
+        if EndThem then Log('Gimbalyn is running from this folder: not ended, so vJoy is not left where it was.');
+        Continue;
+      end;
+      Result := Result + 1;
+      if EndThem then
+      begin
+        Pid := Proc.ProcessId;
+        Log(Format('A Studio running from this folder (process %d) did not close when asked: ending it.', [Pid]));
+        Proc.Terminate(0);
+      end;
+    end;
+  except
+    Log('Could not look for a running Studio: ' + GetExceptionMessage);
+  end;
+end;
+
+// A Studio still running from this folder after CloseStudio cannot be asked to close: it hung while starting, before it
+// wrote running.json, so it has no address to ask and no window for Windows' own closing step either (seen after a blue
+// screen had left half the installed files empty). Its files cannot be replaced or removed while it runs ("DeleteFile
+// failed; code 5. Access is denied"), so it is ended. One that was asked and is on its way out gets five seconds first.
+procedure EndStuckStudio;
+var
+  Waited: Integer;
+begin
+  Waited := 0;
+  while (StudiosInFolder(False) > 0) and (Waited < 50) do
+  begin
+    Sleep(100);
+    Waited := Waited + 1;
+  end;
+  if StudiosInFolder(True) = 0 then Exit;
+  Waited := 0;
+  while (StudiosInFolder(False) > 0) and (Waited < 30) do
+  begin
+    Sleep(100);
+    Waited := Waited + 1;
+  end;
+  Sleep(500);   // a moment for Windows to let go of its files
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   CloseStudio;
+  EndStuckStudio;
   Result := '';
 end;
 
-function InitializeUninstall: Boolean;
-begin
-  CloseStudio;
-  Result := True;
-end;
-
-// After uninstalling: the player's own files are kept unless they say otherwise.
+// Uninstalling: once the player has said yes to removing Studio (not before: a no leaves Studio running), a running Studio is
+// closed so its files can go. After uninstalling: the player's own files are kept unless they say otherwise.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Data: String;
 begin
+  if CurUninstallStep = usUninstall then
+  begin
+    CloseStudio;
+    EndStuckStudio;
+    Exit;
+  end;
   if (CurUninstallStep <> usPostUninstall) or UninstallSilent then Exit;
   Data := ExpandConstant('{localappdata}\{#DataFolder}');
   if not DirExists(Data) then Exit;

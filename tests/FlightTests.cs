@@ -451,7 +451,7 @@ public sealed class FlightTests : IDisposable
             Ship = "../../x", Input = "mouse",
             AxisFix = new() { ["046D:C215 RZ"] = "R", ["nonsense"] = "R", ["046D:C215 Y"] = "Q" },
             TrainerKeys = new() { ["pitchUp"] = "Key_Numpad_5", ["fire"] = "Key_F", ["yawLeft"] = "Key_Nothing" },
-            Progress = new() { ["spin-1"] = new ExerciseRecord(-3, 9, true), ["spin-9"] = new ExerciseRecord() },
+            Progress = new() { ["chase-1"] = new ExerciseRecord(-3, 9, true), ["chase-9"] = new ExerciseRecord(), ["spin-1"] = new ExerciseRecord(1, 3, true) },
             FaOff = new FlightCurves(new StickCurve(99, 0, 0, 0, 0), new StickCurve(), new StickCurve()),
         };
         FlightSettings clean = wild.Cleaned();
@@ -527,12 +527,12 @@ public sealed class FlightTests : IDisposable
         Assert.Contains(json.GetProperty("ships").EnumerateArray(), s => s.GetProperty("id").GetString() == "cobra_mk_iii" && s.GetProperty("yaw").GetDouble() == 10);
 
         // a set: three of five passes, and stays passed
-        (status, json) = await Ask(web, "POST", "/progress", "{\"exercise\":\"spin-1\",\"successes\":3,\"attempts\":4}");
+        (status, json) = await Ask(web, "POST", "/progress", "{\"exercise\":\"chase-1\",\"successes\":3,\"attempts\":4}");
         Assert.Equal(200, status);
-        (status, json) = await Ask(web, "POST", "/progress", "{\"exercise\":\"spin-1\",\"successes\":1,\"attempts\":4}");
-        JsonElement record = json.GetProperty("settings").GetProperty("progress").GetProperty("spin-1");
+        (status, json) = await Ask(web, "POST", "/progress", "{\"exercise\":\"chase-1\",\"successes\":1,\"attempts\":4}");
+        JsonElement record = json.GetProperty("settings").GetProperty("progress").GetProperty("chase-1");
         Assert.Equal((2, 3, true), (record.GetProperty("sets").GetInt32(), record.GetProperty("best").GetInt32(), record.GetProperty("passed").GetBoolean()));
-        (status, _) = await Ask(web, "POST", "/progress", "{\"exercise\":\"spin-7\",\"successes\":3,\"attempts\":5}");
+        (status, _) = await Ask(web, "POST", "/progress", "{\"exercise\":\"spin-1\",\"successes\":3,\"attempts\":5}");
         Assert.Equal(400, status);
 
         // settings: named ones change, the progress cannot be sent this way, and it is all saved

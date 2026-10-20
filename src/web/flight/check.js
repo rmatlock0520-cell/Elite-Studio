@@ -99,7 +99,7 @@ function shown() {
 }
 
 // The stick most likely meant: the one whose axis the app reads pitch from (through Elite's binding, Gremlin, or the
-// player's own Detect), else the real one behind Gremlin's pitch by name, else the first that is not Gremlin's vJoy.
+// player's own Detect), else the real one behind Gremlin's pitch by name, else the first that is not vJoy.
 function bestGuess(list) {
   const f = env.getFrame(), pitch = f && f.controls && f.controls.pitch && f.controls.pitch.real;
   if (pitch != null) {
@@ -123,7 +123,7 @@ function refreshDevices() {
   known = ids;
   if (!picked || (device !== MOUSE && !list.some(s => s.device === device))) device = bestGuess(list);
   $('#check-device').replaceChildren(...list.map(s => h('option', { value: s.device },
-      (s.name || 'Controller') + (isVjoy(s.device) ? ' (Gremlin\'s virtual stick)' : '') + ' · ' + s.device)),
+      (s.name || 'Controller') + (isVjoy(s.device) ? ' (vJoy, the virtual stick)' : '') + ' · ' + s.device)),
     h('option', { value: MOUSE }, 'Mouse'));
   $('#check-device').value = device;
   buildBars();
@@ -459,7 +459,7 @@ function finish() {
   const status = h('div', { class: 'check-status' });
   show(h('div', null,
     h('h3', null, 'What the check found'),
-    vjoy ? h('p', { class: 'warn' }, 'This was Gremlin\'s virtual stick, whose readings already went through Gremlin\'s curve. Check your real stick instead.') : null,
+    vjoy ? h('p', { class: 'warn' }, 'This was vJoy, the virtual stick, whose readings already went through a stick shaper\'s curve (Joystick Gremlin\'s today). Check your real stick instead.') : null,
     problems.map(p => h('p', { class: 'warn' }, p)),
     usable ? table(found) : null,
     usable ? h('p', { class: 'small muted' }, '"Hands off" is where the stick rested by itself; "hand on, relaxed" where it sat with your hand resting on it as in flight, '

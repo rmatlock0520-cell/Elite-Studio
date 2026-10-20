@@ -41,13 +41,15 @@ public sealed record FlightSettings
     public Dictionary<string, string> Sources { get; init; } = [];
     /// <summary>Keys the trainer turns the ship with when the game has none for that: "pitchUp" → "Key_Numpad_5".</summary>
     public Dictionary<string, string> TrainerKeys { get; init; } = new(DefaultTrainerKeys);
-    /// <summary>The trainer's progress by exercise ("spin-1", "tunnel-2", "track-3").</summary>
+    /// <summary>The trainer's progress by exercise ("chase-1", "tunnel-2", "track-3"); the "spin-N" of the exercise chase replaced are dropped.</summary>
     public Dictionary<string, ExerciseRecord> Progress { get; init; } = [];
     /// <summary>
     /// Not a setting, a marker kept with them: the flight overlay is up because Flight Assist went off, not because the
     /// player showed it, so it goes again when Flight Assist comes back on, also after Studio was restarted in between.
     /// </summary>
     public bool ShownForFaOff { get; init; }
+    /// <summary>The folder the player picked for vJoy by hand, when it is not where Windows says; "" for none.</summary>
+    public string VJoyFolder { get; init; } = "";
 
     internal static readonly Dictionary<string, string> DefaultTrainerKeys = new()
     {
@@ -56,7 +58,7 @@ public sealed record FlightSettings
     };
 
     static readonly Regex DeviceAxis = new(@"^[0-9A-F]{4}:[0-9A-F]{4}(#\d{1,2})? (X|Y|Z|RX|RY|RZ|U|V)$");
-    static readonly Regex Exercise = new(@"^(spin|tunnel|track)-[1-3]$");
+    static readonly Regex Exercise = new(@"^(chase|tunnel|track)-[1-3]$");
 
     /// <summary>Every value made usable: the file can be edited by hand, and a page may send anything.</summary>
     internal FlightSettings Cleaned() => this with
@@ -71,5 +73,14 @@ public sealed record FlightSettings
         TrainerKeys = (TrainerKeys ?? []).Where(p => p.Value is not null && DefaultTrainerKeys.ContainsKey(p.Key) && KeyNames.ScanCode(p.Value) is not null).ToDictionary(),
         Progress = (Progress ?? []).Where(p => Exercise.IsMatch(p.Key) && p.Value is not null)
             .ToDictionary(p => p.Key, p => p.Value with { Sets = Math.Max(0, p.Value.Sets), Best = Math.Clamp(p.Value.Best, 0, 5) }),
+        VJoyFolder = FullFolder(VJoyFolder) ? VJoyFolder!.TrimEnd('\\') : "",
     };
+
+    /// <summary>
+    /// A folder by its whole path on a drive letter (never a share: see <see cref="VJoyFinder.LocalFolder"/>, which also
+    /// turns away mapped network drives when the folder is used), of a length Windows takes, with no character it refuses.
+    /// </summary>
+    static bool FullFolder(string? path) =>
+        path is { Length: > 3 and < 248 } && path.IndexOfAny(Path.GetInvalidPathChars()) < 0 && Path.IsPathFullyQualified(path)
+        && !path.StartsWith(@"\\", StringComparison.Ordinal) && !path.StartsWith("//", StringComparison.Ordinal);
 }
