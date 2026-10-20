@@ -138,6 +138,7 @@ public sealed record GameStatus(
     public bool Docked => (Flags & 1u << 0) != 0;
     public bool Landed => (Flags & 1u << 1) != 0;
     public bool Supercruise => (Flags & 1u << 4) != 0;
+    public bool FlightAssistOff => (Flags & 1u << 5) != 0;
     public bool HardpointsDeployed => (Flags & 1u << 6) != 0;
     public bool FsdCharging => (Flags & 1u << 17) != 0;
     public bool InDanger => (Flags & 1u << 22) != 0;

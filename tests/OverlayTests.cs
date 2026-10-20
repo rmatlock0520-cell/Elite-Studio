@@ -164,17 +164,18 @@ public sealed class OverlayTests : IDisposable
     // ---- settings ----
 
     [Fact]
-    public void Defaults_are_four_hidden_boxes_each_with_its_own_key_and_place()
+    public void Defaults_are_five_hidden_boxes_each_with_its_own_key_and_place()
     {
         var settings = new OverlaySettings();
 
         Assert.Equal(
-            new[] { ("haul", "hotHaul", "F2"), ("market", "hotMarket", "F3"), ("nav", "hotNav", "F4"), ("loadouts", "hotLoadouts", "F5") },
+            new[] { ("haul", "hotHaul", "F2"), ("market", "hotMarket", "F3"), ("nav", "hotNav", "F4"), ("loadouts", "hotLoadouts", "F5"), ("flight", "hotFlight", "F6") },
             settings.Hotkeys());
         Assert.Equal(OverlaySettings.Boxes, settings.Hotkeys().Select(hotkey => hotkey.Action));
         Assert.Equal(
-            new[] { new BoxLook(false, 50, 4, 1), new BoxLook(false, 2, 35, 1), new BoxLook(false, 50, 96, 1), new BoxLook(false, 98, 35, 1) },
+            new[] { new BoxLook(false, 50, 4, 1), new BoxLook(false, 2, 35, 1), new BoxLook(false, 50, 96, 1), new BoxLook(false, 98, 35, 1), new BoxLook(false, 50, 70, 1) },
             OverlaySettings.Boxes.Select(settings.Box));
+        Assert.Contains(OverlaySettings.ShowOnly, OverlaySettings.Boxes);   // the flight box, which never takes the mouse
         Assert.Equal((0.92, true, "#3D8BFF"), (settings.Opacity, settings.OnlyWhenElite, settings.Accent));   // shared by the four, and the Haul Overlay's own
         Assert.Equal(settings, settings.Cleaned());
 
@@ -237,8 +238,8 @@ public sealed class OverlayTests : IDisposable
         Assert.All(settings.PadButtons(), pad => Assert.Equal("", pad.Buttons));
         Assert.Equal(settings.Hotkeys().Select(hotkey => hotkey.Action), settings.PadButtons().Select(pad => pad.Action));
 
-        var bound = new OverlaySettings { PadHaul = "0000:0001 1", PadMarket = "0000:0001 2", PadNav = "0000:0001 3", PadLoadouts = "0000:0001 4" };
-        Assert.Equal(Enumerable.Range(1, 4).Select(button => $"0000:0001 {button}"), bound.PadButtons().Select(pad => pad.Buttons));
+        var bound = new OverlaySettings { PadHaul = "0000:0001 1", PadMarket = "0000:0001 2", PadNav = "0000:0001 3", PadLoadouts = "0000:0001 4", PadFlight = "0000:0001 5" };
+        Assert.Equal(Enumerable.Range(1, 5).Select(button => $"0000:0001 {button}"), bound.PadButtons().Select(pad => pad.Buttons));
         Assert.Equal(bound, bound.Cleaned());
         // each really is kept under the setting name the pages are told
         JsonElement saved = JsonSerializer.SerializeToElement(bound, Settings.Json);
@@ -706,7 +707,7 @@ public sealed class OverlayTests : IDisposable
     void TakeAndGiveBackKeys()
     {
         // Keys that exist on no keyboard, so nothing the owner might press is taken while this runs.
-        var rare = new OverlaySettings { HotHaul = "Ctrl+Alt+Shift+F13", HotMarket = "Ctrl+Alt+Shift+F14", HotNav = "Ctrl+Alt+Shift+F15", HotLoadouts = "Ctrl+Alt+Shift+F16" };
+        var rare = new OverlaySettings { HotHaul = "Ctrl+Alt+Shift+F13", HotMarket = "Ctrl+Alt+Shift+F14", HotNav = "Ctrl+Alt+Shift+F15", HotLoadouts = "Ctrl+Alt+Shift+F16", HotFlight = "Ctrl+Alt+Shift+F17" };
         using var watcher = new GameWatcher(temp, temp);
         using var first = new Hotkeys(watcher.State);
         using var second = new Hotkeys(watcher.State);
@@ -736,7 +737,7 @@ public sealed class OverlayTests : IDisposable
         Press(1);
         Assert.Empty(pressed);
 
-        // Elite comes to the front: all four are taken (and Sync says the keys were just asked for, which is
+        // Elite comes to the front: all five are taken (and Sync says the keys were just asked for, which is
         // when the overlay tells the pages), and stay taken on the ticks that follow, with nothing new to tell
         Assert.True(first.Sync(eliteInFront: true, rare));
         Assert.All(Taken(first, rare), taken => Assert.True(taken));
@@ -760,7 +761,7 @@ public sealed class OverlayTests : IDisposable
         // box, and a key text Studio cannot use is simply not taken
         OverlaySettings changed = rare with { HotMarket = rare.HotHaul, HotNav = "Control+F15" };
         first.Sync(eliteInFront: true, changed);
-        Assert.Equal(new bool?[] { true, false, false, true }, Taken(first, changed));
+        Assert.Equal(new bool?[] { true, false, false, true, true }, Taken(first, changed));
 
         // Elite leaves the front: every key is given back, so the next one to ask gets them all
         first.Sync(eliteInFront: false, changed);

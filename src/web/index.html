@@ -9,58 +9,279 @@
 <link rel="stylesheet" href="studio.css">
 <!--
   ELITE STUDIO: the shell.
-  The slim bar on top (app name, one tab per studio, live game status) and below it one frame per studio page.
-  Each studio is a page of its own in its own folder (ui\, market\, nav\, loadouts\); this page only frames them.
-  A studio's frame is made the first time its tab is opened and is then kept, merely hidden, so nothing in it
-  is lost when the player looks at another studio. A page can ask for a page of another studio with a request
-  in its address (Studio.open in studio.js): that studio's tab then comes to the front showing that page.
+  The bar on top (the Elite light, the brand, one tab per studio split round the Profile and Help buttons, the Menu,
+  and a status strip), one frame per studio page below it, and a key bar along the bottom (the overlay keys, the
+  spacing and the profile switcher). On a window shorter than 860 the bar folds into one row and below 760 the key bar
+  goes, so a studio never has less room than it had before this look.
+  Each studio is a page of its own in its own folder (ui\, market\, nav\, loadouts\, flight\); this page only frames them.
+  A studio's frame is made the first time its tab is opened and is then kept, merely hidden (the hidden attribute:
+  Studio Flight reads it), so nothing in it is lost when the player looks at another studio. A page can ask for a page
+  of another studio with a request in its address (Studio.open in studio.js): that studio's tab then comes to the front
+  showing that page.
+  The Menu, the Help guide, the panels and the tour open OVER the studio, never in its place, so whatever runs there
+  (a stick check, a route) keeps running. They work by clicking only: the shell adds no keyboard shortcuts, so it never
+  takes a key the player flies with. The look the player picks is kept as "studio.appearance.*" in localStorage, and
+  studio.js puts it on every page.
 -->
 <style>
-.bar{flex:none;display:flex;align-items:stretch;gap:18px;padding:0 16px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#0c1118,#080b10)}
-.brand{display:flex;align-items:center;gap:10px;flex:none}
-.brand img{width:22px;height:22px}
-.brand b{font-family:var(--hud);font-weight:600;letter-spacing:.16em;font-size:15px;white-space:nowrap}
-.bar .tabs{padding:0;border-bottom:0}
-.status{flex:1;min-width:0;overflow:hidden;display:flex;align-items:center;justify-content:flex-end;gap:10px;color:var(--muted);font-size:12.5px}
-.status .chip{flex:none}
-.status .where{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#pages{flex:1;min-height:0}
+/* ---------------------------------------------------------------- the bar on top: one grid that folds into one row */
+.hdr{flex:none;position:relative;z-index:5;--emw:340px;display:grid;grid-template-columns:minmax(0,1fr) var(--emw) minmax(0,1fr);grid-template-rows:30px 46px 30px;
+  grid-template-areas:"chip notch menu" "tl em tr" "sl em sr";background:linear-gradient(180deg,color-mix(in srgb,var(--bg2) 97%,transparent),color-mix(in srgb,var(--bg2) 92%,transparent));border-bottom:1px solid var(--accent-line)}
+.hdr::before{content:"";position:absolute;left:0;right:0;top:29px;height:1px;background:var(--accent-line);pointer-events:none}
+#game{grid-area:chip;justify-self:start;align-self:center;margin-left:12px;max-width:calc(100% - 20px)}
+#game .gs{display:none;color:var(--text);overflow:hidden;text-overflow:ellipsis}
+.notch{grid-area:notch;position:relative;align-self:stretch;display:flex;align-items:center;justify-content:center;gap:9px;margin:0 6px -1px;isolation:isolate}
+.notch::before,.notch::after{content:"";position:absolute;clip-path:polygon(20px 0,calc(100% - 20px) 0,100% 100%,0 100%)}
+.notch::before{inset:0;z-index:-2;background:var(--accent-line)}
+.notch::after{inset:1px 1px 0;z-index:-1;background:var(--bg2)}
+.notch svg{width:18px;height:18px}   /* the studio.svg mark, drawn in the look's colours */
+.notch b{font:600 13px var(--hud);letter-spacing:.32em;text-transform:uppercase;color:var(--frost);white-space:nowrap}
+.menubtn{grid-area:menu;justify-self:end;align-self:center;margin-right:12px;display:inline-flex;align-items:center;gap:8px;height:24px;padding:0 12px;background:var(--panel2);border:1px solid var(--line2);color:var(--accent-hi);font:500 13px var(--hud);letter-spacing:.14em;text-transform:uppercase}
+.menubtn .glyph{width:16px;height:16px}
+.menubtn:hover{border-color:var(--accent-line)}
+.menubtn[aria-expanded="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.stabs{display:flex;align-items:stretch;min-width:0;border-bottom:1px solid var(--accent-line)}
+.stabs.l{grid-area:tl}.stabs.r{grid-area:tr}
+.stabs button{position:relative;flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:9px;padding:0 10px;background:none;border:0;color:var(--accent-hi);font:500 15px var(--hud);letter-spacing:.09em;text-transform:uppercase;white-space:nowrap}
+.stabs button>span{overflow:hidden;text-overflow:ellipsis}
+.stabs button .glyph{width:20px;height:20px;vertical-align:0}
+.stabs button:hover:not(.active){background:var(--accent-soft)}
+.stabs button.active{background:var(--accent);color:var(--accent-ink)}
+.stabs button:focus-visible{outline-offset:-3px}
+.stabs .dirty{margin-left:-3px}
+.stabs button.active .dirty{box-shadow:0 0 0 2px var(--accent-ink)}
+.stabs button.active:focus-visible,.dseg button.active:focus-visible{outline-color:var(--accent-ink)}
+.emblem{grid-area:em;display:grid;grid-template-columns:1fr 1fr;gap:5px;min-height:0;padding:0 10px 7px}
+.hex{position:relative;isolation:isolate;min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:2px 6px 10px;background:none;border:0;color:var(--act-ink);font:600 15px var(--hud);letter-spacing:.12em;text-transform:uppercase}
+.hex::before,.hex::after{content:"";position:absolute}
+.hex::before{inset:0;z-index:-2;background:var(--ice-line)}
+.hex::after{inset:1px;z-index:-1;background:linear-gradient(180deg,var(--act-top),var(--act-bot))}
+.hex.l::before,.hex.l::after{clip-path:polygon(12px 0,100% 0,100% 100%,0 85%,0 12px)}
+.hex.r::before,.hex.r::after{clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 85%,0 100%)}
+.hex:hover::after{background:linear-gradient(180deg,var(--act-top-h),var(--act-bot-h))}
+/* the open one is solid, like every other open or chosen control */
+.hex[aria-expanded="true"]::after{background:var(--ice)}
+.hex[aria-expanded="true"],.hex[aria-expanded="true"] small{color:var(--ice-ink)}
+html:not(.no-glow) .hex[aria-expanded="true"] .glyph{filter:none}
+.hex:focus-visible{outline-offset:-3px}
+.hex .glyph{width:28px;height:28px;stroke-width:1.5}
+.hex small{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 10.5px var(--hud);letter-spacing:.08em;color:var(--frost)}
+html:not(.no-glow) .hex .glyph,html:not(.no-glow) .notch svg{filter:drop-shadow(0 0 6px color-mix(in srgb,var(--cyan) 50%,transparent))}
+.strip{display:flex;align-items:center;justify-content:space-evenly;gap:18px;min-width:0;padding:0 14px;overflow:hidden}
+.strip.l{grid-area:sl}.strip.r{grid-area:sr}
+.sitem{display:inline-flex;align-items:center;gap:7px;min-width:0;font:500 12.5px var(--hud);letter-spacing:.07em;text-transform:uppercase;white-space:nowrap}
+.sitem .glyph{width:16px;height:16px;color:var(--accent-hi);vertical-align:0}
+.sitem .k{color:var(--label)}
+.sitem .v{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+/* narrower windows: drop the word "Studio" and the third item of each strip, then the strip labels, then the glyphs */
+@media (max-width:1540px){.stabs .pre{display:none}.strip .sitem:nth-child(3){display:none}.kbtn{letter-spacing:.04em}}
+@media (max-width:1180px){.hdr{--emw:270px}.sitem .k{display:none}.hex small{display:none}}
+@media (max-width:1000px){.stabs button .glyph{display:none}.kbtn .nm{display:none}}
+@media (max-width:760px){
+  .hdr{grid-template-columns:2fr 3fr;grid-template-rows:30px 50px 42px 28px;grid-template-areas:"chip menu" "em em" "tl tr" "sl sr"}
+  .notch{display:none}
+  .emblem{padding:6px 10px}.hex{flex-direction:row;gap:8px;padding:0 10px 4px}.hex .glyph{width:22px;height:22px}
+  .stabs button{padding:0 4px;font-size:12px}.stabs button>span{display:none}.stabs button .glyph{display:block}
+  .strip{justify-content:flex-start;gap:12px}.strip .sitem:nth-child(n+2){display:none}}
+/* one-row bar (a window shorter than 860, or chosen): as high as the bar before this look */
+.hc .hdr{--emw:240px;grid-template-columns:auto minmax(0,2fr) var(--emw) minmax(0,3fr) auto;grid-template-rows:44px;grid-template-areas:"chip tl em tr menu"}
+.hc .hdr::before,.hc .notch,.hc .strip{display:none}
+.hc #game{margin:0 10px 0 12px;max-width:clamp(190px,24vw,400px)}
+.hc #game .gt{display:none}
+.hc #game .gs{display:inline}
+.hc .stabs{border-bottom:0}
+.hc .stabs button{font-size:14px}
+.hc .emblem{padding:5px 8px}
+.hc .hex{flex-direction:row;gap:8px;padding:0 8px}
+.hc .hex .glyph{width:20px;height:20px}
+.hc .hex small{display:none}
+.hc .menubtn{margin:0 12px 0 8px}
+@media (max-width:1180px){.hc .stabs button .glyph{display:none}.hc .stabs button{gap:6px;padding:0 6px}}
+@media (max-width:760px){.hc .hdr{grid-template-columns:auto 2fr 3fr auto;grid-template-areas:"chip tl tr menu"}.hc .emblem{display:none}.hc #game{max-width:90px}}
+
+/* ---------------------------------------------------------------- the studios, and what opens over them */
+.mid{flex:1;min-height:0;position:relative}
+#pages{position:absolute;inset:0}
 #pages iframe{display:block;width:100%;height:100%;border:0}
+.menu{position:absolute;top:0;right:12px;z-index:60;width:min(320px,calc(100% - 24px))}
+.menu .card,.drawer .card{padding:0;margin:0}
+.menu .glist>button{min-height:46px;font-size:14px;text-transform:uppercase;letter-spacing:.07em}
+.drawer{position:absolute;top:0;right:0;bottom:0;z-index:50;width:min(470px,100%);padding:12px 12px 12px 26px;display:flex;flex-direction:column;background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--bg) 72%,transparent) 26px)}
+html:not(.no-motion) .drawer:not([hidden]){animation:slidein .22s ease-out}
+@keyframes slidein{from{transform:translateX(28px);opacity:0}}
+.drawer>.dhead{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.drawer>.card{flex:1;min-height:0;display:flex;flex-direction:column}
+.drawer>.card,.menu .card{background-color:var(--panel)}   /* solid, so the page never shows through */
+.dbody{flex:1;min-height:0;overflow:auto}
+.x{width:32px;height:24px;display:grid;place-items:center;margin-bottom:2px;padding:0;background:var(--panel2);border:1px solid var(--line2);color:var(--muted)}
+.x:hover{color:var(--text);border-color:var(--accent-line)}
+.x .glyph{width:14px;height:14px;vertical-align:0}
+.sect{padding:0 var(--pad)}
+.sect h3{margin:14px 0 8px;font:600 13px var(--hud);letter-spacing:.11em;text-transform:uppercase;color:var(--frost)}
+.sect p,.pnote{margin:0 0 8px;font-size:13px;color:var(--muted);max-width:62ch}
+.pnote{padding:10px 12px;margin:0}
+.dseg{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);border-bottom:1px solid var(--accent-line);background:color-mix(in srgb,var(--bg) 45%,transparent)}
+.dseg button{height:32px;padding:0 6px;border:0;background:none;color:var(--accent-hi);font:500 12.5px var(--hud);letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dseg button:hover:not(.active){background:var(--accent-soft)}
+.dseg button.active{background:var(--accent);color:var(--accent-ink)}
+.dseg.boxed{border:1px solid var(--line2)}
+.dseg button:focus-visible{outline-offset:-3px}
+.krow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line)}
+.krow .keys{display:flex;gap:4px;flex-wrap:wrap;max-width:170px}
+.krow .what{min-width:0;font-size:13px}
+.krow .what small{display:block;color:var(--muted);font-size:12px}
+.prow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
+.prow.cur{background:var(--accent-soft)}
+.prow .pn{min-width:0;font:500 14px var(--hud);letter-spacing:.06em;text-transform:uppercase;overflow-wrap:anywhere}
+.prow .pn small{display:block;font:12px var(--font);letter-spacing:0;text-transform:none;color:var(--muted)}
+.prow .acts2{display:flex;gap:6px;align-items:center}
+.sw3{display:inline-flex;gap:3px}
+.sw3 i{width:12px;height:12px;border:1px solid rgba(255,255,255,.18)}
+.mini{width:30px;height:28px;display:grid;place-items:center;padding:0;background:var(--panel2);border:1px solid var(--line2);color:var(--accent-hi)}
+.mini:hover:not(:disabled){border-color:var(--accent-line);color:var(--cyan)}
+.mini:disabled{opacity:.35;cursor:not-allowed}
+.mini .glyph{width:15px;height:15px;vertical-align:0}
+.confirm{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;background:rgba(255,90,79,.08);border-bottom:1px solid rgba(255,90,79,.35);font-size:13px}
+.inp{width:100%;height:34px;min-width:0;padding:0 10px;background:var(--bg2);border:1px solid var(--edge);border-radius:2px;color:var(--text)}
+textarea.inp{height:auto;min-height:70px;padding:8px 10px;font:12px/1.4 var(--mono);resize:vertical}
+.inp:hover{border-color:var(--accent-line)}
+.inp:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan),0 0 12px color-mix(in srgb,var(--cyan) 22%,transparent)}
+.lbl{display:flex;flex-direction:column;gap:5px;font:500 12.5px var(--hud);letter-spacing:.03em;color:var(--label)}
+.line{display:flex;gap:8px;align-items:flex-end}
+.toggle{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text);cursor:pointer}
+.toggle input{appearance:none;flex:none;width:34px;height:18px;margin:0;background:var(--bg2);border:1px solid var(--edge);position:relative;cursor:pointer}
+.toggle input::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;background:var(--faint);transition:left .15s}
+.toggle input:checked{border-color:var(--accent-line);background:var(--accent-soft)}
+.toggle input:checked::after{left:18px;background:var(--cyan)}
+.palettes{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.pal{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--panel2);border:1px solid var(--line2);text-align:left;color:var(--text);font:500 13px var(--hud);letter-spacing:.06em;text-transform:uppercase}
+.pal.active{border-color:var(--cyan);box-shadow:inset 0 0 0 1px var(--cyan)}
+.readout{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;padding:4px 12px 12px;font:12.5px var(--mono);color:var(--frost)}
+.readout span:nth-child(odd){color:var(--label);font-family:var(--hud);letter-spacing:.08em;text-transform:uppercase}
+details.help{border-bottom:1px solid var(--line)}
+details.help summary{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;list-style:none;font:500 14px var(--hud);letter-spacing:.08em;text-transform:uppercase;color:var(--accent-hi)}
+details.help summary::-webkit-details-marker{display:none}
+details.help summary::after{content:"";margin-left:auto;width:8px;height:8px;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:rotate(-45deg);transition:transform .15s}
+details.help[open] summary::after{transform:rotate(45deg)}
+details.help[open] summary{color:var(--text)}
+.hitem{padding:0 12px 10px 40px}
+.hitem b{display:block;font:500 13px var(--hud);letter-spacing:.07em;text-transform:uppercase;color:var(--frost)}
+.hitem p{margin:2px 0 0;font-size:13px;color:var(--muted);max-width:64ch}
+
+/* ---------------------------------------------------------------- the key bar */
+.keybar{flex:none;position:relative;z-index:5;display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);height:48px;border-top:1px solid var(--accent-line);background:linear-gradient(0deg,color-mix(in srgb,var(--bg2) 97%,transparent),color-mix(in srgb,var(--bg2) 90%,transparent))}
+.kgroup{display:flex;align-items:stretch;min-width:0}
+.kbtn{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 8px;background:color-mix(in srgb,var(--panel2) 50%,transparent);border:0;border-right:1px solid var(--line);color:var(--accent-hi);font:500 12.5px var(--hud);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.kbtn .nm{overflow:hidden;text-overflow:ellipsis}
+.kbtn:hover{background:var(--accent-soft)}
+.kbtn.clash .keycap{border-color:var(--warn)}
+.kmid{position:relative;display:flex;align-items:center;gap:8px;padding:0 16px;border-left:1px solid var(--accent-line);border-right:1px solid var(--accent-line);background:color-mix(in srgb,var(--bg) 50%,transparent)}
+.tagup{display:flex;align-items:center;color:var(--label);font:600 11px var(--hud);letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}   /* a label inside the bar, so it covers nothing */
+.kmid .dseg{border:1px solid var(--line2);border-bottom-color:var(--line2)}
+.kmid .dseg button{height:28px;padding:0 12px}
+.kprof{justify-content:flex-end}
+.kprof .nmx{display:flex;align-items:center;min-width:60px;padding:0 12px;font:500 13px var(--hud);letter-spacing:.08em;text-transform:uppercase;color:var(--text)}
+.kprof .nmx span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sq{flex:none;width:44px;display:grid;place-items:center;padding:0;background:color-mix(in srgb,var(--panel2) 50%,transparent);border:0;border-left:1px solid var(--line);color:var(--accent-hi)}
+.sq:hover{background:var(--accent-soft);color:var(--cyan)}
+.sq .glyph{vertical-align:0}
+.keybar :focus-visible{outline-offset:-3px}
+.kbo .keybar{display:none}
+
+/* ---------------------------------------------------------------- the tour, and the shell's own short messages */
+.tourblock{position:fixed;inset:0;z-index:69}
+.spot{position:fixed;z-index:70;pointer-events:none;border:1px solid var(--cyan);box-shadow:0 0 0 9999px color-mix(in srgb,var(--bg) 74%,transparent),0 0 18px color-mix(in srgb,var(--cyan) 45%,transparent)}
+html:not(.no-motion) .spot{transition:left .25s,top .25s,width .25s,height .25s}
+.callout{position:fixed;z-index:71;width:min(360px,calc(100% - 24px))}
+.callout .card{margin:0;background:linear-gradient(180deg,color-mix(in srgb,var(--panel3) 98%,transparent),color-mix(in srgb,var(--panel) 98%,transparent))}
+.callout p{margin:0;font-size:13.5px;color:var(--text)}
+.callout .bar2{display:flex;justify-content:space-between;gap:8px;margin-top:12px}
+.callout .step{font:600 12px var(--hud);letter-spacing:.1em;color:var(--label)}
+.callout h3{margin:4px 0 6px;font:600 16px var(--hud);letter-spacing:.08em;text-transform:uppercase}
+.stoastwrap{position:fixed;left:0;right:0;bottom:64px;z-index:80;display:flex;justify-content:center;pointer-events:none}
+.stoast{pointer-events:auto;max-width:min(620px,calc(100% - 24px));display:flex;align-items:center;gap:10px;padding:9px 16px;background:color-mix(in srgb,var(--panel2) 97%,transparent);border:1px solid var(--ice-line);border-left:3px solid var(--cyan);color:var(--text);font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+.kbo .stoastwrap{bottom:16px}
 </style>
 </head>
 <body>
 
-<header class="bar">
-  <div class="brand">
-    <img src="studio.svg" alt="">
-    <b>ELITE STUDIO</b>
-  </div>
-  <!-- data-studio is the studio's folder. -->
-  <nav class="tabs" id="tabs" aria-label="Studios">
-    <button data-studio="ui" title="HUD color themes for your cockpit.">Studio UI<i class="dirty" hidden></i></button>
-    <button data-studio="market" title="Trades, hauling, and finding commodities, modules and ships by name.">Studio Market<i class="dirty" hidden></i></button>
-    <button data-studio="nav" title="Neutron and quickest routes, and finding unexplored space.">Studio Nav<i class="dirty" hidden></i></button>
-    <button data-studio="loadouts" title="Ship design, engineering and the Guardian helper.">Studio Loadouts<i class="dirty" hidden></i></button>
+<header class="hdr" id="hdr">
+  <span class="chip" id="game"><span class="dot"></span><span class="gt" id="game-text">Elite closed</span><span class="gs" id="game-brief"></span></span>
+  <div class="notch"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="10" fill="none" stroke-width="2.5" style="stroke:var(--accent-hi)"/><path d="M16 1v8M16 23v8M1 16h8M23 16h8" stroke-width="2.5" style="stroke:var(--cyan)"/></svg><b>Elite Studio</b></div>
+  <button class="menubtn" id="menuBtn" aria-haspopup="true" aria-expanded="false" aria-controls="menu"><svg class="glyph"><use href="glyphs.svg#g-menu"/></svg>Menu</button>
+  <!-- data-studio is the studio's folder. Every button[data-studio] is a studio tab; its words name the frame. -->
+  <nav class="stabs l" aria-label="Studios">
+    <button data-studio="ui" title="HUD color themes for your cockpit."><svg class="glyph"><use href="glyphs.svg#g-ui"/></svg><span><span class="pre">Studio </span>UI</span><i class="dirty" hidden></i></button>
+    <button data-studio="market" title="Trades, hauling, and finding commodities, modules and ships by name."><svg class="glyph"><use href="glyphs.svg#g-market"/></svg><span><span class="pre">Studio </span>Market</span><i class="dirty" hidden></i></button>
   </nav>
-  <div class="status" id="status" hidden>
-    <span class="chip" id="game"><span class="dot"></span><span id="game-text"></span></span>
-    <span class="where" id="where"></span>
+  <div class="emblem">
+    <button class="hex l" id="profHex" aria-haspopup="dialog" aria-expanded="false"><svg class="glyph"><use href="glyphs.svg#g-profile"/></svg>Profile<small id="profHexName">Classic Orange</small></button>
+    <button class="hex r" id="helpHex" aria-haspopup="dialog" aria-expanded="false"><svg class="glyph"><use href="glyphs.svg#g-help"/></svg>Help<small>Guide and tour</small></button>
+  </div>
+  <nav class="stabs r" aria-label="More studios">
+    <button data-studio="nav" title="Neutron and quickest routes, and finding unexplored space."><svg class="glyph"><use href="glyphs.svg#g-nav"/></svg><span><span class="pre">Studio </span>Nav</span><i class="dirty" hidden></i></button>
+    <button data-studio="loadouts" title="Ship design, engineering and the Guardian helper."><svg class="glyph"><use href="glyphs.svg#g-ship"/></svg><span><span class="pre">Studio </span>Loadouts</span><i class="dirty" hidden></i></button>
+    <button data-studio="flight" title="Flight Assist off: a trainer, your stick's curves, and the flight inputs overlay."><svg class="glyph"><use href="glyphs.svg#g-flight"/></svg><span><span class="pre">Studio </span>Flight</span><i class="dirty" hidden></i></button>
+  </nav>
+  <div class="strip l" id="stripL">
+    <span class="sitem" id="s-cmdr" hidden><svg class="glyph"><use href="glyphs.svg#g-cmdr"/></svg><span class="k">CMDR</span><span class="v"></span></span>
+    <span class="sitem" id="s-ship" hidden><svg class="glyph"><use href="glyphs.svg#g-ship"/></svg><span class="k">Ship</span><span class="v"></span></span>
+    <span class="sitem" id="s-cargo" hidden><svg class="glyph"><use href="glyphs.svg#g-market"/></svg><span class="k">Cargo</span><span class="v"></span></span>
+  </div>
+  <div class="strip r" id="stripR">
+    <span class="sitem" id="s-system" hidden><svg class="glyph"><use href="glyphs.svg#g-star"/></svg><span class="k">System</span><span class="v"></span></span>
+    <span class="sitem" id="s-station" hidden><svg class="glyph"><use href="glyphs.svg#g-station"/></svg><span class="k">Docked</span><span class="v"></span></span>
+    <span class="sitem" id="s-route" hidden><svg class="glyph"><use href="glyphs.svg#g-route"/></svg><span class="k">Jumps left</span><span class="v"></span></span>
   </div>
 </header>
 
 <div class="banner" id="banner" hidden></div>
 
-<main id="pages"></main>
+<div class="mid" id="mid">
+  <main id="pages"></main>
+  <div class="menu" id="menu" hidden>
+    <span class="ctag"><svg class="glyph"><use href="glyphs.svg#g-menu"/></svg>Menu</span>
+    <div class="card"><div class="glist" role="menu" aria-label="Menu" id="menuList"></div></div>
+  </div>
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="false" aria-labelledby="drawerTitle" hidden>
+    <div class="dhead"><span class="ctag" id="drawerTitle">Panel</span><button class="x" id="drawerClose" aria-label="Close"><svg class="glyph"><use href="glyphs.svg#g-close"/></svg></button></div>
+    <div class="card"><div class="dbody" id="drawerBody"></div></div>
+  </aside>
+</div>
+
+<footer class="keybar" id="keybar">
+  <div class="kgroup" id="kbKeys" aria-label="In-game overlay keys"></div>
+  <div class="kmid" id="kbMid"><span class="tagup">Spacing</span><div class="dseg" role="group" aria-label="Spacing" id="kbSpacing"></div></div>
+  <div class="kgroup kprof" id="kbProf">
+    <button class="sq" id="profPrev" aria-label="Previous profile"><svg class="glyph"><use href="glyphs.svg#g-chev-l"/></svg></button>
+    <span class="nmx" title="Appearance profile"><span id="kbProfName">Classic Orange</span></span>
+    <button class="sq" id="profNext" aria-label="Next profile"><svg class="glyph"><use href="glyphs.svg#g-chev"/></svg></button>
+    <button class="sq" id="profOpen" aria-label="Appearance profiles" style="width:52px"><svg class="glyph"><use href="glyphs.svg#g-profile"/></svg></button>
+  </div>
+</footer>
+
+<div class="tourblock" id="tourBlock" hidden></div>
+<div class="spot" id="spot" hidden></div>
+<div class="callout" id="callout" role="dialog" aria-label="Tour" hidden></div>
+<div class="stoastwrap" aria-live="polite"><div class="stoast" id="stoast" hidden><svg class="glyph"><use href="glyphs.svg#g-check"/></svg><span id="stoastText"></span><button class="textbtn go" id="stoastAct" hidden></button></div></div>
 
 <script src="studio.js"></script>
 <script>
 (() => {
 'use strict';
-const { $ } = Studio;
+const { $, h } = Studio;
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const glyph = id => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('class', 'glyph'); s.setAttribute('aria-hidden', 'true'); const u = document.createElementNS('http://www.w3.org/2000/svg', 'use'); u.setAttribute('href', 'glyphs.svg#' + id); s.append(u); return s; };
+const keycap = (t, pad) => h('span', { class: 'keycap' + (pad ? ' pad' : '') }, t);
+// The shell's own keys in localStorage are "studio.tab" and "studio.appearance.*". Nothing here ever touches another key.
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('studio.appearance.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('studio.appearance.' + k, JSON.stringify(v)); } catch (e) {} },
+};
 
 // ============================================================ tabs and frames
-const tabs = [...document.querySelectorAll('#tabs button')].map(button =>
-  ({ id: button.dataset.studio, name: button.textContent, button, frame: null, dirty: 0 }));
+const tabs = $$('button[data-studio]').map(button =>
+  ({ id: button.dataset.studio, name: button.textContent.trim(), button, frame: null, dirty: 0 }));
 let current = null;
 
 // Shows a studio. "page" is given when another page asked for one of this studio's pages (Studio.open): the page
@@ -71,6 +292,7 @@ function showTab(tab, page) {
   try { localStorage.setItem('studio.tab', tab.id); } catch (e) {}
   for (const t of tabs) {
     t.button.classList.toggle('active', t === tab);
+    if (t === tab) t.button.setAttribute('aria-current', 'page'); else t.button.removeAttribute('aria-current');
     if (t.frame) t.frame.hidden = t !== tab;
   }
   const address = new URL(tab.id + '/' + (page || ''), location.href).href;
@@ -85,9 +307,11 @@ function showTab(tab, page) {
   tab.frame.title = tab.name;
   tab.frame.src = address;
   // A page that has just loaded (first time, or reloaded from inside) has no unsaved changes yet.
-  tab.frame.addEventListener('load', () => { setDirty(tab, 0); if (current === tab) tab.frame.contentWindow.focus(); });
+  tab.frame.addEventListener('load', () => { setDirty(tab, 0); if (current === tab && !layerOpen()) tab.frame.contentWindow.focus(); });
   $('#pages').append(tab.frame);
 }
+// Hands the keyboard back to the studio being shown (after the menu, a panel or the tour closes).
+function backToStudio() { if (current && current.frame) current.frame.contentWindow.focus(); }
 
 // ============================================================ unsaved changes
 // A page reports its own count with window.parent.postMessage({ studio: 'dirty', count: n }, location.origin).
@@ -121,22 +345,567 @@ window.addEventListener('message', e => {
   }
 });
 
-// ============================================================ status strip
+// ============================================================ status: the Elite light and the strip
+const STRIP = { 's-cmdr': null, 's-ship': null, 's-cargo': null, 's-system': null, 's-station': null, 's-route': null };
 function showState(s) {
   $('#game').className = s.gameRunning ? 'chip on' : 'chip';
   $('#game-text').textContent = s.gameRunning ? 'Elite running' : 'Elite closed';
   const ship = s.shipType && s.shipName ? s.shipType + ' “' + s.shipName + '”' : s.shipType || s.shipName;
-  const where = [s.commander && 'CMDR ' + s.commander, ship, s.starSystem, s.docked && s.station].filter(Boolean).join(Studio.dot);
-  $('#where').textContent = where;
-  $('#where').title = where;   // the strip cuts long text short in a narrow window; the tooltip still has all of it
-  $('#status').hidden = false;
+  const where = [s.gameRunning ? 'Elite running' : 'Elite closed', s.commander && 'CMDR ' + s.commander, ship, s.starSystem, s.docked && s.station && 'docked at ' + s.station].filter(Boolean).join(Studio.dot);
+  $('#game').title = where;   // the whole line, for when the light cuts it short
+  $('#game-brief').textContent = [s.commander && 'CMDR ' + s.commander, ship, s.starSystem, s.docked && s.station].filter(Boolean).join(Studio.dot) || (s.gameRunning ? 'Elite running' : 'Elite closed');
+  STRIP['s-cmdr'] = s.commander || null;
+  STRIP['s-ship'] = ship || null;
+  STRIP['s-cargo'] = s.cargoCapacity ? `${s.cargoCount || 0} / ${s.cargoCapacity} t` : null;
+  STRIP['s-system'] = s.starSystem || null;
+  STRIP['s-station'] = s.docked && s.station ? s.station : null;
+  STRIP['s-route'] = s.routeDestination && s.jumpsLeft ? `${s.jumpsLeft} to ${s.routeDestination}` : null;
+  for (const [id, v] of Object.entries(STRIP)) { const el = $('#' + id); el.hidden = v == null; el.querySelector('.v').textContent = v || ''; el.title = v || ''; }
 }
 
+// ============================================================ the look: profiles
+const PAL = Studio.palettes;
+const BASE = { palette: 'velvet', density: 'comfortable', header: 'auto', keybar: 'auto', stars: true, glow: true, motion: true };
+const BUILTIN = [
+  { id: 'b-velvet', name: 'Velvet Ice', builtIn: true, look: { ...BASE } },
+  { id: 'b-compact', name: 'Velvet Ice Compact', builtIn: true, look: { ...BASE, density: 'compact', header: 'compact', keybar: 'hide', glow: false, motion: false } },
+  // three of the owner's own HUD themes, as looks for the app (studio.js has their colours)
+  { id: 'b-dust', name: 'Space Dust', builtIn: true, look: { ...BASE, palette: 'dust' } },
+  { id: 'b-firefly', name: 'Firefly Grove', builtIn: true, look: { ...BASE, palette: 'firefly' } },
+  { id: 'b-earthen', name: 'Earthen Flight', builtIn: true, look: { ...BASE, palette: 'earthen' } },
+  { id: 'b-frost', name: 'Frost', builtIn: true, look: { ...BASE, palette: 'frost' } },
+  { id: 'b-classic', name: 'Classic Orange', builtIn: true, look: { ...BASE, palette: 'classic', stars: false } },
+];
+function cleanLook(l) {
+  const o = { ...BASE };
+  if (!l || typeof l !== 'object') return o;
+  if (typeof l.palette === 'string' && Object.prototype.hasOwnProperty.call(PAL, l.palette)) o.palette = l.palette;
+  if (['comfortable', 'compact'].includes(l.density)) o.density = l.density;
+  if (['auto', 'full', 'compact'].includes(l.header)) o.header = l.header;
+  if (['auto', 'show', 'hide'].includes(l.keybar)) o.keybar = l.keybar;
+  for (const k of ['stars', 'glow', 'motion']) if (typeof l[k] === 'boolean') o[k] = l[k];
+  return o;
+}
+let mine = (Array.isArray(store.get('profiles', [])) ? store.get('profiles', []) : [])
+  .filter(p => p && typeof p.name === 'string' && p.name.trim()).map((p, i) => ({ id: String(p.id || 'u-' + i), name: p.name.trim().slice(0, 40), look: cleanLook(p.look) }));
+const all = () => [...BUILTIN, ...mine];
+// A player who has not picked a look yet starts in Classic Orange, the game's own HUD colours.
+const FIRST_PROFILE = 'b-classic';
+let profileId = store.get('profile', FIRST_PROFILE);
+if (!all().some(p => p.id === profileId)) profileId = FIRST_PROFILE;
+let look = cleanLook(store.get('look', null) || all().find(p => p.id === profileId).look);
+const currentProfile = () => all().find(p => p.id === profileId);
+const sameLook = (a, b) => Object.keys(BASE).every(k => a[k] === b[k]);
+const changed = () => !sameLook(look, currentProfile().look);
+const describe = l => `${(PAL[l.palette] || PAL.velvet).name} · ${l.density === 'compact' ? 'Compact' : 'Comfortable'}`;
+const toCode = o => { const b = new TextEncoder().encode(JSON.stringify(o)); let t = ''; for (const x of b) t += String.fromCharCode(x); return 'ESLOOK1:' + btoa(t); };
+const fromCode = c => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(c.slice(8)), ch => ch.charCodeAt(0))));
+
+// Saving "look" is what reaches every page: studio.js in each of them hears it and puts it on.
+function applyLook() {
+  store.set('profiles', mine); store.set('profile', profileId); store.set('look', look);
+  Studio.applyLook();   // this page (the storage event goes to the others)
+  const nm = currentProfile().name + (changed() ? ' •' : '');
+  $('#profHexName').textContent = nm; $('#kbProfName').textContent = nm;
+  $('#kbProfName').parentElement.title = changed() ? 'Appearance profile (changed, not saved)' : 'Appearance profile';
+  for (const b of $$('#kbSpacing button')) { const on = b.dataset.v === look.density; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); }
+  fitBars();
+}
+function setLook(patch) { look = cleanLook({ ...look, ...patch }); applyLook(); if (drawerOpen === 'display' || drawerOpen === 'profiles') renderDrawer(drawerOpen); }
+function loadProfile(id) {
+  const p = all().find(x => x.id === id); if (!p) return;
+  const before = { profileId, look: { ...look }, name: currentProfile().name, unsaved: changed() };
+  profileId = p.id; look = { ...p.look }; applyLook(); if (drawerOpen) renderDrawer(drawerOpen);
+  if (before.unsaved) toast(`Loaded “${p.name}”. Your unsaved changes to “${before.name}” were set aside.`, 'Bring them back', () => {
+    profileId = before.profileId; look = before.look; applyLook(); if (drawerOpen) renderDrawer(drawerOpen); toast(`Back to your changes on “${before.name}”.`); });
+  else toast(`Loaded “${p.name}”.`);
+}
+function stepProfile(d) { const list = all(), i = list.findIndex(p => p.id === profileId); loadProfile(list[(i + d + list.length) % list.length].id); }
+
+// ============================================================ window size: the one-row bar and the key bar
+// The bar folds to one row below 860 tall; the key bar goes below 760 tall or on a narrow window (or as the profile says).
+function fitBars() {
+  const w = window.innerWidth, ht = window.innerHeight, root = document.documentElement;
+  root.classList.toggle('hc', look.header === 'compact' || (look.header === 'auto' && ht <= 860));
+  root.classList.toggle('kbo', look.keybar === 'hide' || (look.keybar === 'auto' && (ht <= 760 || w <= 760)));
+  if (drawerOpen === 'display') updateReadout();
+  if (tourAt >= 0) placeTour();
+}
+const layoutName = () => {
+  const w = window.innerWidth, root = document.documentElement;
+  return [w <= 760 ? 'narrow' : w <= 1000 ? 'no glyphs on tabs' : w <= 1540 ? 'short tab names' : 'full width',
+    root.classList.contains('hc') ? 'one-row bar' : 'full bar', root.classList.contains('kbo') ? 'no key bar' : 'key bar'].join(', ');
+};
+window.addEventListener('resize', fitBars);
+
+// ============================================================ keybindings (read live; the shell changes none of them)
+const KEY_WORDS = { haul: ['Hauling box', 'Your trade: what to buy and sell, the profit and your next stop'], market: ['Find by name box', 'The nearest commodity, module, ship, station or sector'],
+  nav: ['Route box', 'Your plotted route and next stop, with the Route check and Nav scan lines'], loadouts: ['Loadouts box', 'Your ship type and name'],
+  flight: ['Flight inputs box', 'What your stick, throttle and buttons are doing. It never takes the mouse'] };
+const KEYBAR_NAMES = { haul: 'Hauling', market: 'Find', nav: 'Route', loadouts: 'Loadouts', flight: 'Flight' };
+let overlayKeys = [['haul', 'F2'], ['market', 'F3'], ['nav', 'F4'], ['loadouts', 'F5'], ['flight', 'F6']].map(([action, key]) => ({ action, key, valid: true, gameActions: [], pad: '' }));
+// What is wrong with an overlay key, if anything: none set, not a usable key, the same as another box's, held by another
+// program (registered false; null = not tried yet), or also one of Elite's own keys.
+function keyState(k, i) {
+  const dup = k.key && overlayKeys.findIndex(o => o.key && o.key.toLowerCase() === k.key.toLowerCase()) < i;
+  return !k.key ? ['No key', 'warn'] : k.valid === false ? ['Not usable', 'bad'] : dup ? ['Same key as another box', 'bad']
+    : k.registered === false ? ['Taken by another program', 'bad'] : k.gameActions && k.gameActions.length ? ['Also an Elite key', 'warn'] : null;
+}
+function drawKeybar() {
+  $('#kbKeys').replaceChildren(...overlayKeys.map((k, i) => h('button', { class: 'kbtn' + (keyState(k, i) ? ' clash' : ''),
+    title: (KEY_WORDS[k.action] || [k.action])[0] + (k.key ? ': ' + k.key : ': no key') + (k.pad ? ' or controller ' + k.pad : '') + '. Click for every key.',
+    onclick: e => openDrawer('keys', e.currentTarget, 'overlay') }, keycap(k.key || '—'), h('span', { class: 'nm' }, KEYBAR_NAMES[k.action] || k.action))));
+}
+async function loadOverlayKeys() {
+  try { const r = await Studio.api('GET', '/api/overlay/settings'); if (Array.isArray(r.keys) && r.keys.length) { overlayKeys = r.keys; drawKeybar(); } } catch (e) {}
+}
+const KEYS_STATIC = {
+  pages: { name: 'Pages', note: 'Each key works only on the page named under it. These keys are fixed.', rows: [
+    { k: ['Ctrl+S'], what: 'Save to game', sub: 'Studio UI: works even while you type in a box' },
+    { k: ['Ctrl+Z'], what: 'Undo', sub: 'Studio UI: when you are not typing in a box' },
+    { k: ['Ctrl+Y', 'Ctrl+Shift+Z'], what: 'Redo', sub: 'Studio UI: either one, when you are not typing in a box' },
+    { k: ['Space', 'Enter'], what: 'Compare with the game', sub: 'Studio UI: hold either one on Hold to compare to see the colours in the game now' },
+    { k: ['W', 'A', 'S', 'D'], what: 'Move the camera', sub: 'Studio Nav, 3D map: W and S go forward and back, A and D go left and right' },
+    { k: ['R', 'F', 'E', 'Q'], what: 'Move up and down', sub: 'Studio Nav, 3D map: R or E goes up, F or Q goes down. In Top view each press shows the next layer' },
+    { k: ['Shift'], what: 'Move twice as fast', sub: 'Studio Nav, 3D map: hold it with the move keys' },
+    { k: ['←', '↑', '↓', '→'], what: 'Move the highlight', sub: 'Studio Nav, 3D map: one cube or sector per press' },
+    { k: ['PgUp', 'PgDn'], what: 'Move the highlight up or down a level', sub: 'Studio Nav, 3D map' },
+    { k: ['C'], what: 'Centre the map on the highlight', sub: 'Studio Nav, 3D map' },
+    { k: ['Esc'], what: 'Close Big view or a drop-down', sub: 'Studio Nav, 3D map: Big view first, then Camera, Show or More' },
+    { k: ['Right-click'], what: 'Open the menu for a name', sub: 'A station or system name, in any studio except Studio UI. Esc closes the menu' },
+    { k: ['Esc'], what: 'Close, or go back one sheet', sub: 'Any studio: closes a question box or a name menu, and goes back one station or system sheet' },
+    { k: ['Enter', 'Tab'], what: 'Accept, or move to the next button', sub: 'Question boxes: Enter accepts what you typed, Tab moves between the buttons without leaving the box' },
+  ] },
+  elite: { name: 'To Elite', note: 'Elite Studio presses this key inside the game for you. It is kept free, so it cannot be an overlay key.', rows: [
+    { k: ['F11'], what: 'Reload HUD colours', sub: 'After Studio UI saves your colours, if Elite is running. If not, they load when you start the game' },
+  ] },
+  app: { name: 'Window', note: 'Elite Studio adds no shortcuts of its own for the menu, help or profiles. Everything there works by clicking, so it never takes a key you fly with.', rows: [
+    { k: ['F5', 'Ctrl+R'], what: 'Reload the window', sub: 'Reloads every studio. Only Studio UI asks first about unsaved changes. With Elite in front, F5 is the Loadouts box key by default' },
+    { k: ['Ctrl+Mouse wheel'], what: 'Zoom the page', sub: 'Lasts until you resize the window' },
+  ] },
+};
+let flightKeys = null;   // from Studio Flight: its trainer-only keys, worded by flight/flight.js (one place for the wording)
+async function loadFlightKeys() {
+  try {
+    if (!window.Flight) await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'flight/flight.js'; s.onload = ok; s.onerror = no; document.head.append(s); });
+    const r = await Studio.api('GET', '/api/flight');
+    const words = { pitchUp: 'Pitch up', pitchDown: 'Pitch down', yawLeft: 'Yaw left', yawRight: 'Yaw right', rollLeft: 'Roll left', rollRight: 'Roll right' };
+    const keyText = k => (window.Flight && Flight.keyText ? Flight.keyText(k) : k);
+    flightKeys = { rows: (r.trainerKeys || []).map(a => ({ k: [keyText((r.settings && r.settings.trainerKeys || {})[a] || '—')], what: words[a] || a, sub: 'Trainer-only key: Elite has no key bound for this' })),
+      problem: r.binds ? null : (r.bindsProblem || 'Your Elite bindings could not be read.') };
+  } catch (e) { flightKeys = { rows: [], problem: 'Studio Flight could not be asked just now.' }; }
+  if (drawerOpen === 'keys') renderDrawer('keys');
+}
+
+// ============================================================ help guide and tour
+const HELP = [
+  { id: 'shell', g: 'g-display', t: 'Getting around', items: [
+    ["Elite running light", "Top left. It turns green and reads 'Elite running' while Elite Dangerous is open, and reads 'Elite closed' when it is not."],
+    ["Studio tabs", "One tab for each studio: Studio UI and Studio Market on the left, Studio Nav, Studio Loadouts and Studio Flight on the right. Click a tab to open that studio. Each studio keeps its place while you look at another, and Studio reopens the tab you used last."],
+    ["Unsaved changes", "A small dot after Studio UI's tab means you changed HUD colours and have not saved them to the game. If you exit Studio with unsaved colours, it asks you first."],
+    ["Profile", "The left of the two buttons between the tabs. It shows the name of the look you are using. Click it to save, load or share a look."],
+    ["Help", "The right of the two buttons between the tabs. It opens this guide. Type in the search box to find a part, or press Tour for a quick walk round the screen."],
+    ["Menu", "Top right. It holds Keybindings, Appearance profiles, Display, Help guide, Take the tour and About Elite Studio. Most choices open a panel on the right of the window, and the cross at the top of the panel closes it."],
+    ["Status strip", "The line under the tabs. Your commander, ship and cargo are on the left. Your star system, your station when you are docked, and the jumps left on your route are on the right. It updates by itself while Elite runs."],
+    ["Studio pages and cards", "Each studio shows its work in cards, with the card's name on a tag at its top. Studios with more than one page show a button for each page; click one to switch. A filled row is the one you picked."],
+    ["Key bar", "The strip along the bottom of the window. It holds the overlay keys, the spacing and the profile switcher. It hides itself on short or narrow windows, and you can change that in Display."],
+    ["Overlay keys", "The left of the key bar shows the key for each in-game overlay box: Hauling, Find, Route, Loadouts and Flight. Press a key in the game to show that box. Click one here to see every key."],
+    ["Spacing", "The middle of the key bar. Comfortable leaves room around cards and rows; Compact fits more on a small screen."],
+    ["Profile switcher", "The right of the key bar. The arrows step through your looks, and the name between them is the one in use; a dot after it means you changed the look and have not saved it. The last button opens Appearance profiles."],
+    ["Closing the window", "Closing the window only hides it, because Studio keeps running for the in-game overlay and the Sniffer. Double-click Studio's icon near the clock, or start Studio again, to bring the window back. To quit, right-click that icon and choose Exit."],
+    ["Red connection bar", "A red bar saying 'Can't reach Elite Studio' or 'Elite Studio was restarted' means the page has lost touch with the app. Start Studio, or press Reload on the bar."],
+  ] },
+  { id: 'ui', g: 'g-ui', t: 'Studio UI', items: [
+    ["What it does", "Studio UI changes the colours of your cockpit HUD and shows the result live. It works through the free EDHM HUD mod, which Studio downloads (about 4 MB) once Elite is closed. On first start, confirm the game folder Studio found, or browse to yours."],
+    ["Three steps", "Pick colours on Quick Theme, or click any part of the HUD picture, then press Save to game (Ctrl+S). Studio presses F11 in Elite to reload the HUD, or tells you to press it. Nothing reaches the game until you save, unless Auto-save is on."],
+    ["Top bar", "Undo (Ctrl+Z) and Redo (Ctrl+Y) step through your edits, and Auto-save writes each change to the game about a second later. Discard puts back what is in the game, and can itself be undone. The number on Save to game counts the settings you changed."],
+    ["HUD picture", "Point at any part of the picture to see which setting colours it, and click it to jump to that setting. The buttons under it switch between Cockpit (your theme), Station menu, Galaxy map, On foot, Scanner, Nav panel (1) and Systems panel (4). Hold 'Hold to compare' to see the colours in the game now."],
+    ["Quick Theme", "Start from one of ten palettes, or set the eight colour roles: Main HUD, Accent, Text, Shields, Holograms, Hostile & warnings, Friendly & wing and Cabin lights. Each role shows how many HUD parts it colours. Tick boxes below bring parts still in Elite's orange over to your colours."],
+    ["All Settings", "Search every setting by a word such as radar or shield, tick Changed only, or pick a HUD area from the chips. A dot by a setting means it has changed and is not saved yet. 'What the words mean' explains terms such as Mode, Opacity and Bloom."],
+    ["XML matrix", "Elite draws its interface in its own orange, and the XML matrix turns that orange and the game's other stock colours into new ones. It colours station menus and any part set to XML mode. Pick what Orange, White and Blue become, start from a preset, or adjust with the sliders."],
+    ["Themes", "Save your colours under a name in My Themes, then load or delete them later. 'Export to a file' and 'Import a file' share themes with other commanders. Loading a theme puts it in the editor; press Save to game to use it."],
+    ["Backups and Setup", "Studio backs up your colour files the first time you save in each session, and 'Make a backup now' adds one. Setup shows your game folder, whether the colour files were found and whether Elite is running. It also installs the HUD mod again, gives graphics tips and saves a diagnostic report to send when you ask for help."],
+  ] },
+  { id: 'market', g: 'g-market', t: 'Studio Market', items: [
+    ["Three pages", "Trades plans hauling runs and drives the in-game Hauling overlay. Find by name finds the nearest place for a commodity, module, ship, station or sector. Sniffer watches commodity prices for you while Studio runs."],
+    ["Trades settings", "The left column holds BASIC, STATION DETAILS, PRESETS, POWERPLAY and OVERLAYS AND KEYS. Each folds to a one-line summary, and Studio remembers which you left open. BASIC sets where trades start, distances, cargo, jump ranges, price age, round trip or one way, and whether to rank by profit per hour or per trip."],
+    ["Trade list", "Click a row to show that trade in the Hauling overlay. Tick its box to accept it, and the overlay stays on it until you finish or drop it. Click a column title to sort: once for smallest first, again for biggest first, and a third time for the search's own order."],
+    ["Trade buttons", "Search again runs the search, and Accept trade and Drop accepted trade lock and unlock the overlay. Copy next stop copies the next system for the galaxy map. 'Where can I sell' finds buyers for My cargo or for one commodity, and Back to trades returns to the list."],
+    ["Presets", "A preset is a named copy of your search settings. Type a name and press Save, then Use or Delete it later. A tick marks the preset in use, and you can switch presets from the Hauling overlay without leaving the game."],
+    ["Find by name", "Choose Commodity, Module, Ship, Station or Sector, type a few letters and pick a name. From follows your system until you type another, and Here hands it back to the game. Press Find or Enter; places come nearest first, and Show more looks farther out."],
+    ["Filters and Nearest buttons", "The filters start from your Trades settings, and changes count only on this page. The Nearest buttons find the closest material trader, technology broker, Interstellar Factors, black market, shipyard, outfitting or repair in one click. Save to Sniffer keeps a commodity search for the Sniffer."],
+    ["Station price list", "Look up a station by name to see what it sells and what it buys, side by side. Type to narrow both lists, or choose 'Only what pays' to see what makes money between it and the station you are docked at."],
+    ["Sniffer", "Save a commodity search with 'I want to buy' or 'I want to sell', a price, tons and station filters. Each search that is On runs once an hour while Studio is open; Run now asks at once, and Sound plays an alert. An alert means someone reported it, so it may have gone since."],
+  ] },
+  { id: 'nav', g: 'g-nav', t: 'Studio Nav', items: [
+    ["Two pages", "Routes plots a route and follows it stop by stop. Unexplored counts your exploring trip and shows where few players have been, on a flat map or a 3D map."],
+    ["Neutron or Exact", "Neutron takes a few long legs from neutron star to neutron star, each plotted in the galaxy map. Exact lists every jump, with stars to scoop fuel at, worked out for your ship as it is now. Spansh takes about a minute for an Exact route."],
+    ["Plotting", "From follows the system you are in, Here hands it back to the game, and To suggests names after three letters. Jump range follows your ship until you type your own, and Efficiency trades a straight line against detours to neutron stars (Spansh suggests 60). Press Plot route, or Cancel while you wait."],
+    ["Following a route", "The NEXT card shows the next system in large letters, with Copy name, how far it is, and whether to supercharge or scoop there. In the table, stops behind you turn grey, the next stop is lit and 'You are here' marks your stop. Clear route removes the route."],
+    ["Trips and the Route overlay", "A shopping trip sent from Studio Loadouts becomes your route, with HERE and THERE notes saying what to buy at each stop. The Route overlay (F4 by default) shows the next stop over the game."],
+    ["This trip", "Unexplored counts systems visited, new systems, and bodies you were first to discover and first to map. The game itself says whether anyone was there before, so these counts are certain. Selling your exploration data or losing your ship starts a new trip, and Reset starts one now."],
+    ["Where few have been", "Press 'Get the map from EDAstro' once (about 1.5 MB, kept for a week). The flat map shows the galaxy from above, with thinly known squares in the highlight colour and you as a white dot. Click it to look that way, then 'Suggest a waypoint' names a system to copy or route to."],
+    ["3D map", "Open it with the Flat map / 3D map switch. Left-drag turns, right-drag slides and the wheel zooms, while W A S D move, R and F go up and down, and Shift doubles the speed. Click a sector, cube or star to choose it; the arrow keys move the highlight and C centres on it."],
+    ["Route check and the panel", "Route check marks each stop of the route you plot in the game as recorded or not recorded yet, and keeps unrecorded ones in Your finds. Under the map, Within reach lists systems one jump away, and Nav scan reads names from your screenshots of the Navigation panel. 'How to read this' explains the rest."],
+  ] },
+  { id: 'loadouts', g: 'g-ship', t: 'Studio Loadouts', items: [
+    ["Four pages", "My ship, Designer, Engineering and Guardian. Everything updates by itself from the game: a ship swap, a module change, materials picked up, an engineer unlocked or a jump."],
+    ["My ship", "Current ship is always first and follows the game live, with your saved builds below it. 'Save current ship as…' keeps a named copy. Click a build to see its jump ranges, cargo, fuel, weight, value, rebuy and modules, laid out as on the outfitting screen."],
+    ["Modules and engineering", "The diamonds show a module's engineering grade. Click an engineering line to see each changed number, in green where it helps and red where it hurts. An engineer's work shows up the next time the game reports your ship."],
+    ["Build buttons", "Open in Designer puts the build on the bench, and Open in EDSY and Open in Coriolis open it in your web browser. Copy SLEF copies it as text that Inara, EDSY, Coriolis and Spansh accept. Rename and Delete are for saved builds, and Delete moves the build to the Recycle Bin."],
+    ["From your ship to this build", "For a saved build, Studio lists what your current ship still lacks. 'Find where to buy it' looks for the fewest stops near you. 'Send the trip to Studio Nav' makes those stops your route, and 'Pin the engineering in the planner' adds the build's blueprints to Engineering."],
+    ["Designer", "Put a build on the bench: your current ship, a saved build or an empty hull. Click a slot to change its module, switch it on or off, empty it or set its engineering. Red strips mean the build cannot work, amber strips mean it works with a catch, and 'Save as build…' adds it to My ship."],
+    ["Engineering", "Choose a module, a blueprint, the grade to reach and an optional experimental effect, then press Pin it. Studio adds up the materials for every pin, shows what you still lack, suggests a material trader swap and lists the engineers who can do the work. Start Elite once so Studio sees your materials."],
+    ["Guardian checklist", "Every Guardian module, weapon and fighter with its recipe. Green-edged parts are covered and red-edged parts are short, and each item says Unlocked, Ready to unlock or Locked. The left side shows the blueprint segments you still need, the nearest sites and a button for the nearest Guardian technology broker."],
+    ["Guardian sites", "Every known Guardian site, nearest to your ship first. Filter by what you need: weapon, module or fighter blueprints, Ancient Keys, Guardian materials or Obelisk data. A note says what to do at that kind of site, and Show all lists more than the first 25."],
+  ] },
+  { id: 'flight', g: 'g-flight', t: 'Studio Flight', items: [
+    ["Two pages", "Studio Flight teaches flying with Flight Assist off, away from the game. Trainer is where you practise. Stick setup checks your stick and sets its curves."],
+    ["Exercises and rank", "Nine exercises run in a fixed order: Stop the spin, Tunnel run and Track the target, three levels each, plus Free flight with no score. Each opens once the one before is passed, and each pass raises your rank from Cadet towards Elite. A set is five attempts, and three good ones pass it."],
+    ["Ship, Picture and Stick", "Fly like your own ship or pick any ship. 'Dot in the middle' keeps the target still, and 'Nose in the middle' keeps your nose still, as in the cockpit. 'With my FA Off curves' reads your stick through your Stick setup curves; 'As the game gets it' reads exactly what Elite receives."],
+    ["Controls and keys", "Controls lists the keys from your own Elite bindings, and a key marked * is the trainer's own, used where Elite has none. Enter starts a set or flies it again, and Esc pauses and resumes. While flying, every key belongs to the ship, and switching to another window pauses."],
+    ["Reading the sky", "The dashed line shows where the turn carries you in the next 1.5 seconds if you let go. The rate bars turn green inside the settle band. In the tunnel, the green marker is where the ship is really going, amber rings are bends and a red wash means the wall is close."],
+    ["Hands and report", "The hands box draws your throttle and stick hands as the in-game overlay does: the red dot is what the game gets and the white ring is your real stick. After a set, the report marks each attempt and gives tips. Some tips change your Flight Assist off curve with one button."],
+    ["Stick check", "On Stick setup, pick your device and press Start, then follow the steps for about 75 seconds. Studio finds where your stick rests and how far it reaches, and suggests dead zones. 'Use these for Flight Assist off' applies them."],
+    ["Curves", "'Your hands, live' shows which stick axis each control uses. If the wrong dot moves, click Detect beside that control and move only that control. Curves sets dead zones, saturation and bend for pitch, roll and yaw, with Flight Assist off and on, and changes save by themselves."],
+    ["Bindings and Gremlin", "'Your Elite flight bindings' warns about settings that get in the way with Flight Assist off. 'Save the FA Off profile for Gremlin' writes a copy of your Joystick Gremlin profile with an FA Off mode that follows your Flight Assist key. Your own profile is never changed."],
+  ] },
+  { id: 'names', g: 'g-star', t: 'Names, sheets and messages', items: [
+    ["Names are links", "Every station, star system and commander name can be clicked. It opens a sheet over the page; Back steps to the previous sheet and Close returns to the page. Names you have opened are drawn a shade apart."],
+    ["Right-click a name", "Right-click a name to open it, copy the name, copy its system, open the system or plot a route to it in Studio Nav. Escape closes that menu, and in an open sheet it goes back one sheet."],
+    ["Station sheets", "A station's sheet shows its system, its distance from the star and from you, landing pads, type, economy, government, faction and how old the reports are. Lit tags are the services it has. 'Its price list' opens Find by name, and 'Open on Inara' opens your web browser."],
+    ["Station icon colours", "The small picture before a station's name shows its kind; point at it to see the word. Purple means a station in space, orange means a station on a planet's surface and yellow means a fleet carrier."],
+    ["Copying names into the galaxy map", "Elite cannot be told to plot a route from outside the game. Copy name and Copy system put the name on the clipboard, so you can paste it into the galaxy map's search with Ctrl+V."],
+    ["Links to other studios", "Some links in a line of text open another studio with something already filled in, such as a route to a system. Links to websites, such as Inara, open in your normal web browser."],
+    ["Messages", "Short messages slide up at the bottom of the window and go away by themselves. A red edge means a problem."],
+    ["Question boxes", "Questions appear in a box over the page. Enter accepts. Escape, Cancel or a click outside the box cancels, and Tab moves between the box's buttons."],
+    ["Deleting", "Deleting a saved build or a HUD theme moves it to the Windows Recycle Bin, so you can get it back."],
+  ] },
+  { id: 'overlay', g: 'g-overlay', t: 'The in-game overlay', items: [
+    ["What the boxes are", "Five boxes can show over the game. Hauling shows the trade to fly, Find by name the nearest places from your last search, Route the next stop of your Studio Nav route, Loadouts the ship you fly, and Flight inputs your stick, throttle and buttons as you fly."],
+    ["Showing a box", "By default F2 shows Hauling, F3 Find by name, F4 Route, F5 Loadouts and F6 Flight inputs. Press the key once to show the box and get the mouse on it, and again to hide it. The game gets the mouse back once no box is showing."],
+    ["When the keys work", "The keys work only while Elite is the active window, so in other programs they do their normal job. Elite must run in Borderless (Options > Graphics > Display > Window mode), because no box can show over Fullscreen."],
+    ["Moving and sizing", "Hold a box's top strip and drag to move it. Its smaller and bigger buttons change its size, and ✕ hide closes it. You can also set each box's size, place and opacity with the sliders in Studio Market."],
+    ["Flight inputs box", "The Flight inputs box never takes the mouse, so you can keep flying with it up. It can show itself whenever Flight Assist goes off. Set it up on Stick setup in Studio Flight."],
+    ["Changing keys", "In Studio Market, open Trades, then OVERLAYS AND KEYS, click a box's key field and press the keys you want. A key on its own must be F1 to F24, and any other key needs Ctrl, Alt or Shift. F11 is not allowed, because it reloads your HUD colours in Elite."],
+    ["Controller buttons", "Click a box's controller field, then within 10 seconds press a stick, HOTAS or gamepad button, or hold one button and press another; a pair leaves every single button free for the game. Click the field again to clear it. Studio only listens, so the game still gets the button."],
+    ["Key warnings", "Studio warns under the key fields if a key cannot be used, if two boxes share a key, if another program holds it, or if Elite itself uses it."],
+    ["Overlay keys in this window", "The key bar at the bottom of this window shows each box's key. Click one to open the full list in Keybindings."],
+  ] },
+  { id: 'keys', g: 'g-keys', t: 'Keybindings', items: [
+    ["Where to find them", "Open the Menu and choose Keybindings, or click a key in the key bar. The list is grouped by where each key works, such as the in-game overlay, the flight trainer and Studio's own pages."],
+    ["Read live", "The overlay keys and the trainer's flight keys are read live from Elite Studio and your Elite bindings, so the list shows your own keys. Change overlay keys in Studio Market and flight keys in Elite's own controls."],
+    ["Studio UI keys", "Ctrl+S saves to the game, Ctrl+Z undoes, and Ctrl+Y or Ctrl+Shift+Z redoes. Undo and redo wait while you type in a text box. Studio hands the keyboard to the studio you switch to, so these work straight away."],
+    ["Sent to Elite", "After Studio UI saves, Studio presses F11 in Elite to reload your HUD colours. That is why F11 can never be an overlay key."],
+    ["This window", "Menu, Help and Profile work by clicking, and Escape closes them. On Studio Flight, Escape pauses the trainer instead. The 3D map in Studio Nav has its own keys, shown in its Camera pad."],
+  ] },
+  { id: 'profiles', g: 'g-profile', t: 'Appearance profiles', items: [
+    ["What a profile is", "A profile is a named look for Elite Studio: its colour set, spacing, top bar, key bar and effects. It changes how Studio looks and nothing else. Your HUD themes, trade presets and saved builds stay as they are."],
+    ["Built-in looks", "Velvet Ice, Velvet Ice Compact, Space Dust, Firefly Grove, Earthen Flight, Frost and Classic Orange come with Studio, which starts in Classic Orange. Space Dust, Firefly Grove and Earthen Flight take their colours from your HUD themes of the same names. They carry a padlock and cannot be deleted. Load one, change it, and save the result under your own name."],
+    ["Saving the current look", "Open Appearance profiles from the Profile button, the Menu or the key bar. Type a name under 'Save the current look' and press Save. Saving under a name you already use updates that profile."],
+    ["Changed, not saved", "After you change a look, the profile name shows a dot. Save changes keeps the changes in your own profile, and Undo changes puts the profile back. A built-in profile offers only Undo changes, so save your version under a new name."],
+    ["Loading and deleting", "Press Load beside a profile to use it, and In use marks the current one. The bin button deletes one of your own profiles after asking."],
+    ["Profile switcher", "The arrows in the key bar step through every profile, built-in ones first. The name between them is the one in use, and the last button opens Appearance profiles."],
+    ["Sharing a look", "Under 'Share a look', Copy code copies a code for your current look to give another commander. Paste a code from someone else and press Add profile. Studio adds it as a new profile and loads it."],
+    ["Colours that keep their meaning", "Green, amber and red mean the same in every look: good, warning and problem. Studio UI's cockpit picture always shows your own HUD colours, whichever look you use."],
+  ] },
+  { id: 'display', g: 'g-display', t: 'Display', items: [
+    ["Does screen resolution matter?", "Not directly. Elite Studio follows the size of its window. Windows display scaling decides how big things are drawn, and the layout then picks full width, shorter tab names or narrow by itself."],
+    ["Window size", "The window opens maximised. On a narrow window or a heavily scaled display the pages zoom out, down to 60%, so the layout still fits; they never zoom in. Ctrl and the mouse wheel zoom by hand until the window is next resized."],
+    ["Narrower windows", "As the window gets narrower, the tabs drop the word Studio, the status strip drops its labels, and then the tabs drop their glyphs. In a very narrow window each tab shows only its glyph."],
+    ["Short windows", "When the window is shorter than 860, the top bar folds into one row, as high as the old bar, and hides the status strip; the Elite light then shows your system. Below 760 the key bar hides too. That keeps room for the trainer's sky in Studio Flight. The Top bar and Key bar choices can override this."],
+    ["Spacing", "Comfortable leaves room around cards and rows. Compact uses tighter gaps and shorter rows in every studio, so more fits on the screen."],
+    ["Top bar and key bar", "Top bar: Automatic uses one row on short windows, or choose Always full or Always one row. Key bar: Automatic hides it on short or narrow windows, or choose Always or Never."],
+    ["Effects", "Three switches: Starfield behind the pages, Glow on glyphs and live lights, and Movement, which slides panels and pulses lights. Turn them off for a plainer, calmer screen."],
+    ["Your window", "The Your window box in Display shows the window size, how large Windows draws it, and which layout is in use."],
+  ] },
+];
+const TOUR = [
+  { sel: '#game', t: 'Is Elite running?', p: 'This light turns green while Elite Dangerous is running. On a short window it shows the system you are in.' },
+  { sel: '.stabs.l', t: 'Studio tabs', p: 'One tab per studio. Studio UI and Studio Market are on the left.' },
+  { sel: '.stabs.r', t: 'More studios', p: 'Studio Nav, Studio Loadouts and Studio Flight are on the right.' },
+  { sel: '#profHex', t: 'Profile', p: 'Your appearance profile: colours, spacing and layout. Click it to save, load or share a look.' },
+  { sel: '#helpHex', t: 'Help', p: 'This guide, explained piece by piece. You can come back to the tour any time.' },
+  { sel: '#menuBtn', t: 'Menu', p: 'Keybindings, appearance profiles, display, the help guide, this tour and About.' },
+  { sel: '#stripL', t: 'Status strip', p: 'Your commander, ship and cargo on the left. The system, your station and the jumps left on your route on the right.' },
+  { sel: '#pages', t: 'The studio', p: 'Each studio shows its work here. The menu and the panels open over it, so nothing it is doing stops.' },
+  { sel: '#kbKeys', t: 'Overlay keys', p: 'Press these in game to show a box over Elite. Click one to see every key.' },
+  { sel: '#kbMid', t: 'Spacing', p: 'Comfortable or Compact. Compact fits more on a small screen.' },
+  { sel: '#kbProf', t: 'Profile switcher', p: 'Step through your saved looks without opening the menu.' },
+];
+
+// ============================================================ menu
+const MENU = [
+  ['keys', 'g-keys', 'Keybindings', 'Every key Studio and the overlay use'],
+  ['profiles', 'g-profile', 'Appearance profiles', 'Save, load and share a look'],
+  ['display', 'g-display', 'Display', 'Colours, spacing, layout and effects'],
+  ['help', 'g-help', 'Help guide', 'What each part does'],
+  ['tour', 'g-tour', 'Take the tour', 'A quick walk round the screen'],
+  ['about', 'g-info', 'About Elite Studio', 'Version and credits'],
+];
+function setMenu(open) {
+  $('#menu').hidden = !open; $('#menuBtn').setAttribute('aria-expanded', String(open));
+  if (open) $('#menuList button')?.focus();
+}
+$('#menuList').replaceChildren(...MENU.map(([id, g, t, d]) => h('button', { role: 'menuitem', onclick: () => { setMenu(false); id === 'tour' ? startTour() : openDrawer(id, $('#menuBtn')); } },
+  glyph(g), h('span', null, t, h('small', null, d)))));
+$('#menuBtn').addEventListener('click', () => setMenu($('#menu').hidden));
+$('#menuList').addEventListener('keydown', e => {
+  const items = $$('#menuList button'), i = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+  if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+});
+document.addEventListener('click', e => { if (!$('#menu').hidden && !e.target.closest('#menu, #menuBtn')) setMenu(false); });
+window.addEventListener('blur', () => { if (!$('#menu').hidden) setMenu(false); });   // a click into a studio frame
+const layerOpen = () => !$('#menu').hidden || !!drawerOpen || tourAt >= 0;
+
+// ============================================================ panels
+let drawerOpen = null, drawerOpener = null, keysTab = 'overlay', profConfirm = null, nameConfirm = null;
+const TITLES = { keys: ['Keybindings', 'g-keys'], profiles: ['Appearance profiles', 'g-profile'], display: ['Display', 'g-display'], help: ['Help guide', 'g-help'], about: ['About', 'g-info'] };
+function openDrawer(id, opener, sub, toggle) {
+  if (id === 'keys' && sub) keysTab = sub;
+  if (toggle && drawerOpen === id) { closeDrawer(); return; }
+  const fresh = drawerOpen !== id;
+  drawerOpen = id; drawerOpener = opener || null; profConfirm = null; nameConfirm = null;
+  $('#drawer').hidden = false;
+  if (fresh) $('#drawerBody').scrollTop = 0;
+  renderDrawer(id);
+  $('#profHex').setAttribute('aria-expanded', String(id === 'profiles'));
+  $('#helpHex').setAttribute('aria-expanded', String(id === 'help'));
+  $('#drawerClose').focus();
+  if (id === 'keys') { loadOverlayKeys().then(() => { if (drawerOpen === 'keys') renderDrawer('keys'); }); loadFlightKeys(); }
+}
+function closeDrawer() {
+  if (!drawerOpen) return;
+  drawerOpen = null; $('#drawer').hidden = true;
+  $('#profHex').setAttribute('aria-expanded', 'false'); $('#helpHex').setAttribute('aria-expanded', 'false');
+  backToStudio();
+}
+$('#drawerClose').addEventListener('click', closeDrawer);
+$('#profHex').addEventListener('click', e => openDrawer('profiles', e.currentTarget, null, true));
+$('#helpHex').addEventListener('click', e => openDrawer('help', e.currentTarget, null, true));
+$('#profOpen').addEventListener('click', e => openDrawer('profiles', e.currentTarget, null, true));
+$('#profPrev').addEventListener('click', () => stepProfile(-1));
+$('#profNext').addEventListener('click', () => stepProfile(1));
+$('#kbSpacing').replaceChildren(...[['comfortable', 'Comfortable'], ['compact', 'Compact']].map(([v, t]) => h('button', { 'data-v': v, onclick: () => setLook({ density: v }) }, t)));
+
+function renderDrawer(id) {
+  const [title, g] = TITLES[id];
+  $('#drawerTitle').replaceChildren(glyph(g), title);
+  const body = $('#drawerBody');
+  const FOCUSABLE = 'button,input,textarea,select,a[href],summary';
+  const was = body.contains(document.activeElement), focusId = was ? document.activeElement.id : '', focusAt = was ? $$(FOCUSABLE, body).indexOf(document.activeElement) : -1;
+  const keepScroll = body.scrollTop;
+  const typed = {}; for (const el of $$('input[id],textarea[id]:not([readonly])', body)) if (el.type !== 'checkbox') typed[el.id] = el.value;
+  body.replaceChildren(...({ keys: keysPanel, profiles: profilesPanel, display: displayPanel, help: helpPanel, about: aboutPanel })[id]());
+  for (const [k, v] of Object.entries(typed)) { const el = body.querySelector('#' + k); if (el && !el.value) { el.value = v; el.dispatchEvent(new Event('input')); } }
+  body.scrollTop = keepScroll;
+  if (was) { const list = $$(FOCUSABLE, body); (focusId && body.querySelector('#' + focusId) || list[Math.min(focusAt, list.length - 1)] || $('#drawerClose')).focus({ preventScroll: true }); }
+  if (id === 'display') updateReadout();
+}
+const seg = (aria, opts, val, on, cls) => h('div', { class: 'dseg ' + (cls || ''), role: 'group', 'aria-label': aria },
+  opts.map(([v, t]) => h('button', { class: v === val ? 'active' : null, 'aria-pressed': String(v === val), onclick: () => on(v) }, t)));
+
+function keysPanel() {
+  const groups = {
+    overlay: { name: 'Overlay', note: 'Press a key once to show its box over Elite, and again to hide it. These keys work only while Elite, or an overlay box you clicked into, is in front. Each box can also have a controller button. Change keys and buttons in Studio Market, on the Trades page, under OVERLAYS AND KEYS.',
+      rows: overlayKeys.map((k, i) => ({ k: [k.key || '—'], pad: k.pad, what: (KEY_WORDS[k.action] || [k.action])[0], sub: (KEY_WORDS[k.action] || [, ''])[1], state: keyState(k, i) })) },
+    flight: { name: 'Flight', note: 'The Trainer flies with your stick and your own Elite keyboard bindings. Enter starts a set or flies it again; Esc pauses while flying. These number-pad keys stand in where Elite has no key bound.',
+      rows: [{ k: ['Enter'], what: 'Start, or fly again', sub: 'Studio Flight, Trainer page' }, { k: ['Esc'], what: 'Pause or carry on', sub: 'While a set is flying' }, ...(flightKeys ? flightKeys.rows : [])],
+      problem: flightKeys ? flightKeys.problem : null, busy: !flightKeys },
+    ...KEYS_STATIC,
+  };
+  const g = groups[keysTab] || groups.overlay;
+  const out = [seg('Which keys', Object.entries(groups).map(([k, v]) => [k, v.name]), keysTab, v => { keysTab = v; renderDrawer('keys'); }), h('p', { class: 'pnote' }, g.note)];
+  if (g.busy) out.push(h('p', { class: 'pnote busy' }, h('span', { class: 'spin' }), 'Asking Studio Flight…'));
+  if (g.problem) out.push(h('p', { class: 'pnote warn' }, g.problem));
+  for (const r of g.rows) out.push(h('div', { class: 'krow' },
+    h('span', { class: 'keys' }, r.k.map(x => keycap(x)), r.pad ? keycap(r.pad, true) : null),
+    h('span', { class: 'what' }, r.what, h('small', null, r.sub)),
+    r.state ? h('span', { class: 'badge ' + r.state[1] }, r.state[0]) : h('span')));
+  out.push(h('p', { class: 'pnote' }, 'Read from Elite Studio as this panel opens, so it always matches your settings. The menu, Help and profiles add no keys of their own.'));
+  return out;
+}
+
+function profilesPanel() {
+  const out = [], cur = currentProfile();
+  out.push(h('div', { class: 'sect' }, h('h3', null, 'Using now'),
+    h('p', null, h('b', { style: 'color:var(--text)' }, cur.name), ' · ', describe(look), changed() ? ' · changed, not saved' : '')));
+  if (changed()) out.push(h('div', { class: 'sect line', style: 'padding-bottom:10px' },
+    cur.builtIn ? null : h('button', { class: 'btn small primary', onclick: () => { cur.look = { ...look }; applyLook(); renderDrawer('profiles'); toast(`Saved “${cur.name}”.`); } }, glyph('g-save'), 'Save changes'),
+    h('button', { class: 'btn small', onclick: () => { look = { ...cur.look }; applyLook(); renderDrawer('profiles'); toast('Changes undone.'); } }, 'Undo changes')));
+  out.push(h('div', { class: 'sect' }, h('h3', null, 'Profiles')));
+  for (const p of all()) {
+    const pal = PAL[p.look.palette] || PAL.velvet;
+    out.push(h('div', { class: 'prow' + (p.id === profileId ? ' cur' : '') },
+      h('span', { class: 'sw3' }, pal.sw.map(c => h('i', { style: 'background:' + c }))),
+      h('span', { class: 'pn' }, p.name, h('small', null, describe(p.look) + (p.builtIn ? ' · built in' : ''))),
+      h('span', { class: 'acts2' },
+        p.id === profileId ? h('span', { class: 'badge ice' }, 'In use') : h('button', { class: 'btn small', onclick: () => loadProfile(p.id) }, glyph('g-load'), 'Load'),
+        p.builtIn ? h('span', { class: 'mini', title: 'Built-in profiles cannot be deleted', style: 'border:0;background:none' }, glyph('g-lock')) :
+          h('button', { class: 'mini', 'aria-label': 'Delete ' + p.name, onclick: () => { profConfirm = p.id; renderDrawer('profiles'); } }, glyph('g-trash')))));
+    if (profConfirm === p.id) out.push(h('div', { class: 'confirm' }, `Delete “${p.name}”?`,
+      h('button', { class: 'btn small danger', onclick: () => {
+        const inUse = profileId === p.id;
+        mine = mine.filter(x => x.id !== p.id); profConfirm = null; nameConfirm = null;
+        if (inUse) { profileId = FIRST_PROFILE; look = { ...currentProfile().look }; }   // the look goes with it
+        applyLook(); renderDrawer('profiles'); toast(inUse ? `Deleted “${p.name}”. Now using ${currentProfile().name}.` : `Deleted “${p.name}”.`); } }, 'Delete'),
+      h('button', { class: 'btn small', onclick: () => { profConfirm = null; renderDrawer('profiles'); } }, 'Keep it')));
+  }
+  if (nameConfirm && !mine.some(m => m.id === nameConfirm)) nameConfirm = null;
+  const nameIn = h('input', { class: 'inp', id: 'profName', maxlength: 40, placeholder: 'For example: Night run' });
+  const msg = h('p', { class: 'pnote', style: 'padding:6px 0 0' });
+  const saveAs = () => {
+    const name = nameIn.value.trim();
+    if (!name) { msg.textContent = 'Type a name first.'; nameIn.focus(); return; }
+    if (BUILTIN.some(b => b.name.toLowerCase() === name.toLowerCase())) { msg.textContent = 'That name belongs to a built-in profile. Pick another.'; return; }
+    const ex = mine.find(m => m.name.toLowerCase() === name.toLowerCase());
+    if (ex && nameConfirm !== ex.id) { nameConfirm = ex.id; renderDrawer('profiles'); return; }   // ask before replacing
+    nameConfirm = null;
+    if (ex) { ex.look = { ...look }; profileId = ex.id; } else { const id = 'u-' + Date.now().toString(36); mine.push({ id, name, look: { ...look } }); profileId = id; }
+    nameIn.value = ''; applyLook(); renderDrawer('profiles'); toast(ex ? `Replaced “${ex.name}”.` : `Saved “${name}”.`);
+  };
+  nameIn.addEventListener('keydown', e => { if (e.key === 'Enter') saveAs(); });
+  out.push(h('div', { class: 'sect' }, h('h3', null, 'Save the current look'),
+    h('div', { class: 'line' }, h('label', { class: 'lbl', for: 'profName', style: 'flex:1' }, 'Name', nameIn), h('button', { class: 'btn primary', onclick: saveAs }, glyph('g-save'), 'Save')), msg,
+    nameConfirm ? h('div', { class: 'confirm', style: 'margin-top:8px' }, `“${(mine.find(m => m.id === nameConfirm) || {}).name}” already exists. Replace it with the current look?`,
+      h('button', { class: 'btn small danger', onclick: saveAs }, 'Replace'), h('button', { class: 'btn small', onclick: () => { nameConfirm = null; renderDrawer('profiles'); $('#profName')?.select(); } }, 'Pick another name')) : null));
+  const code = h('textarea', { class: 'inp', id: 'profCode', readonly: true, rows: 3, 'aria-label': 'Profile code' }, toCode({ name: cur.name, look }));
+  const paste = h('textarea', { class: 'inp', id: 'profPaste', rows: 3, placeholder: 'Paste a code that starts with ESLOOK1:', 'aria-label': 'Paste a profile code' });
+  const pmsg = h('p', { class: 'pnote', style: 'padding:6px 0 0' });
+  out.push(h('div', { class: 'sect', style: 'padding-bottom:14px' }, h('h3', null, 'Share a look'),
+    h('p', null, 'Copy this code to give the current look to another commander. Paste theirs below to add it as a new profile.'),
+    code, h('div', { class: 'line', style: 'margin:8px 0 12px' }, h('button', { class: 'btn small', onclick: async () => {
+      if (await Studio.copy(code.value)) toast('Profile code copied.'); else { code.select(); toast('Press Ctrl+C to copy the selected code.'); } } }, glyph('g-copy'), 'Copy code')),
+    paste, h('div', { class: 'line', style: 'margin-top:8px' }, h('button', { class: 'btn small', onclick: () => {
+      const t = paste.value.trim();
+      try {
+        if (!t.startsWith('ESLOOK1:')) throw new Error();
+        const d = fromCode(t);
+        const name = String(d.name || 'Imported look').trim().slice(0, 36) || 'Imported look';
+        const taken = n => all().some(p => p.name.toLowerCase() === n.toLowerCase());
+        let n = name, i = 2; while (taken(n)) n = `${name} ${i++}`;
+        const id = 'u-' + Date.now().toString(36);
+        mine.push({ id, name: n, look: cleanLook(d.look) }); profileId = id; look = cleanLook(d.look);
+        paste.value = ''; applyLook(); renderDrawer('profiles'); toast(`Added and loaded “${n}”.`);
+      } catch (e) { pmsg.textContent = 'That is not a profile code. A code starts with ESLOOK1: and is copied from this panel.'; }
+    } }, glyph('g-load'), 'Add profile')), pmsg));
+  return out;
+}
+
+function displayPanel() {
+  const sw = (id, label, k) => h('label', { class: 'toggle', for: id }, h('input', { type: 'checkbox', id, checked: look[k], onchange: e => setLook({ [k]: e.target.checked }) }), label);
+  return [
+    h('div', { class: 'sect' }, h('h3', null, 'Colours'),
+      h('div', { class: 'palettes' }, Object.entries(PAL).map(([k, p]) => h('button', { class: 'pal' + (k === look.palette ? ' active' : ''), 'aria-pressed': String(k === look.palette), onclick: () => setLook({ palette: k }) },
+        h('span', { class: 'sw3' }, p.sw.slice(0, 2).map(c => h('i', { style: 'background:' + c }))), p.name))),
+      h('p', { style: 'margin-top:8px' }, 'Green, amber and red keep their meaning in every colour set. Studio UI keeps its own colours, which follow your HUD.')),
+    h('div', { class: 'sect' }, h('h3', null, 'Spacing'), seg('Spacing', [['comfortable', 'Comfortable'], ['compact', 'Compact']], look.density, v => setLook({ density: v }), 'boxed'),
+      h('p', { style: 'margin-top:8px' }, 'Compact tightens the cards, rows and tables in every studio.')),
+    h('div', { class: 'sect' }, h('h3', null, 'Top bar'), seg('Top bar', [['auto', 'Automatic'], ['full', 'Always full'], ['compact', 'Always one row']], look.header, v => setLook({ header: v }), 'boxed'),
+      h('p', { style: 'margin-top:8px' }, 'Automatic uses one row, the height of the old bar, when the window is shorter than 860.')),
+    h('div', { class: 'sect' }, h('h3', null, 'Key bar'), seg('Key bar', [['auto', 'Automatic'], ['show', 'Always'], ['hide', 'Never']], look.keybar, v => setLook({ keybar: v }), 'boxed'),
+      h('p', { style: 'margin-top:8px' }, 'Automatic hides it when the window is shorter than 760 or narrow.')),
+    h('div', { class: 'sect', style: 'display:grid;gap:10px' }, h('h3', { style: 'margin-bottom:0' }, 'Effects'), sw('fxStars', 'Starfield behind the pages', 'stars'), sw('fxGlow', 'Glow on glyphs and live lights', 'glow'), sw('fxMotion', 'Movement (panels slide, lights pulse)', 'motion')),
+    h('div', { class: 'sect' }, h('h3', null, 'Your window')),
+    h('div', { class: 'readout', id: 'readout' }),
+    h('p', { class: 'pnote' }, 'Elite Studio follows the size of its window, not the screen. It lays its pages out 1400 wide and zooms out for a smaller window. The bars above and below fold away on short windows so the studios keep their room.'),
+  ];
+}
+function updateReadout() {
+  const r = $('#readout'); if (!r) return;
+  const rows = [['Window', `${window.innerWidth} × ${window.innerHeight}`], ['Drawn at', `${Math.round(window.devicePixelRatio * 100)}%`], ['Layout', layoutName()]];
+  r.replaceChildren(...rows.flatMap(([a, b]) => [h('span', null, a), h('span', null, b)]));
+}
+
+function helpPanel() {
+  const q = h('input', { class: 'inp', id: 'helpSearch', type: 'search', placeholder: 'Search the guide', 'aria-label': 'Search the guide' });
+  const list = h('div');
+  const draw = () => {
+    const t = q.value.trim().toLowerCase();
+    list.replaceChildren(...HELP.map(s => {
+      const items = s.items.filter(([a, b]) => !t || (a + ' ' + b + ' ' + s.t).toLowerCase().includes(t));
+      if (!items.length) return null;
+      return h('details', { class: 'help', open: t || s.id === 'shell' ? true : null }, h('summary', null, glyph(s.g), s.t),
+        ...items.map(([a, b]) => h('div', { class: 'hitem' }, h('b', null, a), h('p', null, b))));
+    }).filter(Boolean));
+    if (!list.children.length) list.append(h('p', { class: 'pnote' }, 'Nothing in the guide matches that. Try a shorter word.'));
+  };
+  q.addEventListener('input', draw); draw();
+  return [h('div', { class: 'sect', style: 'padding-top:12px' }, h('div', { class: 'line' }, q, h('button', { class: 'btn ice small', onclick: () => { closeDrawer(); startTour(); } }, glyph('g-tour'), 'Tour'))), list];
+}
+let version = '';
+function aboutPanel() {
+  return [h('div', { class: 'sect', style: 'padding-bottom:14px' }, h('h3', null, 'Elite Studio' + (version ? ' ' + version : '')),
+    h('p', null, 'HUD colours, trading, routes, ship builds and a flight trainer for Elite Dangerous, in one window.'),
+    h('p', null, 'Look: ' + currentProfile().name + '.'),
+    h('h3', null, 'Credits'), h('p', null, 'HUD colours use the EDHM mod by Fred89210 and psychicEgg. Studio UI follows the layout of EDHM-UI by Blue Mystic.'),
+    h('p', null, 'Elite Dangerous is a game by Frontier Developments. Elite Studio is a fan-made tool and is not made by Frontier.'))];
+}
+
+// ============================================================ tour (over the whole window)
+let tourAt = -1, tourSteps = [];
+function startTour() {
+  closeDrawer(); setMenu(false);
+  tourSteps = TOUR.filter(t => { const el = $(t.sel); return el && el.offsetParent !== null && el.getBoundingClientRect().width > 0; });   // the parts shown at this window size
+  if (!tourSteps.length) return;
+  tourAt = 0; for (const id of ['#tourBlock', '#spot', '#callout']) $(id).hidden = false;
+  placeTour();
+}
+function endTour() { tourAt = -1; for (const id of ['#tourBlock', '#spot', '#callout']) $(id).hidden = true; backToStudio(); }
+function placeTour() {
+  const step = tourSteps[tourAt], el = $(step.sel);
+  if (!el || el.offsetParent === null) { endTour(); return; }   // the window changed under the tour
+  const r = el.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight, last = tourAt === tourSteps.length - 1;
+  Object.assign($('#spot').style, { left: r.left - 4 + 'px', top: r.top - 4 + 'px', width: r.width + 8 + 'px', height: r.height + 8 + 'px' });
+  const c = $('#callout');
+  c.replaceChildren(h('span', { class: 'ctag ice' }, glyph('g-tour'), 'Tour'), h('div', { class: 'card' },
+    h('div', { class: 'step', id: 'tourStep' }, `Step ${tourAt + 1} of ${tourSteps.length}`), h('h3', { id: 'tourT' }, step.t), h('p', { id: 'tourP' }, step.p),
+    h('div', { class: 'bar2' }, h('button', { class: 'btn small', onclick: endTour }, 'Close'),
+      h('span', { class: 'line' }, h('button', { class: 'btn small', disabled: tourAt === 0, onclick: () => { tourAt--; placeTour(); } }, 'Back'),
+        h('button', { class: 'btn small primary', id: 'tourNext', 'aria-describedby': 'tourStep tourT tourP', onclick: () => { if (!last) { tourAt++; placeTour(); } else endTour(); } }, last ? 'Done' : 'Next')))));
+  const cw = Math.min(360, W - 24), chh = 190;
+  const cx = Math.min(Math.max(12, r.left + r.width / 2 - cw / 2), W - cw - 12);
+  let cy = r.bottom + 14;
+  if (cy + chh > H) cy = r.top - chh - 14;
+  if (cy < 12) cy = Math.min(H - chh - 12, Math.max(12, r.top + r.height / 2 - chh / 2));   // a tall part: sit inside it
+  Object.assign(c.style, { left: cx + 'px', top: Math.max(12, cy) + 'px' });
+  $('#tourNext').focus();
+}
+$('#tourBlock').addEventListener('click', () => $('#tourNext')?.focus());
+$('#callout').addEventListener('keydown', e => {   // keep the keyboard inside the tour card
+  if (e.key !== 'Tab') return;
+  const f = $$('button:not(:disabled)', $('#callout')); if (!f.length) return;
+  const i = f.indexOf(document.activeElement);
+  if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
+  else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
+});
+
+// ============================================================ the shell's own short messages, and Esc
+// (Studio.toast draws pages' messages; this one can carry a button, such as "Bring them back".)
+let toastTimer = 0, toastDo = null;
+function toast(t, actText, act) {
+  $('#stoastText').textContent = t;
+  const b = $('#stoastAct'); b.hidden = !act; b.textContent = actText || ''; toastDo = act || null;
+  $('#stoast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('#stoast').hidden = true; }, act ? 8000 : 3600);
+}
+$('#stoastAct').addEventListener('click', () => { const d = toastDo; $('#stoast').hidden = true; toastDo = null; if (d) d(); });
+// Esc closes the top layer. A key pressed inside a studio stays in that studio (the trainer's Esc never gets here);
+// this one is heard only while the menu, a panel or the tour has the keyboard.
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (tourAt >= 0) endTour(); else if (!$('#menu').hidden) { setMenu(false); $('#menuBtn').focus(); } else if (drawerOpen) closeDrawer();
+});
+
 // ============================================================ start-up
+drawKeybar();
+applyLook();
 if (!Studio.served) return;
 sendDirty();   // this page is new and has no frames yet: whatever an earlier one reported is gone
 Studio.follow('state', '/api/state', showState);
 for (const t of tabs) t.button.addEventListener('click', () => showTab(t));
+Studio.follow('overlay', '/api/overlay/settings', r => { if (r && Array.isArray(r.keys) && r.keys.length) { overlayKeys = r.keys; drawKeybar(); if (drawerOpen === 'keys') renderDrawer('keys'); } });
+Studio.api('GET', '/api/ping').then(r => { version = r.version || ''; }).catch(() => {});
 let last = null;
 try { last = localStorage.getItem('studio.tab'); } catch (e) {}
 showTab(tabs.find(t => t.id === last) || tabs[0]);

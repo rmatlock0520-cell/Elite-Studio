@@ -21,45 +21,72 @@
   (..\index.html) and also works opened on its own.
 -->
 <style>
-/* Only what is this page's own; the shared look (buttons, boxes, fields, the list table...) is in ../studio.css. */
+/* Only what is this page's own; the shared look (buttons, boxes, fields, the list table, tags...) is in ../studio.css. */
 .top{flex:none;padding:10px 16px 0}
 .top p{margin:0 0 8px}
 #status,#list-msg{white-space:pre-wrap}
+#status{font-family:var(--hud);letter-spacing:.03em}
 .top .card{padding:8px 12px;font-size:13px}
 .top .card .btn{margin-left:8px}
 .layout{--side:350px;border-top:1px solid var(--line)}
+/* a glyph in a tag, before its name, a size smaller than in a line of text (studio.css has no rule for it yet) */
+.ctag .glyph{width:14px;height:14px;stroke-width:2}
 
-.settings{border-right:1px solid var(--line);padding:12px 12px 12px 16px;overflow:auto}
-.sec{padding:0;margin-bottom:10px}   /* a .card whose summary line and body bring their own padding */
-.sec summary{display:grid;grid-template-columns:auto minmax(0,1fr);gap:1px 10px;padding:10px 12px;cursor:pointer;list-style:none}
-.sec summary::-webkit-details-marker{display:none}
-.sec summary::before{content:"\25B8";grid-row:span 2;color:var(--muted)}
-.sec[open] summary::before{content:"\25BE"}
-.sec summary b{font-family:var(--hud);font-weight:600;letter-spacing:.08em;font-size:13.5px}
-.sec summary span{grid-column:2;color:var(--muted);font-size:12.5px}
-.sec .body{display:grid;gap:9px;padding:2px 12px 12px}
+/* The settings column: sections that fold. Each is a .card with its name on a tag sitting on its top edge (the tag is
+   the summary's <b>, so a click on it folds the section too); under the tag the one-line summary, with a square
+   chevron at its end that turns down while the section is open. */
+.settings{border-right:1px solid var(--line);padding:12px 12px 12px 16px;overflow:auto;background:linear-gradient(180deg,color-mix(in srgb,var(--bg2) 50%,transparent),color-mix(in srgb,var(--bg) 30%,transparent))}
+.sec{position:relative;padding:0;margin:22px 0 0;border-top-left-radius:0}   /* a .card whose summary line and body bring their own padding */
+.sec+.sec{margin-top:34px}   /* room for the next tag, and 12px between */
+.sec>summary{display:flex;align-items:center;gap:10px;min-height:46px;padding:7px 8px 7px 12px;cursor:pointer;list-style:none}
+.sec>summary::-webkit-details-marker{display:none}
+.sec>summary:hover{background:var(--accent-soft)}
+.sec>summary:focus-visible{outline-offset:-3px}
+.sec>summary>.ctag{position:absolute;left:-1px;top:-23px}
+.sec>summary>span:not(.chev){flex:1;min-width:0;color:var(--muted);font-size:12.5px}
+.sec .chev{width:28px;height:28px}
+.sec .chev .glyph{width:16px;height:16px;vertical-align:0;transition:transform .15s}
+.sec>summary:hover .chev{border-color:var(--accent-line);color:var(--cyan)}
+.sec[open]>summary{border-bottom:1px solid var(--line)}
+.sec[open] .chev .glyph{transform:rotate(90deg)}
+.sec .body{display:grid;gap:9px;padding:12px}
 .sec .body p{margin:0}
-.cap{display:block;margin-bottom:4px;font-size:12.5px;color:var(--muted)}
+/* captions over a box or a pair of boxes, and the slider lines (a caption, its value at the right), as the field captions */
+.cap{display:block;margin-bottom:4px;font:500 12.5px var(--hud);letter-spacing:.03em;color:var(--label)}
 .sec .field .btn{padding:0 11px}
 .check{display:flex;align-items:center;gap:8px;font-size:13.5px}
 .check input,.slide input{accent-color:var(--accent)}
-.slide{display:block;font-size:12.5px;color:var(--muted)}
-.slide output{float:right;color:var(--text);font-variant-numeric:tabular-nums}
+.slide{display:block;font:500 12.5px var(--hud);letter-spacing:.03em;color:var(--label)}
+.slide output{float:right;color:var(--frost);font-variant-numeric:tabular-nums}
 .slide input{display:block;width:100%;margin:6px 0 0}
+/* OVERLAYS AND KEYS: each overlay's key, switch, size and place in a box of its own; a key box looks like a key */
+.keys .ovbox{display:grid;gap:7px;padding:8px 4px 10px 6px;border:1px solid var(--line);border-left:2px solid var(--accent-line);background:color-mix(in srgb,var(--bg) 40%,transparent)}
+.keys .ovbox .cap{margin:0}
 .keys input{cursor:pointer;font-family:var(--mono);font-size:13px}
+.keys [data-key]{color:var(--frost);font-weight:600;border-bottom-width:3px}
 .keys input:focus,.keys .hearing{border-color:var(--accent);background:var(--accent-soft)}   /* .hearing: a controller box that waits for a button */
 .keys [data-pad]{flex:1.6;font-family:var(--font);text-overflow:ellipsis}   /* beside a key box it gets more of the row: a controller button is a few words */
 .credit{margin:14px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
 
 .trades{display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0;padding:12px 16px}
 .trades p{margin:0}
+/* the buttons in a card with the page's name on its tag; the two rows apart by a line */
+.deck{flex:none;display:flex;flex-direction:column;align-items:flex-start}
+.deck>.card{align-self:stretch;margin:0;padding:6px 10px}
+.deck .bar+.bar{margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;flex:none}
 .bar .field{width:240px}
-#next{margin-left:6px}
+.bar .barcap{font:500 12.5px var(--hud);letter-spacing:.09em;text-transform:uppercase;color:var(--label)}
+.bar .btn .glyph{width:16px;height:16px;vertical-align:0}
+/* Search again is the page's big action: the trapezoid of .cta, cut to the height of the row. It keeps class btn,
+   so what .btn draws that .cta does not undo (cut corners, the filled hover, the ring) is undone here. */
+.bar .btn.cta{width:auto;flex:none;height:36px;padding:0 34px;font-size:15px;clip-path:none}
+.bar .btn.cta:hover:not(:disabled){background:none}
+.bar .btn.cta:focus-visible{box-shadow:none;outline:2px solid var(--cyan);outline-offset:2px}
+#next{flex:1 1 220px;min-width:0;margin-left:6px;font-family:var(--hud);letter-spacing:.03em;color:var(--frost)}   /* the rest of the row, so it wraps there before it takes a row of its own */
 .line{display:flex;align-items:center;gap:10px;min-height:20px;font-size:13px;flex:none}
 #list{flex:1;min-height:0}
 #rows tr{cursor:pointer}
-#rows tr:hover td{background:rgba(255,255,255,.03)}
 #rows tr.picked td{background:var(--panel2)}
 #rows tr.shown td{background:var(--accent-soft)}
 #rows tr.shown td:first-child{box-shadow:inset 3px 0 var(--accent)}
@@ -84,7 +111,7 @@ td.dest{color:var(--muted)}
 <div class="layout">
   <aside class="settings">
     <details class="sec card" data-sec="basic">
-      <summary><b>BASIC</b><span id="sum-basic"></span></summary>
+      <summary><b class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-route"/></svg>BASIC</b><span id="sum-basic"></span><span class="chev" aria-hidden="true"><svg class="glyph"><use href="../glyphs.svg#g-chev"/></svg></span></summary>
       <div class="body">
         <div class="field"><label>Where trades can start<select data-set="startMode"><option value="near">Near me (within the distance below)</option><option value="anywhere">Anywhere: the best in the galaxy</option><option value="carry">From a station to a system I name</option></select></label></div>
         <div id="carry" hidden>
@@ -111,7 +138,7 @@ td.dest{color:var(--muted)}
     </details>
 
     <details class="sec card" data-sec="station">
-      <summary><b>STATION DETAILS</b><span id="sum-station"></span></summary>
+      <summary><b class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-station"/></svg>STATION DETAILS</b><span id="sum-station"></span><span class="chev" aria-hidden="true"><svg class="glyph"><use href="../glyphs.svg#g-chev"/></svg></span></summary>
       <div class="body">
         <div class="field"><label>Min. landing pad<select data-set="pad"><option value="auto">Auto (from the ship I'm flying)</option><option value="S">Small</option><option value="M">Medium</option><option value="L">Large</option></select></label></div>
         <div class="field"><label>Max. station distance from the star<select data-set="maxStarLs" data-kind="whole"><option value="0">Any</option><option value="500">500 ls</option><option value="1000">1,000 ls</option><option value="2000">2,000 ls</option><option value="5000">5,000 ls</option><option value="10000">10,000 ls</option><option value="25000">25,000 ls</option><option value="50000">50,000 ls</option></select></label></div>
@@ -125,7 +152,7 @@ td.dest{color:var(--muted)}
     </details>
 
     <details class="sec card" data-sec="presets">
-      <summary><b>PRESETS</b><span id="sum-presets"></span></summary>
+      <summary><b class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-save"/></svg>PRESETS</b><span id="sum-presets"></span><span class="chev" aria-hidden="true"><svg class="glyph"><use href="../glyphs.svg#g-chev"/></svg></span></summary>
       <div class="body">
         <p class="small muted">A preset is a named copy of your search settings (trip, distances, price age, station details, Powerplay). Switch between them here or from the overlay menu, without leaving the game.</p>
         <div>
@@ -142,7 +169,7 @@ td.dest{color:var(--muted)}
     </details>
 
     <details class="sec card" data-sec="power">
-      <summary><b>POWERPLAY</b><span id="sum-power"></span></summary>
+      <summary><b class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-cmdr"/></svg>POWERPLAY</b><span id="sum-power"></span><span class="chev" aria-hidden="true"><svg class="glyph"><use href="../glyphs.svg#g-chev"/></svg></span></summary>
       <div class="body">
         <div class="field"><label>Buy station's Power<select data-set="srcPower" data-list="power"></select></label></div>
         <div class="field"><label>Sell station's Power<select data-set="dstPower" data-list="power"></select></label></div>
@@ -153,10 +180,10 @@ td.dest{color:var(--muted)}
     </details>
 
     <details class="sec card" data-sec="overlay">
-      <summary><b>OVERLAYS AND KEYS</b><span id="sum-overlay"></span></summary>
+      <summary><b class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-overlay"/></svg>OVERLAYS AND KEYS</b><span id="sum-overlay"></span><span class="chev" aria-hidden="true"><svg class="glyph"><use href="../glyphs.svg#g-chev"/></svg></span></summary>
       <div class="body keys">
-        <p class="small muted">Four overlays, each with its own key. In the game, the key shows that overlay and gives you the mouse on it; press it again to hide it, and the game has the mouse back once none is showing. On the overlay itself: hold its top strip to move it, and use "smaller" and "bigger" for its size.</p>
-        <div title="Shows the trade to fly, with its buttons: next trade, copy system, accept, sell my cargo, trades and settings.">
+        <p class="small muted">Five overlays, each with its own key. In the game, the key shows that overlay and gives you the mouse on it; press it again to hide it, and the game has the mouse back once none is showing. On the overlay itself: hold its top strip to move it, and use "smaller" and "bigger" for its size. The Flight inputs overlay is the exception: it never takes the mouse, so you can fly with it up. Move and size it here or in Studio Flight.</p>
+        <div class="ovbox" title="Shows the trade to fly, with its buttons: next trade, copy system, accept, sell my cargo, trades and settings.">
           <span class="cap">Hauling overlay: its key  (click, then press the keys)</span>
           <div class="field"><input readonly data-key="hotHaul" aria-label="Hauling overlay key"><input readonly data-pad="padHaul" aria-label="Hauling overlay controller button" placeholder="controller: none"></div>
           <label class="check"><input type="checkbox" data-ov="haulOn">Show the Hauling overlay</label>
@@ -164,7 +191,7 @@ td.dest{color:var(--muted)}
           <label class="slide">Left to right<output></output><input type="range" data-ov="haulX" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Hauling overlay, left to right"></label>
           <label class="slide">Top to bottom<output></output><input type="range" data-ov="haulY" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Hauling overlay, top to bottom"></label>
         </div>
-        <div title="Shows the nearest places of your last Find by name search.">
+        <div class="ovbox" title="Shows the nearest places of your last Find by name search.">
           <span class="cap">Find by name overlay: its key  (click, then press the keys)</span>
           <div class="field"><input readonly data-key="hotMarket" aria-label="Find by name overlay key"><input readonly data-pad="padMarket" aria-label="Find by name overlay controller button" placeholder="controller: none"></div>
           <label class="check"><input type="checkbox" data-ov="marketOn">Show the Find by name overlay</label>
@@ -172,7 +199,7 @@ td.dest{color:var(--muted)}
           <label class="slide">Left to right<output></output><input type="range" data-ov="marketX" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Find by name overlay, left to right"></label>
           <label class="slide">Top to bottom<output></output><input type="range" data-ov="marketY" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Find by name overlay, top to bottom"></label>
         </div>
-        <div title="Shows the next stop of your Studio Nav route, or your exploring trip.">
+        <div class="ovbox" title="Shows the next stop of your Studio Nav route, or your exploring trip.">
           <span class="cap">Route overlay: its key  (click, then press the keys)</span>
           <div class="field"><input readonly data-key="hotNav" aria-label="Route overlay key"><input readonly data-pad="padNav" aria-label="Route overlay controller button" placeholder="controller: none"></div>
           <label class="check"><input type="checkbox" data-ov="navOn">Show the Route overlay</label>
@@ -180,13 +207,21 @@ td.dest{color:var(--muted)}
           <label class="slide">Left to right<output></output><input type="range" data-ov="navX" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Route overlay, left to right"></label>
           <label class="slide">Top to bottom<output></output><input type="range" data-ov="navY" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Route overlay, top to bottom"></label>
         </div>
-        <div title="Shows the ship you are flying; more comes later.">
+        <div class="ovbox" title="Shows the ship you are flying; more comes later.">
           <span class="cap">Loadouts overlay: its key  (click, then press the keys)</span>
           <div class="field"><input readonly data-key="hotLoadouts" aria-label="Loadouts overlay key"><input readonly data-pad="padLoadouts" aria-label="Loadouts overlay controller button" placeholder="controller: none"></div>
           <label class="check"><input type="checkbox" data-ov="loadoutsOn">Show the Loadouts overlay</label>
           <label class="slide">Size<output></output><input type="range" data-ov="loadoutsScale" data-kind="decimal" min="0.7" max="2" step="0.01" aria-label="Loadouts overlay size"></label>
           <label class="slide">Left to right<output></output><input type="range" data-ov="loadoutsX" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Loadouts overlay, left to right"></label>
           <label class="slide">Top to bottom<output></output><input type="range" data-ov="loadoutsY" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Loadouts overlay, top to bottom"></label>
+        </div>
+        <div class="ovbox" title="Shows your stick, throttle, thrusters and buttons while you fly. Studio Flight can show it by itself whenever Flight Assist is off.">
+          <span class="cap">Flight inputs overlay: its key  (click, then press the keys)</span>
+          <div class="field"><input readonly data-key="hotFlight" aria-label="Flight inputs overlay key"><input readonly data-pad="padFlight" aria-label="Flight inputs overlay controller button" placeholder="controller: none"></div>
+          <label class="check"><input type="checkbox" data-ov="flightOn">Show the Flight inputs overlay</label>
+          <label class="slide">Size<output></output><input type="range" data-ov="flightScale" data-kind="decimal" min="0.7" max="2" step="0.01" aria-label="Flight inputs overlay size"></label>
+          <label class="slide">Left to right<output></output><input type="range" data-ov="flightX" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Flight inputs overlay, left to right"></label>
+          <label class="slide">Top to bottom<output></output><input type="range" data-ov="flightY" data-kind="decimal" min="0" max="100" step="0.5" aria-label="Flight inputs overlay, top to bottom"></label>
         </div>
         <p class="small warn" id="key-said" hidden></p>
         <p class="small warn" id="key-warn" hidden></p>
@@ -205,20 +240,25 @@ td.dest{color:var(--muted)}
   </aside>
 
   <main class="trades">
-    <div class="bar">
-      <button class="btn" id="search">Search again</button>
-      <button class="btn" id="accept" title="Accepts the trade you clicked in the list (or the one in the overlay). The overlay stays on it until you finish it or drop it.">✔ Accept trade</button>
-      <button class="btn" id="drop" title="Takes the check mark off and searches again from where you are" hidden>Drop accepted trade</button>
-      <button class="btn" id="copy" title="Copies the star system to fly to next for the trade shown in the overlay">Copy next stop</button>
-      <span class="small muted" id="next"></span>
-    </div>
-    <div class="bar">
-      <span class="muted">Where can I sell:</span>
-      <button class="btn" id="cargo" title="Finds the nearest stations that will take what is in your hold for more than you paid">My cargo</button>
-      <span class="field"><select id="pick" aria-label="Commodity" title="Pick a commodity. What the station you are docked at sells is listed first, with its price there."></select></span>
-      <button class="btn" id="where" title="Finds where the picked commodity sells for the most, within your route distance and price age">This commodity</button>
-      <button class="btn" id="back" hidden>Back to trades</button>
-    </div>
+    <section class="deck">
+      <span class="ctag ice"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-trade"/></svg>Trades</span>
+      <div class="card">
+        <div class="bar">
+          <button class="btn cta" id="search"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-search"/></svg>Search again</button>
+          <button class="btn" id="accept" title="Accepts the trade you clicked in the list (or the one in the overlay). The overlay stays on it until you finish it or drop it.">✔ Accept trade</button>
+          <button class="btn" id="drop" title="Takes the check mark off and searches again from where you are" hidden>Drop accepted trade</button>
+          <button class="btn" id="copy" title="Copies the star system to fly to next for the trade shown in the overlay"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-copy"/></svg>Copy next stop</button>
+          <span class="small muted" id="next"></span>
+        </div>
+        <div class="bar">
+          <span class="muted barcap">Where can I sell:</span>
+          <button class="btn" id="cargo" title="Finds the nearest stations that will take what is in your hold for more than you paid">My cargo</button>
+          <span class="field"><select id="pick" aria-label="Commodity" title="Pick a commodity. What the station you are docked at sells is listed first, with its price there."></select></span>
+          <button class="btn" id="where" title="Finds where the picked commodity sells for the most, within your route distance and price age">This commodity</button>
+          <button class="btn" id="back" hidden><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-chev-l"/></svg>Back to trades</button>
+        </div>
+      </div>
+    </section>
     <p class="line"><span class="spin" id="busy" hidden></span><span class="muted" id="list-msg"></span><span id="said"></span></p>
     <div class="tablebox" id="list"><table><thead><tr id="heads"></tr></thead><tbody id="rows"></tbody></table></div>
     <p class="small muted">Click a row to show that trade in the overlay. Tick its box (or click "Accept this trade" on the overlay in the game) to accept it: the overlay then stays on that trade until you finish it or drop it. Click a column title to sort.</p>
@@ -541,7 +581,7 @@ function changeSetting(el) {
 }
 
 // ============================================================ the overlay box and its keys
-const keyActions = { haul: 'Hauling overlay', market: 'Find by name overlay', nav: 'Route overlay', loadouts: 'Loadouts overlay' };
+const keyActions = { haul: 'Hauling overlay', market: 'Find by name overlay', nav: 'Route overlay', loadouts: 'Loadouts overlay', flight: 'Flight inputs overlay' };
 // Keys by the name Windows has for them, which is how the hotkey settings spell a key. Punctuation keys are
 // left out: which of them a key is depends on the keyboard's country, and a page cannot see that.
 const namedKeys = { ' ': 'Space', Enter: 'Return', Backspace: 'Back', Escape: 'Escape', Insert: 'Insert', Delete: 'Delete', Home: 'Home', End: 'End',

@@ -1,31 +1,55 @@
 /*
-  ELITE STUDIO: the look every desktop page shares.
-  The colours, fonts and controls are the theme editor's own, so the whole app feels like one product.
+  ELITE STUDIO: the look every desktop page shares. The Velvet Ice look: deep navy, violet frames, ice-blue actions,
+  cyan for live things, frost white for values, and corner brackets on the boxes, like a cockpit panel.
   (ui/index.html keeps its private copy of these rules: it took many sessions to tune, and it also
   recolours its accent to match the player's HUD. Change a shared rule here and there together.)
   A page's own <style> holds only what no other page has: its layout and its special parts. Anything a
-  second page needs moves here, and one of the editor's colours or controls that is not here yet is
-  copied here from ui/index.html: never into a page, and never drawn anew.
+  second page needs moves here. Before a new shared name goes in, check that no page already uses it:
+  .tag, .row, .item, .note, .acts, .hint, .progress, .stage and .emblem are taken.
+  The player's appearance profile (studio.js, "studio.appearance") may replace the colours below and put these
+  classes on <html>: .dense (tighter spacing), .no-stars, .no-glow, .no-motion.
 */
 :root{
-  --bg:#06080c;--bg2:#0a0e14;--panel:#0e131a;--panel2:#131a23;
-  --line:#1f2935;--line2:#2a3645;--text:#e2e8f0;--muted:#8d99aa;--faint:#5b6677;
-  --accent:#ff7100;--accent-ink:#140900;--accent-soft:rgba(255,113,0,.14);--accent-line:rgba(255,113,0,.45);
+  /* neutrals: navy-black with a violet bias */
+  --bg:#04060e;--bg2:#080b1a;--panel:#0b1024;--panel2:#121838;--panel3:#1a2150;
+  --line:#1d2550;--line2:#2c3870;--edge:#5a6496;--text:#e3ecff;--muted:#8f9ad0;--faint:#5a6496;
+  /* violet leads (frames, tabs, the chosen row), ice blue answers (the big actions), cyan marks live things */
+  --accent:#9466ff;--accent-hi:#b48cff;--accent-ink:#0a0520;--accent-soft:rgba(148,102,255,.16);--accent-line:rgba(148,102,255,.5);
+  --ice:#45b8ff;--ice-ink:#021226;--ice-soft:rgba(69,184,255,.16);--ice-line:rgba(69,184,255,.55);
+  --cyan:#7cf0ff;--label:#8f7fe6;--frost:#b3e0ff;--link:var(--accent-hi);
+  /* the big actions (.cta, .btn.ice, the Profile and Help buttons): words, then the top and bottom shades at rest and on hover */
+  --act-ink:var(--cyan);--act-top:color-mix(in srgb,var(--ice) 24%,transparent);--act-bot:color-mix(in srgb,color-mix(in srgb,var(--ice) 22%,var(--bg)) 70%,transparent);--act-top-h:color-mix(in srgb,var(--ice) 38%,transparent);--act-bot-h:color-mix(in srgb,color-mix(in srgb,var(--ice) 22%,var(--bg)) 75%,transparent);
+  /* meaning: these never follow the profile */
   --good:#3ddc84;--warn:#ffb020;--bad:#ff5a4f;
   --font:"Segoe UI",system-ui,-apple-system,sans-serif;
   --hud:"Bahnschrift","DIN Alternate","Segoe UI",system-ui,sans-serif;
   --mono:"Cascadia Mono",Consolas,"Courier New",monospace;
+  /* spacing that .dense tightens */
+  --pad:14px;--cell:5px;
   color-scheme:dark;
 }
+html.dense{--pad:10px;--cell:3px}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 /* A page fills the window and never scrolls as a whole; its own parts scroll. The red bar and a .subtabs
    strip take their height at the top, so give the page's main part flex:1 and min-height:0. */
-body{background:var(--bg);color:var(--text);font:14px/1.45 var(--font);display:flex;flex-direction:column;overflow:hidden}
+body{color:var(--text);font:14px/1.45 var(--font);display:flex;flex-direction:column;overflow:hidden;background:
+  radial-gradient(ellipse 70% 50% at 92% 0%,color-mix(in srgb,var(--accent) 11%,transparent),transparent 70%),
+  radial-gradient(ellipse 60% 55% at 0% 100%,color-mix(in srgb,var(--glow2,var(--ice)) 7%,transparent),transparent 70%),var(--bg)}
+/* a faint starfield behind the page (not inside the in-game boxes, and not when the profile turns it off) */
+html:not(.overlay):not(.no-stars) body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.42;background-size:380px 260px;background-image:
+  radial-gradient(1px 1px at 22px 34px,#fff,transparent 70%),radial-gradient(1px 1px at 146px 88px,#cfe6ff,transparent 70%),
+  radial-gradient(1.5px 1.5px at 262px 168px,#fff,transparent 70%),radial-gradient(1px 1px at 92px 214px,#b9c7ff,transparent 70%),
+  radial-gradient(1px 1px at 338px 46px,#fff,transparent 70%),radial-gradient(1.2px 1.2px at 200px 236px,#e8d9ff,transparent 70%)}
+html.overlay body{background:var(--bg)}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
 [hidden]{display:none!important}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--edge);border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background-color:var(--accent-line)}
+::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
 
 /* a page in two columns, each scrolling by itself: a side column of a fixed width and the main part in the rest
      <div class="layout"><aside>…</aside><main>…</main></div>      a page sets only the width: .layout{--side:270px} */
@@ -33,10 +57,10 @@ button{cursor:pointer}
 
 /* text: a page's title, a heading, a paragraph, a link, small print (hints, credits), the four text colours, and
    .n = a number in a list that is not a table (right-aligned, digits in line, never broken; in a table it is .r) */
-h1{font-family:var(--hud);font-weight:600;letter-spacing:.06em;font-size:24px;line-height:1.2;margin:0}
-h2{font-family:var(--hud);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:14px;margin:0 0 10px}
+h1{font-family:var(--hud);font-weight:600;letter-spacing:.08em;font-size:24px;line-height:1.2;margin:0;text-transform:uppercase;color:var(--text)}
+h2{font-family:var(--hud);font-weight:600;letter-spacing:.11em;text-transform:uppercase;font-size:14px;margin:0 0 10px;color:var(--accent-hi)}
 p{margin:0 0 10px}
-a{color:var(--accent)}
+a{color:var(--link)}
 .small{font-size:12.5px}
 .muted{color:var(--muted)}
 .good{color:var(--good)}
@@ -44,33 +68,64 @@ a{color:var(--accent)}
 .bad{color:var(--bad)}
 .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 
-/* buttons: plain, .primary = the one main action, .danger = deletes something, .small = inside a line of text or a table */
-.btn{height:34px;padding:0 14px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap}
-.btn:hover:not(:disabled){border-color:var(--accent-line)}
+/* buttons: plain, .primary = the one main action, .danger = deletes something, .small = inside a line of text or a table.
+   Corners are cut like the game's own panels; the keyboard ring is drawn inside the cut. */
+.btn{height:34px;padding:0 14px;border:1px solid var(--line2);background:var(--panel2);display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;
+  font-family:var(--hud);font-weight:500;letter-spacing:.06em;text-transform:uppercase;font-size:13px;
+  clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px)}
+.btn:hover:not(:disabled){border-color:var(--accent-line);background:var(--panel3)}
+.btn:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--cyan)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
-.btn.primary:hover:not(:disabled){filter:brightness(1.12)}
+.btn.primary:focus-visible{box-shadow:inset 0 0 0 2px var(--accent-ink),inset 0 0 0 4px var(--cyan)}
+.btn.primary:hover:not(:disabled){filter:brightness(1.12);background:var(--accent)}
 .btn.danger{border-color:rgba(255,90,79,.5);color:#ffb3ad}
-.btn.small{height:28px;padding:0 10px;font-size:13px}
+.btn.small{height:28px;padding:0 10px;font-size:12px}
+/* a map-style action: ice blue, for "go there" and "copy this" */
+.btn.ice{background:var(--ice-soft);border-color:var(--ice-line);color:var(--act-ink)}
+.btn.ice:hover:not(:disabled){background:color-mix(in srgb,var(--ice) 26%,transparent);border-color:var(--ice)}
 /* a button that looks like the text it stands in (a name to copy, a line that opens); the page gives it its colours */
 .textbtn{border:0;background:none;padding:0;text-align:left}
 /* a link to another studio's page (Studio.open), in the middle of a line: <button class="textbtn go">Route</button> */
-.go{color:var(--accent)}
+.go{color:var(--cyan)}
 .go:hover{text-decoration:underline}
 
-/* a box; .card.bad = something is wrong (a red edge; the text keeps its colour) */
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
-.card.bad{border-color:rgba(255,90,79,.45);background:rgba(255,90,79,.06);color:inherit}
+/* a box; .card.bad = something is wrong (a red edge; the text keeps its colour). The corner brackets are drawn as
+   backgrounds, so nothing inside is ever cut off (lists that drop down, keyboard rings). */
+.card,.tablebox,.sheet,.stat{--br:var(--accent);
+  background:
+    linear-gradient(var(--br),var(--br)) top left/14px 2px no-repeat,linear-gradient(var(--br),var(--br)) top left/2px 14px no-repeat,
+    linear-gradient(var(--line2),var(--line2)) bottom right/14px 1px no-repeat,linear-gradient(var(--line2),var(--line2)) bottom right/1px 14px no-repeat,
+    var(--tint,linear-gradient(transparent,transparent)),linear-gradient(180deg,color-mix(in srgb,var(--panel2) 92%,transparent),color-mix(in srgb,var(--panel) 94%,transparent))}
+.card{border:1px solid var(--line);border-top-color:var(--accent-line);border-radius:2px;padding:var(--pad);margin-bottom:12px}
+.card.bad{--br:var(--bad);border-color:rgba(255,90,79,.45);color:inherit}
+.card.bad{--tint:linear-gradient(rgba(255,90,79,.08),rgba(255,90,79,.08))}
 
-/* a word or two in a pill: plain, .good or .warn */
-.badge{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
-.badge.good{color:var(--good);border-color:rgba(61,220,132,.4)}
-.badge.warn{color:var(--warn);border-color:rgba(255,176,32,.45)}
+/* a card's name on a small filled tag that sits on its top edge, like a label on a cockpit panel:
+     <section class="panel-x"><span class="ctag">Route</span><div class="card">…</div></section>
+   .ice = an ice-blue tag (for the card with the main action) */
+.ctag{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 20px 0 10px;background:var(--accent);color:var(--accent-ink);
+  font:600 12px var(--hud);letter-spacing:.13em;text-transform:uppercase;white-space:nowrap;clip-path:polygon(0 0,calc(100% - 10px) 0,100% 100%,0 100%)}
+.ctag.ice{background:var(--ice);color:var(--ice-ink)}
+.ctag+.card,.ctag+.tablebox{margin-top:0;border-top-left-radius:0}
+
+/* a word or two in a small label: plain, .good, .warn, .bad; .accent and .ice are filled */
+.badge{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:1px;font:500 11.5px var(--hud);letter-spacing:.07em;text-transform:uppercase;border:1px solid var(--line2);color:var(--muted);white-space:nowrap;vertical-align:1px}
+.badge.good{color:var(--good);border-color:rgba(61,220,132,.45);background:rgba(61,220,132,.08)}
+.badge.warn{color:var(--warn);border-color:rgba(255,176,32,.5);background:rgba(255,176,32,.08)}
+.badge.bad{color:var(--bad);border-color:rgba(255,90,79,.5);background:rgba(255,90,79,.08)}
+.badge.accent{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.badge.ice{background:var(--ice);border-color:var(--ice);color:var(--ice-ink);font-weight:600}
 
 /* status pill with a light: plain = off, .on = green */
-.chip{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 11px;border-radius:999px;border:1px solid var(--line2);background:var(--panel);color:var(--muted);font-size:12.5px;white-space:nowrap}
-.chip .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
+.chip{display:inline-flex;align-items:center;gap:7px;height:24px;padding:0 10px;border-radius:1px;border:1px solid var(--line2);background:color-mix(in srgb,var(--bg) 50%,transparent);color:var(--muted);font:500 12px var(--hud);letter-spacing:.09em;text-transform:uppercase;white-space:nowrap}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
+.chip.on{color:var(--text)}
 .chip.on .dot{background:var(--good);box-shadow:0 0 8px var(--good)}
+
+/* a key on the keyboard, or a controller button (.pad): <span class="keycap">F4</span> */
+.keycap{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:22px;padding:0 6px;background:var(--panel2);border:1px solid var(--line2);border-bottom-width:3px;border-radius:2px;color:var(--frost);font:600 11.5px var(--mono);white-space:nowrap;vertical-align:1px}
+.keycap.pad{border-radius:11px;min-width:30px}
 
 /* "working on it": a small turning ring in the colour of the text around it, and the line that says what is being waited for
      <p class="busy"><span class="spin"></span>Asking Spansh…</p> */
@@ -83,32 +138,40 @@ a{color:var(--accent)}
      <div class="field"><label>From<input></label><label>To<input></label></div>     each box under its caption, sharing the row
    A .field has no space around it: what holds the fields sets the distance between them. */
 .field{display:flex;gap:8px;align-items:flex-end}
-.field label{flex:1;min-width:0;font-size:12.5px;color:var(--muted)}
-.field input,.field select,.field textarea{display:block;flex:1;width:100%;min-width:0;height:34px;padding:0 10px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);color:var(--text);font-size:14px}
+.field label{flex:1;min-width:0;font:500 12.5px var(--hud);letter-spacing:.03em;color:var(--label)}   /* captions are often whole sentences here, so no capitals */
+.field input,.field select,.field textarea{display:block;flex:1;width:100%;min-width:0;height:34px;padding:0 10px;border-radius:2px;border:1px solid var(--edge);background:var(--bg2);color:var(--text);font:14px var(--font);letter-spacing:0;text-transform:none}
+.field input:hover,.field select:hover,.field textarea:hover{border-color:var(--accent-line)}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan),0 0 12px color-mix(in srgb,var(--cyan) 22%,transparent)}
 .field label input,.field label select,.field label textarea{margin-top:4px}
 .field select{padding:0 6px}
 .field textarea{height:auto;padding:8px 10px;resize:none}
+input[type=checkbox],input[type=radio],input[type=range]{accent-color:var(--accent)}
 
 /* a choice between a few things: buttons side by side in one frame, the one chosen marked .active
      <div class="seg" role="group" aria-label="What to find"><button type="button" class="active">Commodity</button><button type="button">Module</button></div> */
-.seg{display:inline-grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--line2);border-radius:7px;overflow:hidden}
-.seg button{height:34px;padding:0 14px;border:0;background:var(--panel2);color:var(--muted);white-space:nowrap}
+.seg{display:inline-grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);border:1px solid var(--line2);border-radius:2px;overflow:hidden;background:color-mix(in srgb,var(--bg) 45%,transparent)}
+.seg button{min-width:0;min-height:34px;padding:4px 14px;border:0;background:none;color:var(--accent-hi);font:500 13px/1.15 var(--hud);letter-spacing:.07em;text-transform:uppercase;text-wrap:balance}
+.layout>aside .seg button{text-transform:none;letter-spacing:.02em}
 .seg button+button{border-left:1px solid var(--line2)}
-.seg button.active{background:var(--accent-soft);color:var(--text);box-shadow:inset 0 -2px var(--accent)}
+.seg button:hover:not(.active){background:var(--accent-soft)}
+.seg button.active{background:var(--accent);color:var(--accent-ink)}
+.seg button:focus-visible{outline-offset:-3px}
+.seg button.active:focus-visible,.tabs button.active:focus-visible,.subtabs a.active:focus-visible,.glist>.on:focus-visible{outline-color:var(--accent-ink)}
 
 /* a list as a table: <div class="tablebox"><table>...</table></div>. Compact one-line rows; the box scrolls
    when it is given a height, and the header row stays in view. .r on a th or td = a number (right-aligned,
    digits in line). A header the player can click to sort is th.sort; the column sorted by also gets .up or .down. */
-.tablebox{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:auto}
+.tablebox{border:1px solid var(--line);border-top-color:var(--accent-line);border-radius:2px;overflow:auto}
 .tablebox table{width:100%;border-collapse:collapse;font-size:13.5px}
-.tablebox th{position:sticky;top:0;z-index:1;background:var(--panel2);color:var(--muted);font-weight:500;font-size:12px;text-align:left;padding:8px 12px;border-bottom:1px solid var(--line2);white-space:nowrap}
-.tablebox td{padding:5px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tablebox th{position:sticky;top:0;z-index:1;background:color-mix(in srgb,var(--panel) 50%,var(--panel2));color:var(--label);font:600 11.5px var(--hud);letter-spacing:.09em;text-transform:uppercase;text-align:left;padding:8px 12px;border-bottom:1px solid var(--accent-line);white-space:nowrap}
+.tablebox td{padding:var(--cell) 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+:where(.tablebox tbody tr:hover) td{background:color-mix(in srgb,var(--accent) 7%,transparent)}
 .tablebox tr:last-child td{border-bottom:0}
 .tablebox .r{text-align:right;font-variant-numeric:tabular-nums}
 .tablebox th.sort{cursor:pointer;user-select:none}
 .tablebox th.sort:hover,.tablebox th.up,.tablebox th.down{color:var(--text)}
-.tablebox th.up::after{content:" \25B4"}
-.tablebox th.down::after{content:" \25BE"}
+.tablebox th.up::after{content:" \25B4";color:var(--cyan)}
+.tablebox th.down::after{content:" \25BE";color:var(--cyan)}
 
 /* a ship as the game's outfitting screen lists it (My ship, Designer): its name, a row of number tiles, and the
    four lists in two columns, each list a .tablebox.group with a title bar
@@ -120,39 +183,42 @@ a{color:var(--accent)}
    A page sets the width of td.slot and the window width below which the .columns stand one under the other. */
 .head h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
-.stat{flex:1 1 auto;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:7px 12px}
-.stat span{display:block;color:var(--muted);font-size:12px;white-space:nowrap}
-.stat b{font-family:var(--hud);font-size:17px;font-weight:600;white-space:nowrap}
+.stat{--br:var(--ice);flex:1 1 auto;border:1px solid var(--line);border-radius:2px;padding:7px 12px}
+.stat span{display:block;color:var(--label);font:500 11.5px var(--hud);letter-spacing:.09em;text-transform:uppercase;white-space:nowrap}
+:where(.stat) b{font-family:var(--hud);font-size:17px;font-weight:600;white-space:nowrap;color:var(--frost)}
 .columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
 .tablebox.group{margin-bottom:12px}
-.tablebox.group>header{padding:8px 12px;font-family:var(--hud);letter-spacing:.05em;font-size:13px;background:var(--panel2);border-bottom:1px solid var(--line)}
+.tablebox.group>header{padding:6px 12px 6px 10px;font:600 12.5px var(--hud);letter-spacing:.12em;text-transform:uppercase;background:var(--accent);color:var(--accent-ink);border-bottom:1px solid var(--accent-line)}
 .tablebox.group table{table-layout:fixed}
 .tablebox.group td{vertical-align:top}
 td.slot,td.class,td.module{padding-right:0}   /* only the columns after them keep the table's space at the right */
-td.slot{color:var(--muted)}
-td.class{width:38px;font-family:var(--hud);font-weight:600}
+td.slot{color:var(--label);font-family:var(--hud);letter-spacing:.04em}
+td.class{width:38px;font-family:var(--hud);font-weight:600;color:var(--frost)}
 td.module{white-space:normal}
 tr.off td.class,tr.off td.module{opacity:.5}
-.work{display:block;margin-top:2px;font-size:12.5px;color:var(--accent)}
+.work{display:block;margin-top:2px;font-size:12.5px;color:var(--accent-hi)}
 .work .muted{margin-left:6px}
 .pips{display:inline-flex;gap:4px;margin:0 9px 0 2px;vertical-align:1px}
-.pips i{width:6px;height:6px;transform:rotate(45deg);border:1px solid var(--accent)}
-.pips i.on{background:var(--accent)}
+.pips i{width:6px;height:6px;transform:rotate(45deg);border:1px solid var(--accent-hi)}
+.pips i.on{background:var(--cyan);border-color:var(--cyan)}
+html:not(.no-glow) .pips i.on{box-shadow:0 0 5px color-mix(in srgb,var(--cyan) 55%,transparent)}
 
 /* tab strip, and the dot that marks unsaved changes */
-.tabs{display:flex;gap:2px;padding:8px 10px 0;border-bottom:1px solid var(--line);overflow-x:auto;flex:none}
-.tabs button{border:0;background:none;padding:10px 11px;border-bottom:2px solid transparent;color:var(--muted);font-family:var(--hud);letter-spacing:.06em;font-size:13.5px;white-space:nowrap}
-.tabs button.active{color:var(--text);border-bottom-color:var(--accent)}
-.tabs button:hover{color:var(--text)}
-.dirty{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-left:7px;vertical-align:middle}
+.tabs{display:flex;gap:2px;padding:8px 10px 0;border-bottom:1px solid var(--accent-line);overflow-x:auto;flex:none}
+.tabs button{border:0;background:none;padding:9px 12px;color:var(--accent-hi);font:500 13px var(--hud);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.tabs button.active{color:var(--accent-ink);background:var(--accent)}
+.tabs button:hover:not(.active){background:var(--accent-soft);color:var(--text)}
+.tabs button:focus-visible{outline-offset:-3px}
+.dirty{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn);box-shadow:0 0 6px rgba(255,176,32,.6);margin-left:7px;vertical-align:middle}
 
 /* a studio with more than one page: a row of links to them across the top of each, the page being shown marked .active
    (the links name the pages by relative path, like everything a page loads)
      <nav class="subtabs"><a class="active" href="./">Trades</a><a href="find.html">Find by name</a></nav> */
-.subtabs{display:flex;gap:6px;padding:10px 16px;border-bottom:1px solid var(--line);flex:none}
-.subtabs a{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--line2);background:var(--panel);color:var(--muted);font-family:var(--hud);letter-spacing:.04em;font-size:13px;text-decoration:none;white-space:nowrap}
-.subtabs a:hover{color:var(--text)}
-.subtabs a.active{background:var(--accent-soft);border-color:var(--accent);color:var(--text)}
+.subtabs{display:flex;gap:0;padding:0 16px;border-bottom:1px solid var(--accent-line);flex:none;background:linear-gradient(180deg,color-mix(in srgb,var(--bg2) 85%,transparent),color-mix(in srgb,var(--bg2) 60%,transparent))}
+.subtabs a{display:inline-flex;align-items:center;height:38px;padding:0 20px;color:var(--accent-hi);font:500 13.5px var(--hud);letter-spacing:.09em;text-transform:uppercase;text-decoration:none;white-space:nowrap}
+.subtabs a:hover:not(.active){background:var(--accent-soft);color:var(--text)}
+.subtabs a.active{background:var(--accent);color:var(--accent-ink)}
+.subtabs a:focus-visible{outline-offset:-3px}
 /* A page shown in one of the in-game overlay's boxes: no way to other pages, and no room for the credits. */
 .overlay .subtabs,.overlay .credit{display:none}
 /* There the whole page scrolls, whatever size the box turns out to have: nothing may end up cut off and out of reach.
@@ -162,54 +228,85 @@ html.overlay,html.overlay body{height:auto;min-height:100%}
 html.overlay body{overflow:visible}
 .overlay .layout,.overlay .found,.overlay .tablebox{flex:none}
 
+/* rows of choices with a glyph in front, the chosen one filled (a list of pages, sets or saved things):
+     <div class="glist"><button class="on"><svg class="glyph"><use href="../glyphs.svg#g-route"/></svg><span>Routes<small>Plot a route</small></span></button>…</div> */
+.glist{display:flex;flex-direction:column}
+.glist>button,.glist>a{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;min-height:48px;padding:0;background:color-mix(in srgb,var(--panel2) 50%,transparent);border:0;border-bottom:1px solid var(--line);color:var(--accent-hi);text-align:left;text-decoration:none;font:500 14.5px var(--hud);letter-spacing:.04em}
+.glist>*>.glyph{justify-self:center;width:22px;height:22px}
+.glist>*>span{padding:6px 14px;min-width:0;border-left:1px solid var(--line);align-self:stretch;display:flex;flex-direction:column;justify-content:center}
+.glist small{display:block;font:400 11.5px/1.3 var(--font);letter-spacing:0;text-transform:none;color:var(--muted)}
+.glist>*:hover:not(.on){background:var(--accent-soft)}
+.glist>.on{background:var(--accent);color:var(--accent-ink)}
+.glist>.on>span{border-left-color:rgba(10,5,32,.25)}
+.glist>.on small{color:var(--accent-ink)}
+.glist>*:focus-visible{outline-offset:-3px}
+
+/* line glyphs from ../glyphs.svg, drawn in the colour of the text: <svg class="glyph"><use href="../glyphs.svg#g-nav"/></svg> */
+.glyph{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;vertical-align:-4px}
+
+/* a square button with an arrow at the end of a list line (it opens that line): <button class="chev" aria-label="Open Sol">›</button> */
+.chev{width:32px;height:32px;display:inline-grid;place-items:center;flex:none;padding:0;background:var(--panel2);border:1px solid var(--line2);color:var(--accent-hi);font:600 18px/1 var(--hud)}
+.chev:hover{border-color:var(--accent-line);color:var(--cyan)}
+
+/* the one big action of a card, wide, in a trapezoid frame (Copy the next system, Plot route) */
+.cta{position:relative;isolation:isolate;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;height:52px;padding:0 36px;background:none;border:0;color:var(--act-ink);font:500 17px var(--hud);letter-spacing:.1em;text-transform:uppercase}
+.cta::before,.cta::after{content:"";position:absolute;clip-path:polygon(6% 0,94% 0,100% 100%,0 100%)}
+.cta::before{inset:0;z-index:-2;background:var(--ice-line)}
+.cta::after{inset:1px;z-index:-1;background:linear-gradient(180deg,var(--act-top),var(--act-bot))}
+.cta:hover:not(:disabled)::after{background:linear-gradient(180deg,var(--act-top-h),var(--act-bot-h))}
+.cta:disabled{opacity:.45;cursor:not-allowed}
+.cta:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+html:not(.no-glow) .cta{text-shadow:0 0 10px color-mix(in srgb,var(--act-ink) 50%,transparent)}
+
 /* the message Studio.toast() slides up from the bottom; .bad = a problem (a red edge; the text keeps its colour) */
-#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(16px);opacity:0;pointer-events:none;background:#141b25;border:1px solid var(--line2);border-left:3px solid var(--accent);padding:11px 16px;border-radius:9px;box-shadow:0 12px 30px rgba(0,0,0,.5);transition:.2s;max-width:min(580px,92vw);z-index:50}
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(16px);opacity:0;pointer-events:none;background:color-mix(in srgb,var(--panel2) 97%,transparent);border:1px solid var(--ice-line);border-left:3px solid var(--cyan);padding:11px 16px;border-radius:2px;box-shadow:0 12px 30px rgba(0,0,0,.55);transition:.2s;max-width:min(580px,92vw);z-index:50}
 #toast.show{opacity:1;transform:translateX(-50%)}
-#toast.bad{border-left-color:var(--bad);color:inherit}
+#toast.bad{border-color:rgba(255,90,79,.5);border-left-color:var(--bad);color:inherit}
 
 /* the dialog Studio.ask() opens over the page: a .box holding a heading, the .body and the buttons in the .foot */
-.modal{position:fixed;inset:0;background:rgba(2,4,8,.72);display:grid;place-items:center;z-index:60;padding:16px}
-.modal .box{width:min(540px,100%);background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:18px 18px 16px;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.modal{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 74%,transparent);display:grid;place-items:center;z-index:60;padding:16px}
+.modal .box{--br:var(--accent);width:min(540px,100%);border:1px solid var(--line2);border-top-color:var(--accent-line);border-radius:2px;padding:18px 18px 16px;box-shadow:0 24px 60px rgba(0,0,0,.6);
+  background:linear-gradient(var(--br),var(--br)) top left/14px 2px no-repeat,linear-gradient(var(--br),var(--br)) top left/2px 14px no-repeat,linear-gradient(180deg,color-mix(in srgb,var(--panel3) 98%,transparent),color-mix(in srgb,var(--panel) 98%,transparent))}
 .modal .body{color:var(--muted);margin:8px 0 18px}
 .modal .foot{display:flex;justify-content:flex-end;gap:8px}
 .modal .field{margin-top:8px}
 .modal textarea{height:220px;font:12px/1.4 var(--mono)}
 
 /* text being selected is lit in the accent colour, as the names to copy are */
-::selection{background:rgba(255,113,0,.4);color:#fff}
+::selection{background:var(--accent-line);color:#fff}
 /* A name that opens (Studio.link() makes it): a station, a star system, a commander. It looks and behaves like a link
-   on a web site: in the accent colour, underlined and lit while the mouse is on it or the keyboard has it, and a
+   on a web site: in the link colour, underlined and lit while the mouse is on it or the keyboard has it, and a
    shade apart once it has been opened. Its letters can be selected like any text. */
-a.lnk{color:var(--accent);text-decoration:none;cursor:pointer;border-radius:3px;-webkit-user-drag:none;user-select:text}
-a.lnk:hover,a.lnk:focus-visible{color:#ffb070;text-decoration:underline;background:var(--accent-soft);outline:none}
+a.lnk{color:var(--link);text-decoration:none;cursor:pointer;border-radius:2px;-webkit-user-drag:none;user-select:text}
+a.lnk:hover,a.lnk:focus-visible{color:var(--cyan);text-decoration:underline;background:var(--accent-soft);outline:none}
 a.lnk:focus-visible{box-shadow:0 0 0 1px var(--accent-line)}
 a.lnk:active{color:#fff}
-a.lnk.seen{color:#d9a066}
-a.lnk.seen:hover,a.lnk.seen:focus-visible{color:#ffb070}
+a.lnk.seen{color:var(--link-seen,var(--label))}
+a.lnk.seen:hover,a.lnk.seen:focus-visible{color:var(--cyan)}
 /* the menu of such a name, under the right mouse button */
-.ctx{position:fixed;z-index:90;min-width:210px;max-width:420px;display:grid;padding:5px;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;box-shadow:0 14px 36px rgba(0,0,0,.6)}
-.ctx button{border:0;background:none;text-align:left;padding:7px 12px;border-radius:5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ctx button:hover,.ctx button:focus-visible{background:var(--accent-soft);color:#fff;outline:none}
+.ctx{position:fixed;z-index:90;min-width:210px;max-width:420px;display:grid;padding:4px;background:var(--panel2);border:1px solid var(--line2);border-top-color:var(--accent-line);border-radius:2px;box-shadow:0 14px 36px rgba(0,0,0,.6)}
+.ctx button{border:0;background:none;text-align:left;padding:7px 12px;border-radius:1px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctx button:hover,.ctx button:focus-visible{background:var(--accent);color:var(--accent-ink);outline:none}
 /* the inspector: the sheet of a name that was opened, over the whole page, with the way back on top */
 .inspector{position:fixed;inset:0;z-index:80;display:flex;flex-direction:column;background:var(--bg)}
-.inspector .bar{flex:none;display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--bg2)}
-.inspector .bar .what{flex:1;color:var(--muted);font-family:var(--hud);letter-spacing:.08em;text-transform:uppercase;font-size:12.5px}
+.inspector .bar{flex:none;display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--accent-line);background:var(--bg2)}
+.inspector .bar .what{flex:1;color:var(--label);font-family:var(--hud);letter-spacing:.1em;text-transform:uppercase;font-size:12.5px}
 .inspector .scroll{flex:1;min-height:0;overflow-y:auto;padding:16px}
 .overlay .inspector{position:absolute;min-height:100%}
 /* a sheet: a name with what it is, two columns of what is known of it, tags for what it offers, lists of what belongs to it */
-.sheet{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px 16px}
-.sheet h2{margin:0 0 12px;font-size:20px;font-weight:600;display:flex;flex-wrap:wrap;align-items:center;gap:0 8px}
+.sheet{border:1px solid var(--line);border-top-color:var(--accent-line);border-radius:2px;padding:14px 18px 16px}
+.sheet h2{margin:0 0 12px;font-size:20px;font-weight:600;color:var(--text);display:flex;flex-wrap:wrap;align-items:center;gap:0 8px}
 .sheet h2 .call{color:var(--muted);font-weight:400}
 .sheet h2 .call.warn{color:var(--warn);font-size:13px}
 .sheet .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:4px 40px}
 .sheet dl{margin:0;display:grid;grid-template-columns:170px 1fr;gap:5px 14px;align-content:start}
-.sheet dt,.sheet h3{color:var(--muted);font-size:12px;letter-spacing:.07em;text-transform:uppercase;font-weight:500}
+.sheet dt,.sheet h3{color:var(--label);font:500 12px var(--hud);letter-spacing:.09em;text-transform:uppercase}
 .sheet dt{padding-top:2px}
 .sheet dd{margin:0;min-width:0}
 .sheet h3{margin:16px 0 7px}
 .sheet .tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
-.sheet .tag{padding:3px 10px;border-radius:5px;background:var(--panel2);color:var(--faint);font-size:13px;white-space:nowrap}
-.sheet .tag.has{background:rgba(255,255,255,.1);color:var(--text);font-weight:500}
+.sheet .tag{padding:3px 10px;border-radius:1px;background:var(--panel2);color:var(--faint);font-size:13px;white-space:nowrap}
+.sheet .tag.has{background:var(--accent-soft);color:var(--text);font-weight:500;box-shadow:inset 0 0 0 1px var(--accent-line)}
 .sheet .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 .sheet .unknown{color:var(--faint)}
 .sheet .hint{margin:12px 0 0}
@@ -236,3 +333,7 @@ a.lnk.seen:hover,a.lnk.seen:focus-visible{color:#ffb070}
 .banner{background:#2a0f0d;border-bottom:1px solid rgba(255,90,79,.5);color:#ffd3cf;padding:9px 16px;font-size:13px;display:flex;gap:12px;align-items:center}
 .cover{position:fixed;inset:0;background:var(--bg);display:grid;place-items:center;z-index:70;padding:24px}
 .cover .box{max-width:580px}
+
+/* the profile's "no movement" switch, and the player's own Windows setting, stop slides and pulses (not the busy ring) */
+html.no-motion *:not(.spin),html.no-motion *::before,html.no-motion *::after{transition:none!important;animation:none!important}
+@media (prefers-reduced-motion:reduce){*:not(.spin),*::before,*::after{transition:none!important;animation:none!important}}

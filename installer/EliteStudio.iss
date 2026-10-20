@@ -1,6 +1,6 @@
 ; ELITE STUDIO'S INSTALLER: the recipe Inno Setup (https://jrsoftware.org/isinfo.php) makes "Elite Studio Setup <version>.exe" from.
 ; Make-Installer.ps1 runs it; it hands over three things (/D on Inno Setup's command line):
-;   AppVersion     the version, from Directory.Build.props: "1.8.0"
+;   AppVersion     the version, from Directory.Build.props: "1.9.2"
 ;   AppFiles       the folder "dotnet publish" filled with Studio and the .NET it runs on (self-contained: players need no .NET of their own)
 ;   WebView2Setup  Microsoft's small WebView2 Runtime installer, run only on a PC that lacks the engine Studio's window shows its pages with
 ; and TestBuild for a copy of the installer to try it with: "Elite Studio (test)", with an ID of its own and no shortcuts. It

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+<!-- ELITE STUDIO: the line glyphs. Each is 24 x 24 and drawn with the colour of the text around it.
+     Use: <svg class="glyph"><use href="../glyphs.svg#g-route"/></svg> (from the shell: href="glyphs.svg#g-route").
+     studio.css .glyph gives the stroke; a filled part sets fill="currentColor" here. -->
+<symbol id="g-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></symbol>
+<symbol id="g-ui" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></symbol>
+<symbol id="g-market" viewBox="0 0 24 24"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></symbol>
+<symbol id="g-nav" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.2"/><ellipse cx="12" cy="12" rx="10" ry="4.4" transform="rotate(-25 12 12)"/><circle cx="19.2" cy="8.2" r="1.3" fill="currentColor"/></symbol>
+<symbol id="g-ship" viewBox="0 0 24 24"><path d="M12 2.5l3 7.5 6 3.5v2l-6.5-1L12 21.5 9.5 14.5 3 15.5v-2l6-3.5z"/></symbol>
+<symbol id="g-flight" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3.5 13h5l2-2h3l2 2h5"/><path d="M12 15v3"/></symbol>
+<symbol id="g-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1.1.9-1.1 1.6v.6"/><circle cx="12" cy="17" r=".9" fill="currentColor"/></symbol>
+<symbol id="g-profile" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+<symbol id="g-keys" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="1.5"/><path d="M6 10h1M10 10h1M14 10h1M17.5 10h.5M7 14h10"/></symbol>
+<symbol id="g-display" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1"/><path d="M8 20h8M12 16v4"/></symbol>
+<symbol id="g-tour" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></symbol>
+<symbol id="g-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.6" r=".9" fill="currentColor"/></symbol>
+<symbol id="g-chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+<symbol id="g-chev-l" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+<symbol id="g-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+<symbol id="g-check" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5"/></symbol>
+<symbol id="g-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="g-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+<symbol id="g-cmdr" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></symbol>
+<symbol id="g-star" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></symbol>
+<symbol id="g-station" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3"/><path d="M12 3.5v5.5M12 15v5.5"/></symbol>
+<symbol id="g-route" viewBox="0 0 24 24"><path d="M5 19c3-6 11-2 14-12"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="6" r="2"/></symbol>
+<symbol id="g-neutron" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.6"/><path d="M12 2v6.4M12 15.6V22"/><path d="M7 12H4M20 12h-3" opacity=".55"/></symbol>
+<symbol id="g-scan" viewBox="0 0 24 24"><path d="M4 18a10 10 0 0 1 16 0M7 18a6.5 6.5 0 0 1 10 0"/><circle cx="12" cy="18" r="1.4"/><path d="M12 18l5-9"/></symbol>
+<symbol id="g-heat" viewBox="0 0 24 24"><rect x="3" y="3" width="5" height="5"/><rect x="9.5" y="3" width="5" height="5"/><rect x="16" y="3" width="5" height="5"/><rect x="3" y="9.5" width="5" height="5"/><rect x="9.5" y="9.5" width="5" height="5" fill="currentColor"/><rect x="16" y="9.5" width="5" height="5"/><rect x="3" y="16" width="5" height="5" fill="currentColor"/><rect x="9.5" y="16" width="5" height="5"/><rect x="16" y="16" width="5" height="5"/></symbol>
+<symbol id="g-overlay" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="1"/><rect x="12" y="8" width="7" height="6"/></symbol>
+<symbol id="g-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5.5 5.5"/></symbol>
+<symbol id="g-wrench" viewBox="0 0 24 24"><path d="M14.5 4a5 5 0 0 0 5.5 6.5L11 19.5a2.1 2.1 0 0 1-3-3L17 7.5"/><path d="M14.5 4L13 8l3 3 4-1.5"/></symbol>
+<symbol id="g-guardian" viewBox="0 0 24 24"><path d="M12 3l7 4v6c0 4-3 7-7 8-4-1-7-4-7-8V7z"/><path d="M12 8v8M8.5 11h7"/></symbol>
+<symbol id="g-save" viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></symbol>
+<symbol id="g-load" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/><path d="M12 17v-5M9.5 14.5L12 12l2.5 2.5"/></symbol>
+<symbol id="g-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+<symbol id="g-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12"/><path d="M16 8V4H4v12h4"/></symbol>
+<symbol id="g-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+<symbol id="g-pad" viewBox="0 0 24 24"><path d="M6.5 8h11a4.5 4.5 0 0 1 4 6.6l-1.2 2.2a2 2 0 0 1-3.2.5L15 15H9l-2.1 2.3a2 2 0 0 1-3.2-.5l-1.2-2.2A4.5 4.5 0 0 1 6.5 8z"/><path d="M8 10.5v3M6.5 12h3"/><circle cx="16" cy="11" r=".8" fill="currentColor"/><circle cx="17.5" cy="13" r=".8" fill="currentColor"/></symbol>
+<symbol id="g-trade" viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></symbol>
+<symbol id="g-sniff" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 1 6 6c0 4 2 5 2 7H4c0-2 2-3 2-7a6 6 0 0 1 6-6z"/><path d="M10 19a2 2 0 0 0 4 0"/></symbol>
+<symbol id="g-design" viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 7l3 3"/></symbol>
+<symbol id="g-fuel" viewBox="0 0 24 24"><path d="M12 3c3 4 6 7 6 11a6 6 0 0 1-12 0c0-4 3-7 6-11z"/></symbol>
+</svg>

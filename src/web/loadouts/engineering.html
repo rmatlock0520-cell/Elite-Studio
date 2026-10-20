@@ -19,34 +19,82 @@
   name in Studio Market, an engineer's system to Studio Nav's Routes.
 -->
 <style>
-/* Only what is this page's own; the shared look (buttons, links to other studios, boxes, badges, fields, the list table...) is in ../studio.css. */
-.side{border-right:1px solid var(--line);background:var(--bg2);padding:16px;overflow:auto}
-.side form{display:grid;gap:12px;margin-bottom:22px}
-.side p{margin:10px 0 0}
+/* Only what is this page's own; the shared look (buttons, links to other studios, boxes, card tags, badges, fields, the list table...) is in ../studio.css. */
+/* the side column a little wider than the shared 340px, so the five roll boxes keep their captions on one line inside its cards */
+.layout{--side:360px}
+.side{border-right:1px solid var(--accent-line);background:color-mix(in srgb,var(--bg2) 72%,transparent);padding:14px 16px;overflow:auto}
+.side .card{margin-bottom:12px;padding:calc(var(--pad) - 2px)}
+.side form{display:grid;gap:10px}
+.side p{margin:8px 0 0}
+#rolls{gap:6px}
 #rolls label{text-align:center}
-#rolls input{padding:0 4px;text-align:center}
-.credit{padding-top:12px;border-top:1px solid var(--line)}
+#rolls input{padding:0 4px;text-align:center;font:600 15px var(--hud);color:var(--frost)}
+.credit{padding-top:10px;border-top:1px solid var(--line)}
 
-main{min-width:0;overflow:auto;padding:16px 20px 24px}
-main>h2{margin-top:18px}
-main>h2:first-child{margin-top:0}
-#empty{max-width:560px}
-.tablebox{margin-bottom:12px}
+/* a card's tag that is a heading (or holds one): no space of its own under it, and its glyph a little smaller than in a line of text */
+h2.ctag,.ctag>h2{margin:0}
+.ctag>h2{font:inherit;letter-spacing:inherit;color:inherit}
+.ctag .glyph{width:14px;height:14px;stroke-width:2;vertical-align:0}
+
+/* "Pin it" is the page's one big action: the wide ice-blue trapezoid (.cta) wins over the .btn.primary look it also has;
+   a little lower than the shared 52px so the side column keeps some room to spare in a 713px high window */
+#pin.cta{height:46px;padding:0 36px;background:none;border:0;clip-path:none;color:var(--act-ink);font:500 17px var(--hud);letter-spacing:.1em;filter:none}
+#pin.cta:hover:not(:disabled){background:none;filter:none}
+#pin.cta:focus-visible{box-shadow:none}
+
+main{min-width:0;overflow:auto;padding:14px 20px 24px}
+/* "Nothing pinned yet" is shown and hidden as one card, so its tag is inside it, lifted onto its top edge */
+#empty{max-width:560px;margin-top:22px;border-top-left-radius:0}
+#empty>.ctag{display:flex;width:fit-content;margin:calc(-1 * var(--pad) - 23px) 0 calc(var(--pad) + 1px) calc(-1 * var(--pad) - 1px)}
+/* the three parts of the plan, each a tag on its card or list */
+#plan>div{margin-bottom:18px}
+#plan .tablebox{border-top-left-radius:0}
+#pins>.pin:last-child{margin-bottom:0}
+/* On a wide window the pinned blueprints and the list of every material stand side by side, under what is still to find */
+@media (min-width:1700px){
+  #plan{display:grid;grid-template-columns:minmax(0,1fr) minmax(min-content,38%);grid-template-areas:"miss miss" "pinned every";column-gap:16px;align-items:start}
+  #plan>.miss{grid-area:miss}
+  #plan>.pinned{grid-area:pinned}
+  #plan>.every{grid-area:every}
+}
 td.name{width:99%}
-tr.group td{background:var(--panel2);color:var(--muted);font-family:var(--hud);letter-spacing:.05em;font-size:12.5px}
-tr.group b{color:var(--text);font-weight:600}
+/* a kind of material: a violet bar across the list, the kind in capitals, then the trader that deals in it */
+tr.group td{background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 20%,transparent),color-mix(in srgb,var(--panel2) 50%,transparent) 55%);box-shadow:inset 2px 0 var(--accent);color:var(--muted);font-family:var(--hud);letter-spacing:.05em;font-size:12.5px}
+tr.group b{color:var(--accent-hi);font-weight:600;letter-spacing:.12em;text-transform:uppercase}
 .g{color:var(--faint);margin-left:6px;font-size:12px}
 
-/* a pin: its title and Remove button, then the materials beside the engineers */
-.pin{padding:0;overflow:hidden}
-.pin header{display:flex;align-items:center;gap:12px;padding:9px 12px 9px 14px;background:var(--panel2);border-bottom:1px solid var(--line)}
-.pin header b{flex:1;min-width:0;font-family:var(--hud);font-weight:600;letter-spacing:.04em;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pin .body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 24px;padding:10px 14px 12px}
-@media (max-width:1099px){.pin .body{grid-template-columns:minmax(0,1fr)}}
-.mats{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:2px 18px;align-content:start;font-size:13.5px}
-.head{color:var(--muted);font-size:12px}
-.who{display:grid;gap:7px;align-content:start;font-size:13.5px}
-.who .badge{margin-left:6px}
+/* a pin: a glyph, its title and Remove button on one line, then the materials beside the engineers (one under the other in a narrow card).
+   "Narrow" is under 720px, where the old page put them one under the other too, so the pins keep the same shape when the plan splits in two columns at 1700px */
+.pin{padding:0;overflow:hidden;container-type:inline-size}
+.pin header{display:grid;grid-template-columns:46px minmax(0,1fr) auto;align-items:center;column-gap:12px;min-height:46px;padding-right:12px;border-bottom:1px solid var(--accent-line);
+  background:linear-gradient(var(--line),var(--line)) 46px 0/1px 100% no-repeat,linear-gradient(90deg,var(--accent-soft),transparent 70%)}
+.pin header>.glyph{justify-self:center;width:20px;height:20px;color:var(--accent-hi)}
+.pin header b{min-width:0;padding:8px 0;font-family:var(--hud);font-weight:600;letter-spacing:.04em;font-size:15px;overflow-wrap:anywhere}
+.pin header .btn .glyph{width:15px;height:15px}
+.pin .body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px 28px;padding:10px 14px 12px}
+@container (max-width:719px){.pin .body{grid-template-columns:minmax(0,1fr)}}
+.head{color:var(--label);font:600 11.5px var(--hud);letter-spacing:.09em;text-transform:uppercase}
+/* a pin's materials as label and value rows: the name, what it takes, what the commander holds */
+.mats{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-content:start;font-size:13.5px}
+.mats>span{padding:4px 0;border-bottom:1px solid var(--line)}
+.mats>.n{padding-left:18px;font-family:var(--hud);font-size:14px}
+.mats>.head{padding:2px 0 5px;border-bottom-color:var(--accent-line);font-size:11.5px}
+.mats>.head.n{padding-left:18px}
+.mats>span:nth-last-child(-n+3):not(.head){border-bottom:0}
+/* the engineers who offer the pin's grade: a line each, with a glyph in the colour of how they stand with the commander */
+.who{display:grid;align-content:start;font-size:13.5px}
+.who>.head{padding:2px 0 5px;border-bottom:1px solid var(--accent-line)}
+.who>div{position:relative;padding:6px 0 7px 40px;border-bottom:1px solid var(--line)}
+.who>div:last-child{border-bottom:0}
+.who>div::before{content:"";position:absolute;left:30px;top:7px;bottom:7px;width:1px;background:var(--line)}
+.who>div>.glyph{position:absolute;left:4px;top:8px;width:20px;height:20px;color:var(--faint)}
+.who>div:has(>.badge.good)>.glyph{color:var(--good)}
+.who>div:has(>.badge.warn)>.glyph{color:var(--warn)}
+.who b{font-family:var(--hud);font-weight:600;font-size:14.5px;letter-spacing:.04em}
+.who .badge{margin-left:8px}
+/* Route, at the end of an engineer's line: a small ice-blue button */
+.who .go{display:inline-flex;align-items:center;height:20px;padding:0 8px;margin-left:2px;border:1px solid var(--ice-line);background:var(--ice-soft);font:500 11.5px var(--hud);letter-spacing:.08em;text-transform:uppercase;vertical-align:1px}
+.who .go:hover{text-decoration:none;background:color-mix(in srgb,var(--ice) 26%,transparent);border-color:var(--ice)}
 </style>
 </head>
 <body>
@@ -55,22 +103,26 @@ tr.group b{color:var(--text);font-weight:600}
 
 <div class="layout">
   <aside class="side">
-    <h2>Pin a blueprint</h2>
-    <form id="form">
-      <div class="field"><label>Module<select id="module"></select></label></div>
-      <div class="field"><label>Blueprint<select id="blueprint"></select></label></div>
-      <div class="field">
-        <label title="Every grade on the way up is counted: grade 1, then 2, and so on to this one">Up to grade<select id="grade"></select></label>
-        <label title="Put on once, on top of the blueprint. Leave at None if you do not want one.">Experimental effect<select id="effect"></select></label>
-      </div>
-      <button class="btn primary" id="pin" disabled>Pin it</button>
-    </form>
+    <h2 class="ctag ice"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-plus"/></svg>Pin a blueprint</h2>
+    <div class="card">
+      <form id="form">
+        <div class="field"><label>Module<select id="module"></select></label></div>
+        <div class="field"><label>Blueprint<select id="blueprint"></select></label></div>
+        <div class="field">
+          <label title="Every grade on the way up is counted: grade 1, then 2, and so on to this one">Up to grade<select id="grade"></select></label>
+          <label title="Put on once, on top of the blueprint. Leave at None if you do not want one.">Experimental effect<select id="effect"></select></label>
+        </div>
+        <button class="btn primary cta" id="pin" disabled>Pin it</button>
+      </form>
+    </div>
 
-    <h2>Rolls per grade</h2>
-    <div class="field" id="rolls"></div>
-    <p class="muted small">How many times you expect to roll each grade before it is full. This is an estimate: the game decides by the
-      engineer's rank with you and by luck. 1, 2, 3, 4 and 5 is what the community's planners count on at an engineer who already works
-      to grade 5 for you; plan more for one you have just unlocked.</p>
+    <h2 class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-profile"/></svg>Rolls per grade</h2>
+    <div class="card">
+      <div class="field" id="rolls"></div>
+      <p class="muted small">How many times you expect to roll each grade before it is full. This is an estimate: the game decides by the
+        engineer's rank with you and by luck. 1, 2, 3, 4 and 5 is what the community's planners count on at an engineer who already works
+        to grade 5 for you; plan more for one you have just unlocked.</p>
+    </div>
     <p class="muted small credit">Blueprints, their costs and who offers them come from
       <a href="https://github.com/EDCD/coriolis-data" target="_blank" rel="noopener">coriolis-data</a>, kept up by the EDCD community.
       Where the engineers work was checked against <a href="https://spansh.co.uk/" target="_blank" rel="noopener">Spansh</a>. Thank you to both.</p>
@@ -78,28 +130,34 @@ tr.group b{color:var(--text);font-weight:600}
 
   <main>
     <div class="card" id="empty" hidden>
-      <h2>Nothing pinned yet</h2>
+      <h2 class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-info"/></svg>Nothing pinned yet</h2>
       <p class="muted" style="margin:0">Choose a module, a blueprint and the grade you want on the left, and pin it. Studio adds up the materials
         for everything you pin, compares them with what you hold, and shows which engineers can do the work and where they are.</p>
     </div>
     <p class="card bad" id="unknown" hidden>Studio has not seen your materials yet, so everything counts as missing. Start Elite Dangerous once: the game lists them every time it starts.</p>
     <div id="plan" hidden>
-      <h2 id="missing-title"></h2>
-      <p class="card good" id="nothing-missing" hidden>You hold everything these blueprints take.</p>
-      <div class="tablebox" id="missing-box"><table>
-        <thead><tr><th>Material</th><th class="r">Missing</th><th class="r">Need</th><th class="r">Have</th>
-          <th title="A trade that fills the gap from one other material of the same row at the trader, using only what your pins do not need themselves. Six of a grade buy one of the next grade up; one buys three of the next grade down.">A swap that would fill it</th></tr></thead>
-        <tbody id="missing"></tbody>
-      </table></div>
+      <div class="miss">
+        <div class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-search"/></svg><h2 id="missing-title"></h2></div>
+        <p class="card good" id="nothing-missing" hidden>You hold everything these blueprints take.</p>
+        <div class="tablebox" id="missing-box"><table>
+          <thead><tr><th>Material</th><th class="r">Missing</th><th class="r">Need</th><th class="r">Have</th>
+            <th title="A trade that fills the gap from one other material of the same row at the trader, using only what your pins do not need themselves. Six of a grade buy one of the next grade up; one buys three of the next grade down.">A swap that would fill it</th></tr></thead>
+          <tbody id="missing"></tbody>
+        </table></div>
+      </div>
 
-      <h2>Pinned blueprints</h2>
-      <div id="pins"></div>
+      <div class="pinned">
+        <h2 class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-wrench"/></svg>Pinned blueprints</h2>
+        <div id="pins"></div>
+      </div>
 
-      <h2>Every material these pins take</h2>
-      <div class="tablebox"><table>
-        <thead><tr><th>Material</th><th class="r">Need</th><th class="r">Have</th><th class="r">Missing</th></tr></thead>
-        <tbody id="totals"></tbody>
-      </table></div>
+      <div class="every">
+        <h2 class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-market"/></svg>Every material these pins take</h2>
+        <div class="tablebox"><table>
+          <thead><tr><th>Material</th><th class="r">Need</th><th class="r">Have</th><th class="r">Missing</th></tr></thead>
+          <tbody id="totals"></tbody>
+        </table></div>
+      </div>
     </div>
   </main>
 </div>
@@ -118,6 +176,13 @@ let plan = null;    // the app's whole picture: { rolls, pins, totals, materials
 const number = n => h('td', { class: 'r' }, whole(n));
 const named = m => h('td', { class: 'name' }, m.name, h('span', { class: 'g', title: 'How rare it is, from 1 (very common) to 5 (very rare)' }, 'grade ' + m.grade));
 const a = trader => (/^[AEIOU]/.test(trader) ? 'an ' : 'a ') + trader;
+// A line glyph from ../glyphs.svg, for looks only (an SVG element needs its own namespace, so h() cannot make it).
+const glyph = id => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  svg.setAttribute('class', 'glyph'); svg.setAttribute('aria-hidden', 'true'); use.setAttribute('href', '../glyphs.svg#' + id);
+  svg.append(use);
+  return svg;
+};
 
 // ============================================================ the form
 const picked = () => kinds.find(kind => kind.code === $('#module').value);
@@ -193,7 +258,7 @@ function card(p) {
   const title = [p.module, p.blueprint + ' to grade ' + p.grade, p.experimental && 'with ' + p.experimental].filter(Boolean).join(dot);
   const remove = () => call('POST', '/api/loadouts/engineering/unpin', { id: p.id }).catch(problem => toast(problem.message, true));
   return h('section', { class: 'card pin' },
-    h('header', null, h('b', { title }, title), h('button', { class: 'btn small danger', onclick: remove }, 'Remove')),
+    h('header', null, glyph('g-wrench'), h('b', { title }, title), h('button', { class: 'btn small danger', onclick: remove }, glyph('g-trash'), 'Remove')),
     h('div', { class: 'body' },
       h('div', { class: 'mats' },
         h('span', { class: 'head' }, 'Material'), h('span', { class: 'head n' }, 'Takes'), h('span', { class: 'head n' }, 'You hold'),
@@ -211,7 +276,7 @@ function engineer(e, grade) {
     : e.progress === 'Invited' ? ['warn', 'Invited, not unlocked yet']
     : e.progress === 'Known' ? ['', 'Known, not invited yet']
     : ['', 'Not heard of yet'];
-  return h('div', null, h('b', null, e.name), h('span', { class: 'badge ' + mark }, text),
+  return h('div', null, glyph('g-cmdr'), h('b', null, e.name), h('span', { class: 'badge ' + mark }, text),
     h('div', { class: 'muted' }, [e.system, e.base, ly(e.ly)].filter(Boolean).join(dot), dot,
       go('Route', 'Opens Studio Nav with ' + e.system + ' under To, ready to plot', 'nav', '?to=' + encodeURIComponent(e.system))));
 }

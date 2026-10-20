@@ -18,6 +18,8 @@
 // for), the clipboard (Studio.copy, Studio.copyName), the whole-page message (Studio.cover), a From box that
 // follows the game (Studio.fromBox), keeping one of the app's pictures on the page (Studio.follow) and going
 // to another studio's page with something for it to do (Studio.open, or Studio.go for a link that does).
+// Every page also wears the player's look (the colour set, spacing and effects the shell keeps as "studio.appearance.look");
+// the shell uses Studio.palettes and Studio.applyLook for its profile panel.
 // The red "can't reach Elite Studio" bar and the "Start Elite Studio" cover appear by themselves; a page
 // has no markup or code for them.
 // A page's script starts by taking what it uses and stopping if there is no app:
@@ -51,6 +53,61 @@ if (boxed) {
   fit();
   window.addEventListener('resize', fit);
 }
+
+// ---- the player's look (appearance profile)
+// The shell keeps the look the player chose in localStorage as "studio.appearance.look": a colour set, the spacing
+// and three effects. Every page puts it on its <html> as it opens, and again the moment the shell changes it (the
+// storage event reaches every other page of the app: the studios, the in-game boxes, a page in a browser tab).
+// Only "studio.appearance.*" keys are read or written for this; every other key belongs to someone else.
+// Studio UI does not load this file: it keeps its own colours, which follow the player's HUD.
+// The colour sets: null = the one in studio.css (Velvet Ice). "set" gives the accent, its lighter text shade, the
+// colour of text on it, the second colour (ice: the big actions), text on that, the live colour and the label colour.
+// "ground", when given, also replaces the dark tones: page, panels, lines, field edges and the four text shades.
+// Optional extras: "act" = the big actions' words and their top/bottom shades (rest, then hover), "link" = names that
+// open and the shade once opened, "glow2" = the second glow behind the page. Left out, they follow the ice and accent colours.
+// Space Dust, Firefly Grove and Earthen Flight are taken from the owner's HUD themes of those names.
+const palettes = {
+  velvet:  { name: 'Velvet Ice', set: null, sw: ['#9466ff', '#45b8ff', '#7cf0ff'] },
+  dust:    { name: 'Space Dust', set: ['#8b3cf0', '#bf94ff', '#fff4e0', '#d07a30', '#1a0b00', '#fbef6a', '#d8955a'],
+             ground: ['#07030f', '#0d0619', '#140a24', '#1d0f33', '#29164a', '#2a1645', '#3d2266', '#6e5a94', '#f6eedc', '#ad9dc6', '#6e5a94', '#fbe38a'] },
+  firefly: { name: 'Firefly Grove', set: ['#3d8bff', '#8ab8ff', '#020c1f', '#ffe14a', '#2a2000', '#e4ff3d', '#b99cf0'],
+             ground: ['#03060c', '#060c18', '#0a1426', '#0f1d36', '#16284a', '#172a4a', '#24406c', '#56709a', '#e8f0ff', '#93a6c6', '#56709a', '#ffeaa0'],
+             act: ['#ffe14a', 'color-mix(in srgb,#ffe14a 16%,#0f1d36)', 'color-mix(in srgb,#ffe14a 6%,#0a1426)', 'color-mix(in srgb,#ffe14a 24%,#0f1d36)', 'color-mix(in srgb,#ffe14a 10%,#0a1426)'],
+             glow2: '#b99cf0' },
+  earthen: { name: 'Earthen Flight', set: ['#c1b59a', '#e2d6b8', '#1d1a12', '#ad7690', '#1b0a12', '#eac099', '#b9aa8b'],
+             ground: ['#0b0a08', '#12100c', '#1a1712', '#241f18', '#302a20', '#2e281f', '#453c2e', '#7d705a', '#f3ead6', '#aba18b', '#776d5a', '#fff6d6'],
+             link: ['#d9a7c0', '#b08ea0'] },
+  frost:   { name: 'Frost', set: ['#45b8ff', '#8bd4ff', '#021226', '#9466ff', '#0a0520', '#7cf0ff', '#7fa6d8'] },
+  orchid:  { name: 'Orchid Nebula', set: ['#c77dff', '#dcb0ff', '#16061f', '#7cf0ff', '#03222a', '#7cf0ff', '#a98ad8'] },
+  classic: { name: 'Classic Orange', set: ['#ff7100', '#ffa45c', '#140900', '#3fa9ff', '#021226', '#7cd8ff', '#c7864d'] },
+};
+for (const p of Object.values(palettes)) if (p.set) p.sw = [p.set[0], p.set[3], p.set[5]];
+const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+function readLook() { try { const v = JSON.parse(localStorage.getItem('studio.appearance.look') || 'null'); return v && typeof v === 'object' ? v : null; } catch (e) { return null; } }
+function applyLook() {
+  const look = readLook(), root = document.documentElement, s = root.style;
+  const pal = look && Object.prototype.hasOwnProperty.call(palettes, look.palette) ? palettes[look.palette] : null;
+  const p = pal && pal.set, g = pal && pal.ground;
+  const names = ['--accent', '--accent-hi', '--accent-ink', '--ice', '--ice-ink', '--cyan', '--label'];
+  const grounds = ['--bg', '--bg2', '--panel', '--panel2', '--panel3', '--line', '--line2', '--edge', '--text', '--muted', '--faint', '--frost'];
+  const acts = ['--act-ink', '--act-top', '--act-bot', '--act-top-h', '--act-bot-h'];
+  for (const n of [...names, ...grounds, ...acts, '--accent-soft', '--accent-line', '--ice-soft', '--ice-line', '--link', '--link-seen', '--glow2']) s.removeProperty(n);
+  if (p) {
+    names.forEach((n, i) => s.setProperty(n, p[i]));
+    s.setProperty('--accent-soft', rgba(p[0], .16)); s.setProperty('--accent-line', rgba(p[0], .5));
+    s.setProperty('--ice-soft', rgba(p[3], .16)); s.setProperty('--ice-line', rgba(p[3], .55));
+  }
+  if (g) grounds.forEach((n, i) => s.setProperty(n, g[i]));
+  if (pal && pal.act) acts.forEach((n, i) => s.setProperty(n, pal.act[i]));
+  if (pal && pal.link) { s.setProperty('--link', pal.link[0]); s.setProperty('--link-seen', pal.link[1]); }
+  if (pal && pal.glow2) s.setProperty('--glow2', pal.glow2);
+  root.classList.toggle('dense', !!look && look.density === 'compact');
+  root.classList.toggle('no-stars', !!look && look.stars === false);
+  root.classList.toggle('no-glow', !!look && look.glow === false);
+  root.classList.toggle('no-motion', !!look && look.motion === false);
+}
+applyLook();
+window.addEventListener('storage', e => { if (e.key === 'studio.appearance.look') applyLook(); });
 
 // ---- building the page
 // The first element that matches a CSS selector, or null: $('#save'), $('.modal input').
@@ -620,5 +677,5 @@ function report(text) {
 window.addEventListener('error', e => report((e.message || 'error') + (e.filename ? ' (line ' + e.lineno + ')' : '')));
 window.addEventListener('unhandledrejection', e => report('Unhandled: ' + ((e.reason && e.reason.message) || e.reason)));
 
-return { served, boxed, api, onEvent, follow, open, go, $, h, stationIcon, link, inspect, stationSheet, options, fromBox, whole, count, credits, tons, ly, ago, dot, wideDot, toast, ask, nameLength, copy, copyName, cover };
+return { served, boxed, api, onEvent, follow, open, go, $, h, stationIcon, link, inspect, stationSheet, options, fromBox, whole, count, credits, tons, ly, ago, dot, wideDot, toast, ask, nameLength, copy, copyName, cover, palettes, applyLook };
 })();

@@ -22,39 +22,74 @@
    on the "My ship" page) is in ../studio.css. */
 .layout{--side:360px}
 
-.side{min-height:0;overflow-y:auto;border-right:1px solid var(--line);background:var(--bg2);padding:16px 12px 12px}
+/* the side column: a darker strip with a violet edge, holding the bench card and the cards of the slot being worked on */
+.side{min-height:0;overflow-y:auto;border-right:1px solid var(--accent-line);background:linear-gradient(180deg,color-mix(in srgb,var(--bg2) 92%,transparent),color-mix(in srgb,var(--bg2) 78%,transparent));padding:16px 12px 12px}
 .side,#slot{display:flex;flex-direction:column;gap:12px}
 .side>*,#slot>*{flex:none}   /* the column scrolls as a whole: nothing in it is squeezed to make it fit */
-.side h2{margin:6px 0 0}
 .side p{margin:0}
-.tools{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.tools label{display:flex;align-items:center;gap:7px}
-.kinds{display:grid;gap:4px}
-.kind{border:1px solid var(--line);border-radius:9px;background:var(--panel);overflow:hidden}
-.kindname{display:flex;justify-content:space-between;width:100%;padding:7px 11px}
-.kindname:hover{color:var(--accent)}
-.part{display:flex;justify-content:space-between;gap:10px;width:100%;padding:5px 11px;border:0;border-top:1px solid var(--line);background:none;text-align:left;font-size:13px}
-.part:hover{background:var(--panel2)}
-.part.active{background:var(--accent-soft);box-shadow:inset 3px 0 var(--accent)}
-.part b{font-family:var(--hud);font-weight:600;white-space:nowrap}
-.part span{color:var(--muted);white-space:nowrap}
+.side .card{margin:0}
 .side .credit{margin-top:auto;padding-top:8px}
 
+/* the bench: what to start from, and the page's one big action under it */
+.bench{display:flex;flex-direction:column;gap:12px}
+/* (the save button also wears .btn.primary; here the shared .cta look wins over it) */
+#save.cta{height:52px;padding:0 36px;border:0;background:none;color:var(--act-ink);font:500 17px var(--hud);letter-spacing:.1em;clip-path:none;filter:none}
+#save.cta:hover:not(:disabled){background:none;filter:none}
+#save.cta:focus-visible{box-shadow:none}
+
+/* a card with its name on a tag on its top edge (the slot, its engineering, what fits it, the empty bench).
+   A long slot name wraps inside its tag rather than pushing the column wider. */
+.pane{display:flex;flex-direction:column}
+.pane>h2.ctag{align-self:flex-start;max-width:100%;height:auto;min-height:22px;margin:0;padding-top:3px;padding-bottom:3px;line-height:16px;white-space:normal}
+.pane>.card{margin:0;display:flex;flex-direction:column;gap:10px}
+#slot .card>p>b{font:600 15px var(--hud);letter-spacing:.04em;color:var(--frost)}
+/* before a slot is clicked: what to do, in a quiet frame */
+#slot>p.muted{padding:10px 12px;border:1px dashed var(--line2);border-radius:2px}
+.tools{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.tools label{display:flex;align-items:center;gap:7px;font:500 12.5px var(--hud);letter-spacing:.08em;text-transform:uppercase;color:var(--label)}
+
+/* what fits the slot: a list across the card, one line per kind of module, the open one filled;
+   under it that kind's sizes and ratings, the one fitted now marked */
+.card.fits{padding:0;gap:0}
+.fits>p{padding:var(--pad)}
+.kinds{display:grid}
+.kind{border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--panel2) 50%,transparent)}
+.kind:last-child{border-bottom:0}
+.kindname{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:40px;padding:6px 12px;font:500 13.5px var(--hud);letter-spacing:.07em;text-transform:uppercase;color:var(--accent-hi)}
+.kindname .muted{font:500 12.5px var(--hud);letter-spacing:.04em;white-space:nowrap}
+.kindname:hover{background:var(--accent-soft);color:var(--text)}
+.kindname[aria-expanded="true"]{background:var(--accent);color:var(--accent-ink)}
+.kindname[aria-expanded="true"] .muted{color:var(--accent-ink)}
+.kindname:focus-visible,.part:focus-visible{outline-offset:-3px}
+.part{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10px;width:100%;padding:6px 12px 6px 20px;border:0;border-top:1px solid var(--line);background:color-mix(in srgb,var(--bg) 35%,transparent);text-align:left;font-size:13px}
+.part:hover{background:var(--accent-soft)}
+.part.active{background:var(--accent-soft);box-shadow:inset 3px 0 var(--accent)}
+.part b{font-family:var(--hud);font-weight:600;color:var(--frost);white-space:nowrap}
+.part span{color:var(--muted);white-space:nowrap}
+
 main{min-width:0;overflow:auto;padding:16px 20px 24px}
-.head{margin-bottom:12px}
+/* the ship's name over a thin violet rule */
+.head{margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--accent-line)}
+.head .muted{margin-top:3px}
 .stats{margin-bottom:10px}
-/* something is wrong with the build: red = it cannot work as it is, amber = it works with a catch */
-.mark{border:1px solid var(--line2);border-left:3px solid var(--bad);border-radius:9px;background:rgba(255,90,79,.06);padding:8px 12px;margin-bottom:8px}
-.mark.amber{border-left-color:var(--warn);background:rgba(255,176,32,.06)}
-.mark b{font-family:var(--hud);letter-spacing:.05em;margin-right:8px}
+/* something is wrong with the build: red = it cannot work as it is, amber = it works with a catch.
+   A strip in that colour with its title on a badge (.badge.bad or .badge.warn) at its start */
+.mark{display:flex;align-items:flex-start;gap:10px;border:1px solid rgba(255,90,79,.4);border-left:3px solid var(--bad);border-radius:2px;background:rgba(255,90,79,.07);padding:8px 12px;margin-bottom:8px}
+.mark.amber{border-color:rgba(255,176,32,.4);border-left-color:var(--warn);background:rgba(255,176,32,.07)}
+.mark b{flex:none;margin-top:1px}
 
 .columns{margin-top:6px}
 @media (max-width:1349px){.columns{grid-template-columns:minmax(0,1fr)}}
-/* a slot is clicked to work on it; the one being worked on is marked */
+/* a slot is clicked to work on it; the one being worked on is filled, like the chosen line of a list.
+   The fill is on the row, not its cells, so a switched-off module's faded cells fade only their words. */
 .group tr{cursor:pointer}
-.group tr:hover td{background:var(--panel2)}
-.group tr.picked td{background:var(--accent-soft)}
-.group tr.picked td:first-child{box-shadow:inset 3px 0 var(--accent)}
+.tablebox.group tr:hover td{background:var(--accent-soft)}
+.tablebox.group tr.picked{background:var(--accent)}
+.tablebox.group tr.picked td{background:none;color:var(--accent-ink)}
+.group tr.picked td.slot,.group tr.picked td.class,.group tr.picked .textbtn,.group tr.picked .muted,.group tr.picked .work{color:var(--accent-ink)}
+.group tr.picked .pips i{border-color:var(--accent-ink)}
+.tablebox.group tr.picked .pips i.on{background:var(--accent-ink);box-shadow:none}
+.tablebox.group tr.picked.off td.class,.tablebox.group tr.picked.off td.module{opacity:.65}   /* still faded, but readable on the fill */
 td.slot{width:104px}
 td.num{width:74px;color:var(--muted)}
 </style>
@@ -65,8 +100,10 @@ td.num{width:74px;color:var(--muted)}
 
 <div class="layout">
   <aside class="side">
-    <div class="field"><label>Put on the bench<select id="start"></select></label></div>
-    <button class="btn primary" id="save" disabled>Save as build…</button>
+    <div class="card bench">
+      <div class="field"><label>Put on the bench<select id="start"></select></label></div>
+      <button class="btn primary cta" id="save" disabled><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-save"/></svg>Save as build…</button>
+    </div>
     <div id="slot"></div>
     <p class="muted small credit">Ship and module numbers are the community's
       <a href="https://github.com/EDCD/coriolis-data" target="_blank" rel="noopener">coriolis-data</a>, and the sums follow
@@ -168,8 +205,9 @@ function render() {
   $('#save').disabled = !view;
   renderSlot();
   if (!view) {
-    fill($('#ship'), h('div', { class: 'card', style: 'max-width:560px' }, h('h2', null, 'Nothing on the bench yet'),
-      h('p', { class: 'muted', style: 'margin:0' }, 'Choose on the left what to start from: an empty hull of any ship, or a saved build. Your own ship appears there once Elite Dangerous has been started.')));
+    fill($('#ship'), h('div', { class: 'pane' }, h('h2', { class: 'ctag' }, 'Nothing on the bench yet'),
+      h('div', { class: 'card', style: 'max-width:560px' },
+        h('p', { class: 'muted', style: 'margin:0' }, 'Choose on the left what to start from: an empty hull of any ship, or a saved build. Your own ship appears there once Elite Dangerous has been started.'))));
     return;
   }
   const s = view.stats;
@@ -178,7 +216,7 @@ function render() {
   const draw = n => megawatts(n).replace(' MW', '') + ' of ' + megawatts(s.powerCapacity);
   const laden = s.unladenMass + s.fuelCapacity + s.cargoCapacity;
   const groups = names => view.groups.filter(g => names.includes(g.name)).map(group);
-  const mark = (tone, title, text) => h('div', { class: 'mark ' + tone, role: 'alert' }, h('b', { class: tone ? 'warn' : 'bad' }, title), text);
+  const mark = (tone, title, text) => h('div', { class: 'mark ' + tone, role: 'alert' }, h('b', { class: 'badge ' + (tone ? 'warn' : 'bad') }, title), text);
 
   fill($('#ship'),
     h('div', { class: 'head' }, h('h1', null, view.shipType),
@@ -263,17 +301,21 @@ function renderSlot() {
   }
   const m = s.module, kinds = fits[picked.toLowerCase()], offer = m && offers[m.item.toLowerCase()];
   fill($('#slot'),
-    // "Medium 1 · size 2", "Power Plant · size 5"; a slot that already says its size, or has none to say, is left as it is
-    h('h2', null, s.slot + (s.size && !s.slot.startsWith('Size') && s.slotId !== 'Armour' ? dot + 'size ' + s.size : '')),
-    h('p', null, m ? [h('b', null, sizeOf(m) + ' ' + m.name), m.mount && dot + m.mount] : h('span', { class: 'muted' }, 'This slot is empty.')),
-    m && h('div', { class: 'tools' },
-      h('label', null, h('input', { type: 'checkbox', checked: m.on, onchange: e => { entry(picked).On = e.target.checked; changed(); } }), 'Switched on'),
-      s.list !== CORE && h('button', { class: 'btn small', onclick: () => fit(null) }, 'Empty this slot')),
+    h('div', { class: 'pane' },
+      // "Medium 1 · size 2", "Power Plant · size 5"; a slot that already says its size, or has none to say, is left as it is
+      h('h2', { class: 'ctag' }, s.slot + (s.size && !s.slot.startsWith('Size') && s.slotId !== 'Armour' ? dot + 'size ' + s.size : '')),
+      h('div', { class: 'card' },
+        h('p', null, m ? [h('b', null, sizeOf(m) + ' ' + m.name), m.mount && dot + m.mount] : h('span', { class: 'muted' }, 'This slot is empty.')),
+        m && h('div', { class: 'tools' },
+          h('label', null, h('input', { type: 'checkbox', checked: m.on, onchange: e => { entry(picked).On = e.target.checked; changed(); } }), 'Switched on'),
+          s.list !== CORE && h('button', { class: 'btn small', onclick: () => fit(null) }, 'Empty this slot')))),
     offer && offer.blueprints.length > 0 && engineering(m, offer),
-    h('h2', null, m ? 'Fit something else' : 'Fit a module'),
-    !kinds ? h('p', { class: 'busy' }, h('span', { class: 'spin' }), 'Looking up what fits…')
-      : typeof kinds === 'string' ? h('p', { class: 'muted' }, kinds)
-      : h('div', { class: 'kinds' }, kinds.map(kind => kindBox(kind, kinds.length === 1, m))));
+    h('div', { class: 'pane' },
+      h('h2', { class: 'ctag' }, m ? 'Fit something else' : 'Fit a module'),
+      h('div', { class: 'card fits' },
+        !kinds ? h('p', { class: 'busy' }, h('span', { class: 'spin' }), 'Looking up what fits…')
+          : typeof kinds === 'string' ? h('p', { class: 'muted' }, kinds)
+          : h('div', { class: 'kinds' }, kinds.map(kind => kindBox(kind, kinds.length === 1, m))))));
 }
 
 // One kind of module that fits ("Cargo Rack"); a click lists its sizes and ratings, biggest and best first.
@@ -324,14 +366,16 @@ function engineering(m, offer) {
   const effects = [['', 'None'], ...offer.experimentals.map(x => [x.code, x.name])];
   if (effect && !offer.experimentals.some(x => x.code.toLowerCase() === effect.toLowerCase())) effects.push([effect, m.engineering.experimental || effect]);
   return [
-    h('h2', null, 'Engineering'),
-    h('div', { class: 'field' },
-      select('Blueprint', blueprints, known ? known.code : code, false, e => plan(e.target.value, work ? work.Level : 5, effect)),
-      select('Grade', (known ? known.grades : work ? [work.Level] : []).map(g => [g, 'Grade ' + g]), work ? work.Level : '', !work, e => plan(code, +e.target.value, effect))),
-    h('div', { class: 'field' }, select('Experimental effect', effects, effect, !work || effects.length < 2, e => plan(code, work.Level, e.target.value))),
-    work && h('p', { class: 'muted small' }, work.Modifiers
-      ? 'These are your ship\'s own numbers: grade ' + work.Level + ', rolled ' + Math.round(work.Quality * 100) + '% of the way. Change anything here and the module is planned afresh.'
-      : 'Planned as rolled to the end of grade ' + work.Level + '.'),
+    h('div', { class: 'pane' },
+      h('h2', { class: 'ctag' }, 'Engineering'),
+      h('div', { class: 'card' },
+        h('div', { class: 'field' },
+          select('Blueprint', blueprints, known ? known.code : code, false, e => plan(e.target.value, work ? work.Level : 5, effect)),
+          select('Grade', (known ? known.grades : work ? [work.Level] : []).map(g => [g, 'Grade ' + g]), work ? work.Level : '', !work, e => plan(code, +e.target.value, effect))),
+        h('div', { class: 'field' }, select('Experimental effect', effects, effect, !work || effects.length < 2, e => plan(code, work.Level, e.target.value))),
+        work && h('p', { class: 'muted small' }, work.Modifiers
+          ? 'These are your ship\'s own numbers: grade ' + work.Level + ', rolled ' + Math.round(work.Quality * 100) + '% of the way. Change anything here and the module is planned afresh.'
+          : 'Planned as rolled to the end of grade ' + work.Level + '.'))),
   ];
 }
 

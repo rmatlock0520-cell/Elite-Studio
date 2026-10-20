@@ -1,8 +1,17 @@
 # Elite Studio
 
-A companion app for **Elite Dangerous** on Windows. One window, four studios, and overlays you can call up inside the game.
+A companion app for **Elite Dangerous** on Windows. One window, five studios, and overlays you can call up inside the game.
 
 Elite Studio reads the files the game itself writes (the journal, your ship, your cargo, your key bindings). It does not change the game and does not touch its memory.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Studio Loadouts: your ship as the game last reported it](docs/screenshots/loadouts.png) | ![Studio UI: the cockpit HUD in your own colours](docs/screenshots/ui.png) |
+| **Studio Loadouts** — your ship as it is | **Studio UI** — your cockpit HUD in your own colours |
+| ![Studio Nav: a plotted route, one system at a time](docs/screenshots/nav.png) | ![Studio Flight: the Flight Assist off trainer](docs/screenshots/flight.png) |
+| **Studio Nav** — a route, one system at a time | **Studio Flight** — the Flight Assist off trainer |
 
 ## What it does
 
@@ -17,7 +26,11 @@ Elite Studio reads the files the game itself writes (the journal, your ship, you
 
 **Studio Loadouts** — your ship as it is, a ship designer, an engineering planner with a shopping list, and Guardian unlocks.
 
-**Overlays in the game** — F2 hauling, F3 Find by name, F4 route, F5 loadouts. Press the key to show one and work it with the mouse; press it again to hide it. Each has its own size and place.
+**Studio Flight** — for flying with Flight Assist off. A trainer that flies like the game with Flight Assist off (your ship's turn rates, momentum that carries on until you stop it), with nine exercises from Cadet to Elite: stop a spin and hold the nose on a dot, fly a tunnel with bends, keep the nose on a moving dot. Three good attempts of five pass an exercise. Beside it: your stick's curves for Flight Assist off and on, a guided stick check (steps on screen with a timer) that finds where your stick rests, by itself and with your hand resting on it as in flight, sets your Flight Assist off dead zones to match (the trainer's exercises are then for the curves) and keeps a record of each check, your Elite flight bindings with what in them gets in the way, and for Joystick Gremlin users a copy of their profile with an "FA Off" mode that switches with the game's Flight Assist key.
+
+**Studio's own look** — pick a look for the app itself under Profile: Classic Orange (the game's own colours, which Studio starts in), Velvet Ice (with a compact version), Space Dust, Firefly Grove, Earthen Flight or Frost, with comfortable or compact spacing. Save your own looks, and share one with another commander as a code.
+
+**Overlays in the game** — F2 hauling, F3 Find by name, F4 route, F5 loadouts, F6 flight inputs. Press the key to show one and work it with the mouse; press it again to hide it. Each has its own size and place. The flight inputs overlay (your throttle, thrusters, stick and buttons as you fly) never takes the mouse, and can show itself whenever Flight Assist is off.
 
 ## Install
 

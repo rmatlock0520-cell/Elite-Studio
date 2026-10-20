@@ -36,27 +36,45 @@
 .seg{display:grid}   /* its two buttons fill the column between them */
 #busy,#problem{font-size:13px}
 #busy span:nth-child(2){flex:1}   /* the text takes the room, so Cancel stands at the right */
-.credit{margin:18px 0 0;padding-top:14px;border-top:1px solid var(--line)}
+.credit{margin:14px 2px 0}   /* under the form's card, whose frame already sets it apart */
+/* a card's tag that is also the heading of what it labels (Plot a route, Route): a block of its own, as wide as its words */
+h2.ctag{display:flex;width:fit-content;margin:0}
+/* In the in-game box the form's card sits tighter, so the box is no taller than it was before the card was there:
+   the column's and the card's sides together leave the words the 307px they had, so the hints wrap as before. */
+html.overlay .plan{padding:8px}
+html.overlay .plan>.card{padding:8px 7px;margin-bottom:0}
 
 .way{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0;padding:16px}
 #empty{margin:auto;max-width:460px;text-align:center;color:var(--muted)}
 .next{margin:0;flex:none}
 .next .line{display:flex;align-items:center;gap:14px}
-.next .tag{font-family:var(--hud);letter-spacing:.16em;font-size:15px;color:var(--accent);flex:none}
+.next .tag{font-family:var(--hud);letter-spacing:.16em;font-size:15px;color:var(--accent-hi);flex:none}
 .next b{flex:1;min-width:0;font-family:var(--hud);font-weight:600;font-size:30px;line-height:1.2;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:all}
 .next.arrived .tag{color:var(--good)}
 .next p{margin:6px 0 0}
 .next .foot{display:flex;align-items:center;gap:12px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:13px}
-.next .foot span:first-child{font-weight:600}
+.next .foot span:first-child{font-weight:600;color:var(--frost)}
 .next .foot .muted{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .next .foot a{flex:none}
+/* NEXT holds the page's main action, so its card has ice-blue corners and Copy name is the big ice action (.cta). The
+   button keeps .btn and .primary, so their look is set back here for the trapezoid to show. In the in-game box the
+   button is no higher than the system's name beside it, so the card is as high there as it was. */
+.next{--br:var(--ice);border-top-color:var(--ice-line)}
+.next .btn.cta{flex:none;width:auto;min-width:200px;height:52px;padding:0 34px;border:0;background:none;clip-path:none;filter:none;color:var(--act-ink);font:500 17px var(--hud);letter-spacing:.1em}
+.next .btn.cta:hover:not(:disabled){background:none;filter:none}
+.next .btn.cta:focus-visible{box-shadow:none}
+html.overlay .next .btn.cta{height:36px}
+/* the route's table under its tag: the tag goes with the table (hidden while the table is), and the in-game box leaves it out */
+.routebox{flex:1;min-height:0;display:flex;flex-direction:column}
+.routebox:has(>#rows[hidden]){display:none}
+html.overlay .routebox>.ctag{display:none}
 #rows{flex:1;min-height:0}
 td.sys{width:99%}
 td.sys .badge{margin-left:8px}
-.badge.neutron{color:var(--neutron);border-color:rgba(111,211,255,.45)}
+.badge.neutron{color:var(--neutron);border-color:rgba(111,211,255,.45);background:rgba(111,211,255,.08)}
 .badge.here{display:none}   /* every row carries the "You are here" badge; only the row marked .here shows it */
-tr.here .badge.here{display:inline-block}
-.name:hover{color:var(--accent)}
+tr.here .badge.here{display:inline-flex}
+.name:hover{color:var(--cyan)}
 tr.done td,tr.done .name{color:var(--faint)}
 tr.next td{background:var(--accent-soft)}
 tr.next td:first-child{box-shadow:inset 3px 0 var(--accent)}
@@ -70,7 +88,7 @@ td.sys .muted{display:block;white-space:normal;font-size:12.5px}
    while it goes on, gold naming the stops not recorded, green when all are (the app's tones: dim, gold, green, plain).
    Nav scan's line (spec v5 D) is the same, under it. */
 #rcheck,#nscan{display:flex;align-items:baseline;gap:14px;margin:0;flex:none;font-size:16px;line-height:1.35}
-#rcheck .tag,#nscan .tag{font-family:var(--hud);letter-spacing:.16em;font-size:15px;color:var(--accent);flex:none}
+#rcheck .tag,#nscan .tag{font-family:var(--hud);letter-spacing:.16em;font-size:15px;color:var(--accent-hi);flex:none}
 #rcheck-words,#nscan-words{min-width:0;overflow-wrap:anywhere}
 #rcheck.dim #rcheck-words,#nscan.dim #nscan-words{color:var(--muted)}
 #rcheck.gold #rcheck-words,#nscan.gold #nscan-words{color:var(--warn);font-weight:600}
@@ -90,8 +108,8 @@ td.sys .muted{display:block;white-space:normal;font-size:12.5px}
 
 <div class="layout">
   <aside class="plan">
-    <h2>Plot a route</h2>
-    <form id="form" novalidate>
+    <h2 class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-route"/></svg>Plot a route</h2>
+    <form id="form" class="card" novalidate>
       <div class="seg" role="group" aria-label="Kind of route">
         <button type="button" data-kind="neutron">Neutron</button>
         <button type="button" data-kind="exact">Exact</button>
@@ -129,7 +147,7 @@ td.sys .muted{display:block;white-space:normal;font-size:12.5px}
       <div class="line">
         <span class="tag" id="next-tag"></span>
         <b id="next-name"></b>
-        <button class="btn primary" id="copy" title="Then paste it into the galaxy map's search box with Ctrl+V">Copy name</button>
+        <button class="btn primary cta" id="copy" title="Then paste it into the galaxy map's search box with Ctrl+V"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-copy"/></svg>Copy name</button>
       </div>
       <p class="muted" id="next-facts"></p>
       <p class="note" id="next-note" hidden><span class="tag">THERE</span><span></span></p>
@@ -140,20 +158,23 @@ td.sys .muted{display:block;white-space:normal;font-size:12.5px}
         <button class="btn small danger" id="clear">Clear route</button>
       </div>
     </section>
-    <div class="tablebox" id="rows" hidden>
-      <table>
-        <thead><tr>
-          <th class="r">Stop</th>
-          <th>System</th>
-          <th class="r" title="Light years from the stop before">Leg (ly)</th>
-          <th class="r" title="Jumps from the stop before">Jumps</th>
-          <th class="r" title="Light years from the start">Total (ly)</th>
-          <th class="r" title="Jumps from the start">Total jumps</th>
-          <th class="r" title="Light years to the destination in a straight line">To go (ly)</th>
-          <th class="r" id="fuel-head" title="Tons in the tank at this stop, after scooping where Refuel is marked">Fuel (t)</th>
-        </tr></thead>
-        <tbody id="hops"></tbody>
-      </table>
+    <div class="routebox">
+      <h2 class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-star"/></svg>Route</h2>
+      <div class="tablebox" id="rows" hidden>
+        <table>
+          <thead><tr>
+            <th class="r">Stop</th>
+            <th>System</th>
+            <th class="r" title="Light years from the stop before">Leg (ly)</th>
+            <th class="r" title="Jumps from the stop before">Jumps</th>
+            <th class="r" title="Light years from the start">Total (ly)</th>
+            <th class="r" title="Jumps from the start">Total jumps</th>
+            <th class="r" title="Light years to the destination in a straight line">To go (ly)</th>
+            <th class="r" id="fuel-head" title="Tons in the tank at this stop, after scooping where Refuel is marked">Fuel (t)</th>
+          </tr></thead>
+          <tbody id="hops"></tbody>
+        </table>
+      </div>
     </div>
   </main>
 </div>

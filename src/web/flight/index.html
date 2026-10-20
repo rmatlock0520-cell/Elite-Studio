@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="studio-token" content="__STUDIO_TOKEN__">
+<title>Trainer - Studio Flight - Elite Studio</title>
+<link rel="icon" href="../studio.svg">
+<link rel="stylesheet" href="../studio.css">
+<!--
+  STUDIO FLIGHT, TRAINER: learning to fly with Flight Assist off, away from the game.
+  Left: the rank the player has reached, the nine exercises (three kinds, three levels each, flown in order: stop a
+  spin and hold the nose on a dot, fly a tunnel with bends without touching the wall, keep the nose on a moving dot),
+  the ship to fly like, how the picture is drawn and what the stick is read through. Right: the exercise itself, the
+  hands as the in-game flight overlay draws them, and after each set what happened and what to change.
+  A set is five attempts; three good ones pass it and open the next exercise. The ship flies as Elite's do with
+  Flight Assist off (sim.js); the app reads the stick and the keys (POST /api/flight/stream, "flight-input" events)
+  and keeps the curves and the progress (GET /api/flight, POST .../settings, .../progress, and the "flight" event).
+-->
+<style>
+.layout{--side:330px}
+.side{border-right:1px solid var(--line);padding:16px;overflow:auto}
+.side h2:not(:first-child){margin-top:20px}
+.rank{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+.rank .emblem{width:54px;height:54px;flex:none;border-radius:50%;display:grid;place-items:center;border:2px solid var(--accent);background:var(--accent-soft);font-family:var(--hud);font-size:22px;color:var(--accent)}
+.rank b{display:block;font-family:var(--hud);font-size:22px;letter-spacing:.04em;line-height:1.1}
+.ladder{display:grid;gap:5px}
+.ladder button{display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:8px;text-align:left;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel)}
+.ladder button:hover:not(:disabled){border-color:var(--accent-line)}
+.ladder button.active{border-color:var(--accent);background:var(--accent-soft)}
+.ladder button:disabled{opacity:.45;cursor:not-allowed}
+.ladder .mark{font-family:var(--hud);text-align:center;color:var(--muted)}
+.ladder .passed .mark{color:var(--good)}
+.ladder .name{min-width:0}
+.ladder .name small{display:block;color:var(--muted);font-size:11.5px}
+.ladder .best{font-size:12px;color:var(--muted)}
+.side .seg{display:grid;width:100%;margin-bottom:6px}
+.side .seg button{padding:0 8px;font-size:13px}
+.side select{width:100%}
+.keys{font-size:12.5px;color:var(--muted);line-height:1.6}
+.keys b{color:var(--text);font-weight:500}
+
+.stage{display:flex;flex-direction:column;min-width:0;min-height:0;padding:14px 16px;gap:10px}
+.top{display:flex;align-items:center;gap:14px;flex:none}
+.top .what{flex:1;min-width:0}
+.top h1{font-size:21px}
+.top p{margin:2px 0 0;color:var(--muted)}
+.tries{display:flex;gap:6px;flex:none}
+.tries i{width:16px;height:16px;border-radius:50%;border:2px solid var(--line2)}
+.tries i.ok{background:var(--good);border-color:var(--good)}
+.tries i.no{background:var(--bad);border-color:var(--bad)}
+.tries i.now{border-color:var(--accent)}
+.sky{flex:1;min-height:240px;position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#05070b}
+/* A look other than Velvet Ice puts its colours on <html> (studio.js): the sky then takes its ground, and the rank its
+   lighter accent shade, which reads better as text. Velvet Ice sets none there and stays as it was. */
+:root[style*="--bg:"] .sky{background:var(--bg)}
+:root[style*="--accent-hi:"] .rank .emblem{color:var(--accent-hi)}
+.sky canvas{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
+.bottom{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;flex:none;height:190px}
+.hands{position:relative;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.hands canvas{position:absolute;inset:0;width:100%;height:100%}
+.report{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px 14px;overflow:auto;font-size:13px}
+.report h2{margin:0 0 6px}
+.report ol{margin:0;padding-left:20px}
+.report li{margin:2px 0}
+.report .tip{display:flex;gap:10px;align-items:flex-start;margin:8px 0 0}
+.report .tip p{flex:1;margin:0}
+.verdict{font-family:var(--hud);font-size:17px;letter-spacing:.04em;margin:0 0 6px}
+.overlay .side{display:none}
+.overlay .layout{grid-template-columns:minmax(0,1fr)}
+</style>
+</head>
+<body>
+<nav class="subtabs"><a class="active" href="./">Trainer</a><a href="setup.html">Stick setup</a></nav>
+<div class="layout">
+  <aside class="side">
+    <div class="rank"><div class="emblem" id="emblem">0</div><div><span class="small muted">Your rank</span><b id="rank">Cadet</b><span class="small muted" id="rank-note"></span></div></div>
+    <h2>Exercises</h2>
+    <div class="ladder" id="ladder"></div>
+    <p class="small muted" style="margin-top:8px">Each set is five attempts. Three good ones pass it and open the next exercise.</p>
+    <h2>Ship</h2>
+    <div class="field"><select id="ship" aria-label="Ship to fly like"></select></div>
+    <p class="small muted" id="ship-note"></p>
+    <h2>Picture</h2>
+    <div class="seg" id="view"><button data-view="dot">Dot in the middle</button><button data-view="nose">Nose in the middle</button></div>
+    <h2>Stick</h2>
+    <div class="seg" id="input"><button data-input="stick" title="Your stick before Gremlin, with the Flight Assist off curves you tune on the Stick setup page.">With my FA Off curves</button><button data-input="game" title="Exactly what Elite gets: through Gremlin's vJoy, with Gremlin's curves of the moment.">As the game gets it</button></div>
+    <h2>Controls</h2>
+    <div class="keys" id="keys"></div>
+  </aside>
+  <main class="stage">
+    <div class="top">
+      <div class="what"><h1 id="title">Stop the spin</h1><p id="what"></p></div>
+      <div class="tries" id="tries" title="This set's five attempts"></div>
+      <button class="btn primary" id="go">Start</button>
+    </div>
+    <div class="sky" id="sky-box"><canvas id="sky"></canvas></div>
+    <div class="bottom">
+      <div class="hands"><canvas id="hands"></canvas></div>
+      <div class="report" id="report"><p class="muted">Pick an exercise and press Start (or Enter). Esc pauses. Fly with your stick and your Elite keys.</p></div>
+    </div>
+  </main>
+</div>
+
+<script src="../studio.js"></script>
+<script src="flight.js"></script>
+<script src="sim.js"></script>
+<script>
+(() => {
+'use strict';
+const { $, h, toast } = Studio;
+if (!Studio.served) return;
+
+let info = null;          // GET /api/flight
+let frame = null;         // the newest reading of the sticks
+let chosen = Sim.FREE;    // the exercise on screen
+let run = null;           // the set being flown: { ex, results, a, phase, phaseAt, said }
+let preview = null;       // the attempt shown before Start
+let paused = '';
+let view = 'dot';
+try { view = localStorage.getItem('flight.view') || 'dot'; } catch (e) {}
+const read = Flight.reader();
+const STEP = 1 / 120;
+
+// ============================================================ what the app says
+function showInfo(answer) {
+  info = answer;
+  drawSide();
+  if (!run) newPreview();
+}
+const call = Studio.follow('flight', '/api/flight', showInfo);
+Flight.stream(f => { frame = f; });
+
+function accent() { return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff7100'; }
+const passed = id => !!(info && info.settings.progress[id] && info.settings.progress[id].passed);
+// A set is under way: flying, counting down or showing an attempt's result. Stopped or over, another exercise may be chosen.
+const busy = () => !!run && run.phase !== 'done' && run.phase !== 'stopped';
+const unlocked = i => i === 0 || Sim.EXERCISES.slice(0, i).every(e => passed(e.id));
+
+function shipSpec() {
+  const ships = info ? info.ships : [];
+  const id = (info && (info.settings.ship || info.flying)) || 'cobra_mk_iii';
+  return ships.find(s => s.id === id) || ships.find(s => s.id === 'cobra_mk_iii') || { name: 'Cobra Mk III', speed: 280, boost: 400, pitch: 40, roll: 100, yaw: 10, boostEvery: 5 };
+}
+
+// ============================================================ the side column
+function drawSide() {
+  if (!info) return;
+  const done = Sim.EXERCISES.findIndex((e, i) => !passed(e.id));
+  const reached = done < 0 ? Sim.EXERCISES.length : done;
+  $('#rank').textContent = Sim.RANKS[reached];
+  $('#emblem').textContent = reached;
+  $('#rank-note').textContent = reached >= Sim.EXERCISES.length ? 'Every exercise passed.' : 'Next: ' + Sim.RANKS[reached + 1];
+
+  const button = (ex, i) => {
+    const rec = info.settings.progress[ex.id];
+    const open = ex === Sim.FREE || unlocked(i);
+    const b = h('button', { class: (ex === chosen ? 'active ' : '') + (rec && rec.passed ? 'passed' : ''), disabled: !open || busy(),
+        title: open ? ex.what : 'Pass the exercise before this one first.', onclick: () => choose(ex) },
+      h('span', { class: 'mark' }, ex === Sim.FREE ? '·' : rec && rec.passed ? '✓' : open ? ex.level : '🔒'),
+      h('span', { class: 'name' }, ex.title + (ex.level ? ' ' + ['', 'I', 'II', 'III'][ex.level] : ''), h('small', null, ex === Sim.FREE ? 'no score' : 'pass for ' + Sim.RANKS[i + 1])),
+      h('span', { class: 'best' }, rec ? 'best ' + rec.best + '/5' : ''));
+    return b;
+  };
+  $('#ladder').replaceChildren(button(Sim.FREE, -1), ...Sim.EXERCISES.map(button));
+
+  const flying = info.flying ? info.ships.find(s => s.id === info.flying) : null;
+  const options = [h('option', { value: '' }, 'The ship I fly' + (flying ? ' (' + flying.name + ')' : ' (Cobra Mk III until Studio knows yours)'))]
+    .concat(info.ships.map(s => h('option', { value: s.id }, s.name)));
+  $('#ship').replaceChildren(...options);
+  $('#ship').value = info.settings.ship || '';
+  const spec = shipSpec();
+  $('#ship-note').textContent = `Turns ${spec.pitch}°/s pitch, ${spec.yaw}°/s yaw, ${spec.roll}°/s roll; ${spec.speed} m/s, boost ${spec.boost}.`;
+  for (const b of document.querySelectorAll('#view button')) b.classList.toggle('active', b.dataset.view === view);
+  for (const b of document.querySelectorAll('#input button')) b.classList.toggle('active', b.dataset.input === info.settings.input);
+  drawKeys();
+}
+
+function drawKeys() {
+  const binds = info.binds;
+  const list = name => binds && binds.buttons[name] ? binds.buttons[name].map(Flight.buttonText).join(' or ') : null;
+  const line = (label, text) => text ? h('div', null, label + ': ', h('b', null, text)) : null;
+  // Each way of turning: the game's own button when it has one, else the trainer's key (only the trainer knows that one).
+  const trainer = new Set(info.trainerKeys || []);
+  const turnKey = name => trainer.has(name) ? (info.settings.trainerKeys[name] ? Flight.keyText(info.settings.trainerKeys[name]) + '*' : '') : list(name) || '';
+  const pair = (label, a, b) => (turnKey(a) || turnKey(b)) ? label + ' ' + [turnKey(a), turnKey(b)].filter(Boolean).join(' / ') : null;
+  const turnKeys = [pair('pitch up/down', 'pitchUp', 'pitchDown'), pair('yaw left/right', 'yawLeft', 'yawRight'), pair('roll left/right', 'rollLeft', 'rollRight')].filter(Boolean).join(', ');
+  const has = name => binds && binds.axes[name];
+  $('#keys').replaceChildren(h('div', null,   // in h(), the lines with nothing to say (null) are left out
+    binds ? null : h('div', { class: 'warn' }, info.bindsProblem || 'Elite\'s bindings are not known yet.'),
+    line('Turn', [has('pitch') && 'your stick', turnKeys].filter(Boolean).join('; ') || null),
+    trainer.size ? h('div', { class: 'small' }, '* the trainer\'s own key: Elite has none for that') : null,
+    line('Forward / back thrust', [list('forward'), list('backward')].filter(Boolean).join(' / ') || null),
+    line('Left / right', [list('left'), list('right')].filter(Boolean).join(' / ') || null),
+    line('Up / down', [list('up'), list('down')].filter(Boolean).join(' / ') || null),
+    line('Throttle', has('throttle') ? Flight.axisText(binds.axes.throttle) : ['speedZero', 'speed75', 'speedMinus75'].map(list).filter(Boolean).join(', ') || null),
+    line('Boost', list('boost')),
+    frame && !frame.sticks.length ? h('div', { class: 'warn' }, 'No stick found: fly with the keys, or plug the stick in.') : null));
+}
+
+for (const b of document.querySelectorAll('#view button')) b.addEventListener('click', () => {
+  view = b.dataset.view;
+  try { localStorage.setItem('flight.view', view); } catch (e) {}
+  drawSide();
+});
+for (const b of document.querySelectorAll('#input button')) b.addEventListener('click', () =>
+  call('POST', '/api/flight/settings', { input: b.dataset.input }).catch(e => toast(e.message, true)));
+$('#ship').addEventListener('change', () => call('POST', '/api/flight/settings', { ship: $('#ship').value }).catch(e => toast(e.message, true)));
+
+// ============================================================ a set of five
+function choose(ex) {
+  if (busy()) return;
+  chosen = ex;
+  run = null;
+  paused = '';
+  newPreview();
+  drawSide();
+  drawTries();
+  $('#report').replaceChildren(h('p', { class: 'muted' }, ex.what));
+}
+
+function newPreview() {
+  preview = Sim.start(chosen, shipSpec());
+  $('#title').textContent = chosen.title + (chosen.level ? ' ' + ['', 'I', 'II', 'III'][chosen.level] : '');
+  $('#what').textContent = chosen.what;
+  $('#go').textContent = chosen === Sim.FREE ? 'Fly' : 'Start';
+}
+
+function startSet() {
+  if (busy()) { stopSet(); return; }
+  run = { ex: chosen, results: [], phase: 'count', phaseAt: performance.now() };
+  paused = '';
+  nextAttempt();
+  $('#go').textContent = 'Stop';
+  document.activeElement && document.activeElement.blur();
+  $('#sky').focus();
+  drawSide();
+}
+
+function stopSet() {
+  if (run.recorded) { endSet(); return; }   // decided already: Stop just skips the wait for the result
+  run.phase = 'stopped';
+  paused = '';
+  $('#go').textContent = chosen === Sim.FREE ? 'Fly' : 'Start';
+  drawSide();
+  drawTries();
+}
+
+function nextAttempt() {
+  read.reset();
+  run.a = Sim.start(run.ex, shipSpec());
+  run.phase = 'count';
+  run.phaseAt = performance.now();
+  run.left = 0;
+  drawTries();
+}
+
+function finishAttempt(out) {
+  const a = run.a;
+  run.results.push({ ok: out.ok, why: out.why, crossings: { ...a.crossings }, peak: { ...a.peak }, speedAtEnd: Sim.len(a.s.v) });
+  run.said = out;
+  run.phase = 'after';
+  run.phaseAt = performance.now();
+  // The set is kept the moment it is decided, not when its result has been on screen a while: a pause, Stop or
+  // leaving the page then cannot lose it.
+  if (decided()) run.recorded = record(run);
+  drawTries();
+  drawReport();
+}
+
+function decided() {
+  const good = run.results.filter(r => r.ok).length, bad = run.results.length - good;
+  return good >= 3 || bad >= 3 || run.results.length >= 5;
+}
+
+async function record(set) {
+  const good = set.results.filter(r => r.ok).length;
+  const before = info.settings.progress[set.ex.id];
+  try { await call('POST', '/api/flight/progress', { exercise: set.ex.id, successes: good, attempts: set.results.length }); }
+  catch (e) { toast(e.message, true); }
+  set.first = good >= 3 && !(before && before.passed);
+}
+
+async function endSet() {
+  run.phase = 'done';
+  paused = '';
+  $('#go').textContent = 'Fly again';
+  const ended = run;
+  await ended.recorded;
+  if (run !== ended) return;   // the player has moved on meanwhile
+  drawReport();
+  drawSide();
+}
+
+function drawTries() {
+  const results = run ? run.results : [];
+  $('#tries').replaceChildren(...[0, 1, 2, 3, 4].map(i => h('i', {
+    class: i < results.length ? (results[i].ok ? 'ok' : 'no') : run && i === results.length && run.phase !== 'done' && run.phase !== 'stopped' ? 'now' : '' })));
+  $('#tries').hidden = chosen === Sim.FREE;
+}
+
+function drawReport() {
+  if (!run) return;
+  const good = run.results.filter(r => r.ok).length;
+  const parts = [];
+  if (run.phase === 'done') {
+    const pass = good >= 3;
+    const index = Sim.EXERCISES.indexOf(run.ex);
+    parts.push(h('p', { class: 'verdict ' + (pass ? 'good' : 'warn') }, pass
+      ? (run.first ? 'PASSED · you are now ' + Sim.RANKS[index + 1] : 'PASSED · ' + good + ' of ' + run.results.length)
+      : good + ' of ' + run.results.length + ' · three are needed'));
+  }
+  parts.push(h('ol', null, run.results.map(r => h('li', { class: r.ok ? 'good' : '' }, (r.ok ? '✓ ' : '✗ ') + r.why))));
+  if (run.phase === 'done') {
+    const curves = info.settings.faOff;
+    for (const tip of Sim.advise(run.ex, run.results, curves, shipSpec())) {
+      parts.push(h('div', { class: 'tip' }, h('p', null, tip.text), tip.change && h('button', { class: 'btn small', title: 'Changes your Flight Assist off curve for ' + tip.axis + '. Fly the set again to feel it.', onclick: e => apply(tip, e.target) }, tip.button)));
+    }
+  }
+  $('#report').replaceChildren(...parts);
+}
+
+async function apply(tip, button) {
+  const off = info.settings.faOff;
+  const changed = { ...off, [tip.axis]: { ...off[tip.axis], ...tip.change } };
+  try {
+    await call('POST', '/api/flight/settings', { faOff: changed });
+    button.disabled = true;
+    button.textContent = 'Done';
+    toast('Your FA Off curve for ' + tip.axis + ' changed. Save it to Gremlin on the Stick setup page when it feels right.');
+  } catch (e) { toast(e.message, true); }
+}
+
+$('#go').addEventListener('click', startSet);
+$('#sky').addEventListener('click', () => { if (paused) paused = ''; });
+// While flying, every key belongs to the ship: none may press a button of the page (Space, Enter on a focused button).
+document.addEventListener('keydown', e => {
+  const flying = run && (run.phase === 'count' || run.phase === 'fly' || run.phase === 'after');
+  if (e.key === 'Escape' && flying) { paused = paused ? '' : 'Paused\nPress Esc or click to go on'; e.preventDefault(); return; }
+  if (e.key === 'Enter' && !flying && !e.repeat && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLSelectElement)) { startSet(); e.preventDefault(); return; }
+  if (flying) e.preventDefault();
+});
+window.addEventListener('blur', () => { if (run && (run.phase === 'fly' || run.phase === 'count' || run.phase === 'after')) paused = 'Paused\nClick here to go on'; });
+
+// ============================================================ every frame
+const sky = $('#sky'), hands = $('#hands');
+function fit(canvas) {
+  const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(r.width * dpr)), hgt = Math.max(1, Math.round(r.height * dpr));
+  if (canvas.width !== w || canvas.height !== hgt) { canvas.width = w; canvas.height = hgt; }
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w: r.width, h: r.height };
+}
+
+let last = performance.now(), keysShown = false;
+function tick(now) {
+  try { frameOnce(now); }
+  finally { requestAnimationFrame(tick); }   // one bad frame must not stop the trainer for good
+}
+function frameOnce(now) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  const cmd = read(frame, info, !info || info.settings.input !== 'game');
+  if (frame && !keysShown && info) { keysShown = true; drawKeys(); }
+  // While paused the countdown and the result line wait too, so an attempt never starts unseen.
+  if (paused && run && (run.phase === 'count' || run.phase === 'after')) run.phaseAt += now - (run.pausedAt || now);
+  if (run) run.pausedAt = paused ? now : 0;
+  let shown = preview, text = '';
+  if (run && run.a) {
+    shown = run.a;
+    if (run.phase === 'count') {
+      const left = 3 - (now - run.phaseAt) / 1000;
+      text = left > 0 ? (run.ex === Sim.FREE ? 'Free flight' : 'Attempt ' + (run.results.length + 1) + ' of 5') + '\n' + 'Starting in ' + Math.ceil(left) : '';
+      if (left <= 0 && !paused) { run.phase = 'fly'; run.left = 0; }
+    } else if (run.phase === 'fly' && !paused) {
+      run.left += dt;
+      while (run.left >= STEP) {
+        run.left -= STEP;
+        const out = Sim.update(run.a, cmd, STEP);
+        if (out.done) { finishAttempt(out); break; }
+      }
+    } else if (run.phase === 'after') {
+      text = (run.said.ok ? '✓ Good' : '✗ Missed') + '\n' + run.said.why;
+      if (!paused && now - run.phaseAt > 2400) { if (decided()) endSet(); else nextAttempt(); }
+    } else if (run.phase === 'done' || run.phase === 'stopped') text = run.phase === 'done' ? 'Set over\nPress Enter to fly it again' : 'Stopped';
+  } else text = chosen === Sim.FREE ? 'Free flight\nPress Fly or Enter' : 'Press Start or Enter';
+  const s = fit(sky);
+  if (shown && s.w >= 60 && s.h >= 60) Sim.draw(s.g, s.w, s.h, shown, view, accent(), paused || text);   // a window squeezed to nothing draws nothing
+  const hs = fit(hands);
+  hs.g.clearRect(0, 0, hs.w, hs.h);
+  if (hs.w >= 60 && hs.h >= 30) Flight.drawInputs(hs.g, hs.w, hs.h, cmd, true, accent());
+}
+requestAnimationFrame(tick);
+drawTries();
+})();
+</script>
+</body>
+</html>

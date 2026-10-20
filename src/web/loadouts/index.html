@@ -21,23 +21,33 @@
 -->
 <style>
 /* Only what is this page's own; the shared look (buttons, boxes, badges, the dialog, the list table, a ship's name,
-   number tiles and four lists...) is in ../studio.css. */
-.layout{--side:270px}
+   number tiles and four lists, card tags, rows of choices with glyphs, the one big action...) is in ../studio.css. */
+.layout{--side:300px}
 
-.side{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);background:var(--bg2);padding:16px 12px 12px}
-.builds{flex:1;min-height:0;overflow-y:auto;display:grid;grid-template-columns:minmax(0,1fr);gap:6px;align-content:start;margin-bottom:12px}
-.build{width:100%;text-align:left;padding:8px 11px;border-radius:9px;border:1px solid var(--line);background:var(--panel)}
-.build:hover{border-color:var(--accent-line)}
-.build.active{border-color:var(--accent);background:var(--accent-soft)}
-.build b,.build span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.build b{font-weight:600}
-.build span{color:var(--muted);font-size:12.5px}
+/* the side column: the builds in a card under its tag, Save at the card's foot, the credits under the card */
+.side{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);background:color-mix(in srgb,var(--bg2) 55%,transparent);padding:16px 12px 12px}
+.side>.ctag{align-self:flex-start;margin:0}
+.shelf{flex:1;min-height:0;display:flex;flex-direction:column;padding:0;margin-bottom:0}
+.builds{flex:1;min-height:0;overflow-y:auto}
+.builds>.build{flex:none}   /* a row keeps its whole height when the list is long enough to scroll */
+/* a build in the list (a .glist row): its glyph, then its name over its ship and date; a long name wraps, never cut off */
+.build>span>b,.build>span>span{display:block;overflow-wrap:anywhere}
+.build>span>b{font-weight:600}
+.build>span>span{margin-top:1px;font:400 12px/1.3 var(--font);letter-spacing:0;text-transform:none;color:var(--muted)}
+.build.on>span>span{color:var(--accent-ink)}
+/* Save current ship: the page's one big action (.cta) at the foot of the builds card; here it wins over .btn and .primary */
+#save.cta{width:auto;flex:none;margin:12px 10px;padding:0 20px;border:0;background:none;color:var(--act-ink);font:500 15px var(--hud);letter-spacing:.08em;clip-path:none;filter:none;box-shadow:none}
 .credit{margin:12px 2px 0}
 
 main{min-width:0;overflow:auto;padding:16px 20px 24px}
-.head{display:flex;align-items:flex-start;gap:16px;margin-bottom:12px}
+/* the head of the build on show: a glyph tile, its name and what it is, then its buttons on a row of their own, over a rule */
+.head{display:flex;flex-wrap:wrap;align-items:center;gap:12px 14px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--accent-line)}
+.head>.glyph{width:50px;height:50px;padding:12px;border:1px solid var(--line2);border-top-color:var(--accent-line);background:var(--panel2);color:var(--accent-hi)}
 .head .title{flex:1;min-width:0}
-.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.actions{flex:1 0 100%;display:flex;gap:8px;flex-wrap:wrap}
+/* a card's own heading sits on its top edge as the card's tag (.ctag); the h2 stays inside the card it names */
+#detail>.card{position:relative;margin-top:36px}
+#detail>.card>h2.ctag{position:absolute;left:-1px;bottom:calc(100% + 1px);margin:0}
 
 /* The four lists: weapons and core on the left, optional internals on the right; one under the other in a narrow window. */
 @media (max-width:1249px){.columns{grid-template-columns:minmax(0,1fr)}}
@@ -53,7 +63,7 @@ button.work:hover{color:var(--text)}
 .shop .part{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
 .stops{margin:0 0 10px;padding:0;list-style:none;display:grid;gap:8px;counter-reset:stop}
 .stops li{counter-increment:stop;display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:2px 8px;align-items:baseline}
-.stops li::before{content:counter(stop);font-family:var(--hud);font-weight:600;color:var(--accent);grid-row:span 2}
+.stops li::before{content:counter(stop);font-family:var(--hud);font-weight:600;color:var(--accent-hi);grid-row:span 2}
 .stops .buy{grid-column:2 / span 2}
 </style>
 </head>
@@ -63,9 +73,11 @@ button.work:hover{color:var(--text)}
 
 <div class="layout">
   <aside class="side">
-    <h2>Builds</h2>
-    <div class="builds" id="builds"></div>
-    <button class="btn primary" id="save" disabled>Save current ship as…</button>
+    <h2 class="ctag ice">Builds</h2>
+    <div class="card shelf">
+      <div class="builds glist" id="builds"></div>
+      <button class="btn primary cta" id="save" disabled>Save current ship as…</button>
+    </div>
     <p class="muted small credit">Builds open in <a href="https://edsy.org/" target="_blank" rel="noopener">EDSY</a> and
       <a href="https://coriolis.io/" target="_blank" rel="noopener">Coriolis</a>, the community's ship designers. Thank you to both teams.</p>
   </aside>
@@ -114,11 +126,20 @@ const day = iso => new Date(iso).toLocaleDateString(undefined, { day: 'numeric',
 const dayAndTime = iso => new Date(iso).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 // The ship's own name and its ID, whichever it has: “GABRIEL” · SE-06M
 const callsign = s => [s.shipName && '“' + s.shipName + '”', s.shipIdent].filter(Boolean).join(dot);
+// A line glyph from ../glyphs.svg, for looks only. h() makes HTML elements, so the <svg> is made here, in its own namespace.
+const glyph = id => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'), use = document.createElementNS(svg.namespaceURI, 'use');
+  svg.setAttribute('class', 'glyph');
+  svg.setAttribute('aria-hidden', 'true');
+  use.setAttribute('href', '../glyphs.svg#' + id);
+  svg.append(use);
+  return svg;
+};
 
 // ============================================================ the list
 function renderList() {
-  const item = (id, name, sub) => h('button', { class: 'build' + (id === selected ? ' active' : ''), onclick: () => select(id) },
-    h('b', null, name), h('span', null, sub));
+  const item = (id, name, sub) => h('button', { class: 'build' + (id === selected ? ' active on' : ''), onclick: () => select(id) },
+    glyph(id ? 'g-save' : 'g-ship'), h('span', null, h('b', null, name), h('span', null, sub)));
   $('#builds').replaceChildren(
     item('', 'Current ship', current ? [current.shipType, callsign(current)].filter(Boolean).join(dot) : 'Not known yet'),
     ...saved.map(b => item(b.id, b.name, b.shipType + dot + day(b.savedUtc))));
@@ -147,7 +168,7 @@ async function select(id) {
 function renderDetail() {
   const ship = selected ? build && build.ship : current;
   if (!ship) {
-    $('#detail').replaceChildren(h('div', { class: 'card', style: 'max-width:560px' }, h('h2', null, 'No ship known yet'),
+    $('#detail').replaceChildren(h('div', { class: 'card', style: 'max-width:560px' }, h('h2', { class: 'ctag' }, 'No ship known yet'),
       h('p', { class: 'muted', style: 'margin:0' }, 'Start Elite Dangerous and board your ship. Studio reads it from the game\'s journal and shows it here; nothing needs to be set up.')));
     return;
   }
@@ -162,7 +183,7 @@ function renderDetail() {
   const groups = names => ship.groups.filter(g => names.includes(g.name)).map(group);
 
   $('#detail').replaceChildren(
-    h('div', { class: 'head' },
+    h('div', { class: 'head' }, glyph(selected ? 'g-save' : 'g-ship'),
       h('div', { class: 'title' }, h('h1', { title }, title), h('div', { class: 'muted', title: age }, sub.filter(Boolean).join(dot),
         ship.hullHealth < 1 && [' ', h('span', { class: 'badge warn' }, 'Hull ' + Math.floor(ship.hullHealth * 100) + '%')])),
       h('div', { class: 'actions' },
@@ -241,7 +262,7 @@ function handOffs() {
     : pieces ? 'Your ' + flown + ' still lacks ' + count(pieces, 'module') + ' of this build:'
     : 'Your ' + flown + ' has every module of this build on board.';
   return h('section', { class: 'card shop' },
-    h('h2', null, 'From your ship to this build'),
+    h('h2', { class: 'ctag' }, 'From your ship to this build'),
     !lacking ? h('p', { class: 'muted' }, shopProblem || 'Comparing it with the ship you fly…') : [
       h('p', null, what),
       pieces > 0 && h('p', { class: 'muted' }, modules.map(m => counted(m.count, m.label)).join(dot)),

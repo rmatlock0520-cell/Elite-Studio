@@ -91,49 +91,65 @@ public sealed class KeyBindings
     internal static KeyBindings Load(string bindingsDir, Func<string?>? gameDir)
     {
         FileInfo[] files = Files(bindingsDir);
-        FileInfo? start = files.Where(f => f.Name.StartsWith("StartPreset", StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(f => f.LastWriteTimeUtc).FirstOrDefault();
-        if (start is null) return None;
-
-        string[] presets;
-        using (var reader = new StreamReader(Open(start.FullName)))
-        {
-            presets = [.. reader.ReadToEnd().Split('\r', '\n').Select(line => line.Trim()).Where(line => line.Length > 0)
-                .Distinct(StringComparer.OrdinalIgnoreCase)];
-        }
+        if (StartPresets(files) is not { } presets) return None;
 
         var actionsByKey = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         var notes = new List<string>();   // for the log, written only after everything was read: a read that fails is tried again every Poll
         var game = new Lazy<string?>(() => gameDir?.Invoke());   // looked for once, however many presets need it
-        foreach (string preset in presets)
+        foreach (string preset in presets.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            // "Custom.4.2.binds" beats "Custom.4.1.binds" beats "Custom.binds": the game writes a new
-            // file when the format moves on and leaves the old ones behind.
-            var pattern = new Regex($@"^{Regex.Escape(preset)}(\.(\d+)\.(\d+))?\.binds$", RegexOptions.IgnoreCase);
-            string? binds = files
-                .Select(f => (File: f, Name: pattern.Match(f.Name)))
-                .Where(f => f.Name.Success)
-                .OrderByDescending(f => f.Name.Groups[1].Success ? new Version(f.Name.Groups[1].Value[1..]) : new Version(0, 0))
-                .Select(f => f.File.FullName).FirstOrDefault();
-            // A preset used as it came has no file here: the copy that ships with the game is read instead.
-            // (The name comes out of a text file, so only a plain file name is looked for in the game's folder.)
-            if (binds is null && Paths.IsFileName(preset) && game.Value is { } folder)
-            {
-                string shipped = Path.Combine(folder, "ControlSchemes", preset + ".binds");
-                if (File.Exists(shipped))
-                {
-                    binds = shipped;
-                    notes.Add($"Key bindings: preset \"{preset}\" is read from the game's own copy, {shipped}");
-                }
-            }
+            string? binds = FileOf(files, preset, game, notes);
             if (binds is null) notes.Add($"Key bindings: preset \"{preset}\" has no file in the bindings folder or among the game's own presets, so its keys are not known");
             else Read(binds, actionsByKey);
         }
         foreach (string note in notes) Log.Info(note);
-        return new KeyBindings(presets, actionsByKey);
+        return new KeyBindings([.. presets.Distinct(StringComparer.OrdinalIgnoreCase)], actionsByKey);
     }
 
-    static FileStream Open(string file) => new(file, FileMode.Open, FileAccess.Read, GameWatcher.GameMayWrite);
+    /// <summary>
+    /// The presets StartPreset.*.start names, one per line, in its order (since Odyssey: general,
+    /// ship, SRV and on-foot controls, so the same name can be there more than once). Null when the
+    /// game has not written that file yet.
+    /// </summary>
+    internal static string[]? StartPresets(FileInfo[] files)
+    {
+        FileInfo? start = files.Where(f => f.Name.StartsWith("StartPreset", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(f => f.LastWriteTimeUtc).FirstOrDefault();
+        if (start is null) return null;
+        using var reader = new StreamReader(Open(start.FullName));
+        return [.. reader.ReadToEnd().Split('\r', '\n').Select(line => line.Trim()).Where(line => line.Length > 0)];
+    }
+
+    /// <summary>
+    /// The file a preset is read from: the newest "Name.x.y.binds" in the bindings folder, or for a
+    /// preset the player never changed, the game's own copy of it. Null when there is neither.
+    /// </summary>
+    /// <param name="notes">Where to say that the game's own copy is used, for the log.</param>
+    internal static string? FileOf(FileInfo[] files, string preset, Lazy<string?> gameDir, List<string> notes)
+    {
+        // "Custom.4.2.binds" beats "Custom.4.1.binds" beats "Custom.binds": the game writes a new
+        // file when the format moves on and leaves the old ones behind.
+        var pattern = new Regex($@"^{Regex.Escape(preset)}(\.(\d+)\.(\d+))?\.binds$", RegexOptions.IgnoreCase);
+        string? binds = files
+            .Select(f => (File: f, Name: pattern.Match(f.Name)))
+            .Where(f => f.Name.Success)
+            .OrderByDescending(f => f.Name.Groups[1].Success ? new Version(f.Name.Groups[1].Value[1..]) : new Version(0, 0))
+            .Select(f => f.File.FullName).FirstOrDefault();
+        // A preset used as it came has no file here: the copy that ships with the game is read instead.
+        // (The name comes out of a text file, so only a plain file name is looked for in the game's folder.)
+        if (binds is null && Paths.IsFileName(preset) && gameDir.Value is { } folder)
+        {
+            string shipped = Path.Combine(folder, "ControlSchemes", preset + ".binds");
+            if (File.Exists(shipped))
+            {
+                binds = shipped;
+                notes.Add($"Key bindings: preset \"{preset}\" is read from the game's own copy, {shipped}");
+            }
+        }
+        return binds;
+    }
+
+    internal static FileStream Open(string file) => new(file, FileMode.Open, FileAccess.Read, GameWatcher.GameMayWrite);
 
     // <Root><ActionName><Primary Device="Keyboard" Key="Key_Q"><Modifier Device="Keyboard" Key="Key_LeftShift"/></Primary>...
     static void Read(string file, Dictionary<string, List<string>> actionsByKey)

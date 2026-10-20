@@ -23,34 +23,52 @@
 -->
 <style>
 /* Only what is this page's own; the shared look (buttons, boxes, badges, fields...) is in ../studio.css. */
+/* the badge beside your system's name keeps to plain letters, so the name keeps its room */
+#new{text-transform:none;letter-spacing:.02em}
 .layout{--side:400px}
-.side{border-right:1px solid var(--line);padding:16px;overflow:auto}
-.side h2:not(:first-child){margin-top:22px}
+.side{border-right:1px solid var(--line);padding:16px;overflow:auto;background:linear-gradient(180deg,color-mix(in srgb,var(--bg2) 55%,transparent),color-mix(in srgb,var(--bg) 30%,transparent))}
+/* the two cards of the side column, each under its tag (the tags are the page's headings, so they stay h2) */
+.side h2.ctag{margin:0}
+.side h2.ctag:not(:first-child){margin-top:10px}
+.side .card>:last-child{margin-bottom:0}
+/* a glyph in front of a card's tag, drawn a size smaller than in a line of text */
+.ctag .glyph{width:14px;height:14px;stroke-width:2}
+/* the top of the trip card: where the commander is, and the scans there, over a line */
+.here{padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--line)}
 .here .line,.way .line{display:flex;align-items:center;gap:10px}
-.here b,.way b{flex:1;min-width:0;font-family:var(--hud);font-weight:600;font-size:19px;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:all}
+.here b,.way b{flex:1;min-width:0;font-family:var(--hud);font-weight:600;font-size:19px;letter-spacing:.02em;color:var(--frost);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:all}
 .here p,.way p{margin:5px 0 0}
-.counts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 10px}
-.counts div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 12px}
-.counts dt{font-size:12.5px;color:var(--muted)}
-.counts dd{margin:1px 0 0;font-family:var(--hud);font-size:26px;line-height:1.15}
+/* the four counts as number tiles (.stat in ../studio.css gives the frame) */
+.counts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px}
+.counts .stat{padding:8px 12px}
+.counts dt{font:500 11.5px/1.3 var(--hud);letter-spacing:.08em;text-transform:uppercase;color:var(--label)}
+.counts dd{margin:3px 0 0;font-family:var(--hud);font-weight:600;font-size:26px;line-height:1.15;color:var(--frost);font-variant-numeric:tabular-nums}
 .counts .first dd{color:var(--good)}
 .row{display:flex;align-items:center;gap:10px;margin:0 0 10px}
 .row>:first-child{flex:1;min-width:0;margin:0}
 .side .busy,#look .card{font-size:13px}
 .side .busy{margin:0 0 10px}
-#look{margin-top:14px}
+/* every last line of this card keeps 10 to 12px of space under it, so the card's own padding is that much less */
+.few{padding-bottom:calc(var(--pad) - 10px)}
+#look{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 #suggest{margin-bottom:12px}
-.way .tag{font-family:var(--hud);letter-spacing:.16em;font-size:13px;color:var(--accent)}
-.way .row{margin:10px 0 0}
+/* the system to head for: a smaller panel inside the card, under its own tag */
+.way{margin-bottom:12px}
+.way>.card{margin:0;padding:10px 12px}
+.way .row{margin:10px 0 0;flex-wrap:wrap}
 .way a.btn{text-decoration:none}
 .credit{margin:18px 0 0;padding-top:14px;border-top:1px solid var(--line)}
 
-.chart{display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0;padding:16px}
-.maps{align-self:flex-start;flex:none}
-.mapbox{flex:1;min-height:0;position:relative;background:var(--bg2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.chart{display:flex;flex-direction:column;min-width:0;min-height:0;padding:16px}
+/* the Flat map | 3D map switch sits on the map's frame like a card's tag */
+.maps{align-self:flex-start;flex:none;border-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0}
+/* the map in a framed screen: the card's frame and corner brackets around it, the legend along its foot */
+.mapframe{flex:1;min-height:0;display:flex;flex-direction:column;margin:0;padding:6px;border-top-left-radius:0}
+.mapbox{flex:1;min-height:0;position:relative;background:var(--bg);border:1px solid var(--line);border-radius:1px;overflow:hidden}
 .mapbox canvas{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
 #no-map{position:absolute;inset:0;margin:auto;height:fit-content;max-width:470px;padding:0 16px;text-align:center;color:var(--muted)}
-.legend{margin:0;display:flex;flex-wrap:wrap;gap:4px 18px}
+.legend{margin:0;padding:8px 6px 2px;display:flex;flex-wrap:wrap;gap:4px 18px}
+#meaning{margin:10px 0 0}
 .legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px}
 .legend .thin{background:var(--accent);opacity:.55}
 .legend .known{background:linear-gradient(90deg,#2a3441,#9fb0c6)}
@@ -63,54 +81,62 @@
 
 <div class="layout">
   <aside class="side">
-    <h2>This trip</h2>
-    <section class="card here">
-      <div class="line"><b id="system"></b><span class="badge" id="new" hidden></span></div>
-      <p class="muted" id="bodies"></p>
+    <h2 class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-scan"/></svg>This trip</h2>
+    <section class="card trip">
+      <div class="here">
+        <div class="line"><b id="system"></b><span class="badge" id="new" hidden></span></div>
+        <p class="muted" id="bodies"></p>
+      </div>
+      <dl class="counts">
+        <div class="stat"><dt>Systems visited</dt><dd id="visited">0</dd></div>
+        <div class="stat"><dt>New systems</dt><dd id="new-systems">0</dd></div>
+        <div class="stat"><dt>Bodies first discovered</dt><dd id="found">0</dd></div>
+        <div class="stat"><dt>Bodies first mapped</dt><dd id="mapped">0</dd></div>
+      </dl>
+      <div class="row"><p class="muted small" id="since"></p><button class="btn small danger" id="reset" title="Starts a new trip now: the four counts go back to zero">Reset</button></div>
+      <p class="muted small">This part is certain. With every scan the game says whether anyone had discovered or mapped that star, planet or moon before, and Studio counts the ones nobody had. "Before" means sold to the game's cartographers: your name goes on a find when you sell your exploration data, unless a commander who was there earlier sells first. Selling ends the trip, and your next jump starts a new one. Losing your ship loses its unsold data, so that starts a new trip too.</p>
     </section>
-    <dl class="counts">
-      <div><dt>Systems visited</dt><dd id="visited">0</dd></div>
-      <div><dt>New systems</dt><dd id="new-systems">0</dd></div>
-      <div><dt>Bodies first discovered</dt><dd id="found">0</dd></div>
-      <div><dt>Bodies first mapped</dt><dd id="mapped">0</dd></div>
-    </dl>
-    <div class="row"><p class="muted small" id="since"></p><button class="btn small danger" id="reset" title="Starts a new trip now: the four counts go back to zero">Reset</button></div>
-    <p class="muted small">This part is certain. With every scan the game says whether anyone had discovered or mapped that star, planet or moon before, and Studio counts the ones nobody had. "Before" means sold to the game's cartographers: your name goes on a find when you sell your exploration data, unless a commander who was there earlier sells first. Selling ends the trip, and your next jump starts a new one. Losing your ship loses its unsold data, so that starts a new trip too.</p>
 
-    <h2>Where few have been</h2>
-    <p class="muted small">Nobody keeps a list of systems no one has visited. What there is, is the other side: a count of the systems commanders are known to have visited, sector by sector. Studio draws it as the galaxy seen from above and finds the nearest thinly known part in the direction you are flying.</p>
-    <div class="row"><p class="muted small" id="about-map"></p><button class="btn" id="get-map" hidden></button></div>
-    <p class="busy" id="map-busy" hidden><span class="spin"></span>Asking EDAstro for its sector list…</p>
-    <p class="card bad" id="map-problem" hidden></p>
+    <h2 class="ctag ice"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-heat"/></svg>Where few have been</h2>
+    <section class="card few">
+      <p class="muted small">Nobody keeps a list of systems no one has visited. What there is, is the other side: a count of the systems commanders are known to have visited, sector by sector. Studio draws it as the galaxy seen from above and finds the nearest thinly known part in the direction you are flying.</p>
+      <div class="row"><p class="muted small" id="about-map"></p><button class="btn" id="get-map" hidden></button></div>
+      <p class="busy" id="map-busy" hidden><span class="spin"></span>Asking EDAstro for its sector list…</p>
+      <p class="card bad" id="map-problem" hidden></p>
 
-    <div id="look" hidden>
-      <div class="row"><p class="muted small" id="looking"></p><button class="btn small" id="follow" hidden title="Look the way your last jumps went again">My heading</button></div>
-      <button class="btn primary" id="suggest">Suggest a waypoint</button>
-      <p class="busy" id="way-busy" hidden><span class="spin"></span>Asking Spansh for a system there…</p>
-      <section class="card way" id="way" hidden>
-        <span class="tag">HEAD FOR</span>
-        <div class="line"><b id="way-name"></b></div>
-        <p class="muted" id="way-facts"></p>
-        <div class="row"><span></span><button class="btn" id="copy" title="Then paste it into the galaxy map's search box with Ctrl+V">Copy name</button><a class="btn primary" id="to-routes" title="Opens Routes with this system under To">Plot a route to it</a></div>
-      </section>
-      <p class="card" id="way-note" hidden></p>
-    </div>
+      <div id="look" hidden>
+        <div class="row"><p class="muted small" id="looking"></p><button class="btn small" id="follow" hidden title="Look the way your last jumps went again">My heading</button></div>
+        <button class="cta" id="suggest">Suggest a waypoint</button>
+        <p class="busy" id="way-busy" hidden><span class="spin"></span>Asking Spansh for a system there…</p>
+        <section class="way" id="way" hidden>
+          <span class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-star"/></svg>HEAD FOR</span>
+          <div class="card">
+            <div class="line"><b id="way-name"></b></div>
+            <p class="muted" id="way-facts"></p>
+            <div class="row"><span></span><button class="btn" id="copy" title="Then paste it into the galaxy map's search box with Ctrl+V">Copy name</button><a class="btn primary" id="to-routes" title="Opens Routes with this system under To">Plot a route to it</a></div>
+          </div>
+        </section>
+        <p class="card" id="way-note" hidden></p>
+      </div>
+    </section>
 
     <p class="muted small credit">The map is made from the sector list of <a href="https://edastro.com/" target="_blank" rel="noopener">EDAstro</a> (edastro.com, by CMDR Orvidius), which Studio fetches only when you ask and keeps for a week. The system to head for is named by <a href="https://spansh.co.uk/" target="_blank" rel="noopener">Spansh</a> (spansh.co.uk). Both are free services run by players for all of us.</p>
   </aside>
 
   <main class="chart">
     <div class="seg maps" role="group" aria-label="Which map"><button type="button" class="active" aria-pressed="true">Flat map</button><button type="button" id="to-3d" title="Opens the 3D map">3D map</button></div>
-    <div class="mapbox">
-      <canvas id="map" title="Click to look in that direction from where you are" hidden></canvas>
-      <p id="no-map">No map on this PC yet. Press "Get the map from EDAstro" on the left: Studio fetches one list of about 1.5 MB and draws the galaxy from above, shaded by how many systems are known in each part.</p>
+    <div class="card mapframe">
+      <div class="mapbox">
+        <canvas id="map" title="Click to look in that direction from where you are" hidden></canvas>
+        <p id="no-map">No map on this PC yet. Press "Get the map from EDAstro" on the left: Studio fetches one list of about 1.5 MB and draws the galaxy from above, shaded by how many systems are known in each part.</p>
+      </div>
+      <p class="muted small legend" id="legend" hidden>
+        <span><i class="thin"></i>Thinly known: fewer than <span id="thin-below"></span> known systems in a square of 1,280 ly</span>
+        <span><i class="known"></i>Better known, brighter with more</span>
+        <span><i class="you"></i>You, and the way you are looking</span>
+      </p>
     </div>
-    <p class="muted small legend" id="legend" hidden>
-      <span><i class="thin"></i>Thinly known: fewer than <span id="thin-below"></span> known systems in a square of 1,280 ly</span>
-      <span><i class="known"></i>Better known, brighter with more</span>
-      <span><i class="you"></i>You, and the way you are looking</span>
-    </p>
-    <p class="muted small" id="meaning" hidden>Read it as "how busy", not "how finished". The galaxy has some 400 billion systems and about 100 million are known, so every square is mostly unexplored. An orange or dark square has had few visitors, and towards the rim it also has few stars; a bright one is well travelled, yet most of its stars are still nobody's. So you need not fly to an orange square to be first: a few hundred light years off the busy routes there are systems nobody has recorded almost anywhere, and the count on the left proves each one. The waypoint is for when you want a whole sector that few have seen.</p>
+    <p class="muted small" id="meaning" hidden>Read it as "how busy", not "how finished". The galaxy has some 400 billion systems and about 100 million are known, so every square is mostly unexplored. A highlighted or dark square has had few visitors, and towards the rim it also has few stars; a bright one is well travelled, yet most of its stars are still nobody's. So you need not fly to a highlighted square to be first: a few hundred light years off the busy routes there are systems nobody has recorded almost anywhere, and the count on the left proves each one. The waypoint is for when you want a whole sector that few have seen.</p>
   </main>
 </div>
 

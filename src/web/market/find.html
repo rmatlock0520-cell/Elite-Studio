@@ -32,9 +32,22 @@
 .ask .from{flex:0 1 310px}   /* with the Find button, so the two stay together when the row wraps */
 .ask .filters .field{flex:1 1 0}
 .ask .quick{align-items:center;gap:6px}
-.ask .quick span{margin-right:4px}
+.ask .quick span{margin-right:4px;color:var(--label);font:500 12.5px var(--hud);letter-spacing:.03em}   /* "Nearest:" reads as the boxes' captions do */
 .ask .quick .btn{padding:0 8px;font-size:12.5px}   /* ten of them in one row of a 1400 px window */
 #names-problem{margin:0}
+/* In the app window the form is a card with its name on a tag, and what to find runs as tabs across the card's top.
+   In the overlay's box it stays the plain band it was, with the choice in its first line: the box has no height to spare. */
+html:not(.overlay) .ask{gap:0;display:flex;flex-direction:column;padding:10px 16px 0;border-bottom:0;background:none}
+html:not(.overlay) .ask>.card{display:grid;gap:10px;margin:0;padding:var(--pad) 12px}   /* 12: the filters keep their captions on one line at 1400 px */
+.ctag{align-self:flex-start}   /* a tag in a column keeps its own width */
+.overlay .ask>.ctag{display:none}
+.overlay .ask>.card{display:contents}
+html:not(.overlay) #kinds{flex:1 0 100%;margin:calc(-1 * var(--pad)) -12px 0;border:0;border-bottom:1px solid var(--accent-line);border-radius:0}
+html:not(.overlay) .ask .from{flex:0 1 480px}   /* room for the big Find button beside the box */
+/* Find is the page's one big action: the wide ice-blue trapezoid in the app window, the plain main button in the box */
+html:not(.overlay) #find.cta{flex:none;width:auto;min-width:190px;height:52px;padding:0 36px;background:none;border:0;clip-path:none;filter:none;box-shadow:none;color:var(--act-ink);font:500 17px var(--hud);letter-spacing:.1em}
+html.overlay #find.cta{display:inline-flex;width:auto;height:34px;padding:0 14px;gap:8px;border:1px solid var(--accent);font-size:13px;letter-spacing:.06em;text-shadow:none}
+html.overlay #find.cta::before,html.overlay #find.cta::after,html.overlay #find .glyph{display:none}
 .found{flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;padding:14px 16px}
 .found h2,.found p{margin:0}
 #more{margin-left:10px}
@@ -44,14 +57,28 @@
 #rows th:first-child{width:99%}   /* the station takes the room to spare, so the copy button stays beside its system */
 #rows td:first-child{font-weight:600}
 #rows .btn{height:24px}   /* keeps a row as low as its text */
+#rows .badge{vertical-align:top}   /* the pad and the EDSM answer, as labels that keep a row as low as its text */
 #places tr.picked td{background:var(--accent-soft)}
+#places tr.picked td:first-child{box-shadow:inset 3px 0 0 var(--accent)}   /* the station whose prices are below */
 #places tr.gone td{opacity:.55}   /* a ship's station EDSM was not asked about: Spansh alone says it sells the ship */
+/* The answer's heading is the tag of the card under it: its lines on top, and the list filling the rest edge to edge.
+   In the overlay's box the card gives way, and the tag is no taller than the heading was. */
+#what.ctag{height:auto;min-height:22px;max-width:100%;padding:3px 22px 3px 10px;line-height:16px;white-space:normal}
+.overlay #what.ctag{min-height:20px;padding:2px 22px 2px 10px}
+html:not(.overlay) #what.ctag{margin-bottom:-10px}
+html:not(.overlay) .found.two #what.ctag{margin-bottom:-8px}
+html:not(.overlay) .hits{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;margin:0;padding:10px 12px 0}
+html:not(.overlay) .hits>#rows{margin:0 -12px;border:0;border-top:1px solid var(--line);border-radius:0;background:none}
+html:not(.overlay) .found.two .hits{padding-top:0}   /* only the stations' list is left in it then */
+html:not(.overlay) .found.two .hits>#rows{border-top:0}
+.overlay .hits{display:contents}
 /* A station found by name: the stations on top, the price list of the one picked under them with the room to spare. */
 /* The price list is what the page is for then (the owner, 11 October 2026: it showed "a very few entrys"): the stations
    shrink to the one picked, the Nearest buttons and the credit line make room, and a window too low for all of it
    scrolls as a whole rather than leave the list a slit. */
 .found.two{overflow-y:auto;gap:8px}
-.found.two #rows{flex:none;max-height:190px}
+.found.two #rows,.found.two .hits{flex:none}
+.found.two #rows{max-height:190px}
 .found.two .credit,.found.two #note,.found.two #about{display:none}
 #prices{flex:1 0 auto;min-height:380px;display:flex;flex-direction:column;gap:8px}
 #prices .head{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline}
@@ -61,15 +88,17 @@
 /* What the station sells beside what it buys: twice the lines in the same height, and each is one question
    ("what can I buy there", "what can I sell there"). A narrow window puts one under the other. */
 #prices-box{flex:1 1 0;min-height:300px;display:flex;flex-wrap:wrap;gap:12px}
-#prices-box .half{flex:1 1 440px;min-width:0;min-height:300px;display:flex;flex-direction:column;gap:6px}
-#prices-box h3{margin:0;font-size:13px;font-weight:600}
-#prices-box h3 span{color:var(--muted);font-weight:400}
+#prices-box .half{flex:1 1 440px;min-width:0;min-height:300px;display:flex;flex-direction:column}
+/* Each list's name is the tag on its top edge; the count and the station the profit is counted with follow in small
+   plain letters, and a long name wraps rather than being cut off. */
+#prices-box h3{margin:0;height:auto;min-height:22px;max-width:100%;padding:3px 22px 3px 10px;line-height:16px;white-space:normal}
+#prices-box h3 span{color:inherit;opacity:.8;font:500 12px var(--font);letter-spacing:0;text-transform:none}
 #prices-box .tablebox{flex:1 1 0;min-height:0}
 #prices-box td,#prices-box th{padding:4px 10px}
 #prices-box tbody tr:nth-child(even) td{background:rgba(255,255,255,.025)}
 #prices-box tbody tr:hover td{background:var(--accent-soft)}
 #prices-box td:first-child{font-weight:600}
-#prices-box td.best{color:var(--accent);font-weight:600}
+#prices-box td.best{color:var(--accent-hi);font-weight:600}
 #prices-box th:first-child{width:99%}
 #prices-box .none{padding:14px 10px;color:var(--muted);font-weight:400}
 .found .credit{margin-top:auto}   /* at the foot of the page, whatever is above it */
@@ -82,71 +111,76 @@
 <nav class="subtabs"><a href="./">Trades</a><a class="active" href="find.html">Find by name</a><a href="sniffer.html">Sniffer</a></nav>
 
 <form class="ask" id="form" novalidate>
-  <div class="line">
-    <div class="seg" id="kinds" role="group" aria-label="What to find">
-      <button type="button" data-kind="commodity">Commodity</button>
-      <button type="button" data-kind="module">Module</button>
-      <button type="button" data-kind="ship">Ship</button>
-      <button type="button" data-kind="station" title="Find a station by its own name and see its price list">Station</button>
-      <button type="button" data-kind="sector" title="List the star systems of a sector of space: type the start of their names, like Wregoe or Col 285 Sector">&#10023; Sector</button>
+  <span class="ctag ice">Find by name</span>
+  <div class="card">
+    <div class="line">
+      <div class="seg" id="kinds" role="group" aria-label="What to find">
+        <button type="button" data-kind="commodity">Commodity</button>
+        <button type="button" data-kind="module">Module</button>
+        <button type="button" data-kind="ship">Ship</button>
+        <button type="button" data-kind="station" title="Find a station by its own name and see its price list">Station</button>
+        <button type="button" data-kind="sector" title="List the star systems of a sector of space: type the start of their names, like Wregoe or Col 285 Sector">&#10023; Sector</button>
+      </div>
+      <div class="field name">
+        <label>Name<input id="name" list="names" autocomplete="off" spellcheck="false" placeholder="Type a few letters, then pick from the list"></label>
+      </div>
+      <datalist id="names"></datalist>
+      <div class="seg" id="sides" role="group" aria-label="To buy or to sell">
+        <button type="button" data-side="buy" title="The nearest places that sell it">To buy</button>
+        <button type="button" data-side="sell" title="The nearest places that buy it from you">To sell</button>
+      </div>
+      <div class="field grades" id="grades" hidden>
+        <label title="The module's size. Any: every size the station sells">Class<select id="class"><option value="">Any</option></select></label>
+        <label title="E is the plainest, A the best. Any: every rating the station sells">Rating<select id="rating"><option value="">Any</option></select></label>
+      </div>
+      <div class="field grades" id="inhabited-label" hidden>
+        <label title="Most of a sector is empty space with stars nobody lives at">Show<select id="inhabited"><option value="false">Every known system</option><option value="true">Only where people live</option></select></label>
+      </div>
+      <div class="field from">
+        <label title="Distances are measured from this system">From<input id="from" autocomplete="off" spellcheck="false" placeholder="Start Elite, or type a system"></label>
+        <button class="btn primary cta" id="find"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-search"/></svg>Find</button>
+      </div>
     </div>
-    <div class="field name">
-      <label>Name<input id="name" list="names" autocomplete="off" spellcheck="false" placeholder="Type a few letters, then pick from the list"></label>
-    </div>
-    <datalist id="names"></datalist>
-    <div class="seg" id="sides" role="group" aria-label="To buy or to sell">
-      <button type="button" data-side="buy" title="The nearest places that sell it">To buy</button>
-      <button type="button" data-side="sell" title="The nearest places that buy it from you">To sell</button>
-    </div>
-    <div class="field grades" id="grades" hidden>
-      <label title="The module's size. Any: every size the station sells">Class<select id="class"><option value="">Any</option></select></label>
-      <label title="E is the plainest, A the best. Any: every rating the station sells">Rating<select id="rating"><option value="">Any</option></select></label>
-    </div>
-    <div class="field grades" id="inhabited-label" hidden>
-      <label title="Most of a sector is empty space with stars nobody lives at">Show<select id="inhabited"><option value="false">Every known system</option><option value="true">Only where people live</option></select></label>
-    </div>
-    <div class="field from">
-      <label title="Distances are measured from this system">From<input id="from" autocomplete="off" spellcheck="false" placeholder="Start Elite, or type a system"></label>
-      <button class="btn primary" id="find">Find</button>
-    </div>
-  </div>
 
-  <div class="line filters">
-    <div class="field">
-      <label>Landing pad<select id="pad">
-        <option value="auto"></option><option value="S">Small or larger</option><option value="M">Medium or larger</option><option value="L">Large</option>
-      </select></label>
-      <label title="Light seconds from the star you arrive at to the station. 0 or empty: any distance">Max. distance from star (ls)<input id="maxStarLs" type="number" min="0" step="500"></label>
-      <label>Surface stations<select id="surface">
-        <option value="odyssey">All of them</option><option value="horizons">No Odyssey settlements</option><option value="none">None</option>
-      </select></label>
-      <label>Fleet carriers<select id="carriers"><option value="false">Leave out</option><option value="true">Include</option></select></label>
-      <label id="docking-label" title="A carrier's owner decides who may dock. Studio asks Spansh what each one is set to; that is as old as the last report, so a carrier listed as open can still turn you away." hidden>Carrier docking<select id="docking"><option value="open">Open to all only</option><option value="any">Any (may refuse you)</option></select></label>
-      <label id="age-label">Max. price age<select id="maxAgeHours"></select></label>
-      <label id="volume-label" title="Tons on sale when buying, tons wanted when selling: stations with less are left out"><span id="volume-caption"></span><select id="volume"></select></label>
+    <div class="line filters">
+      <div class="field">
+        <label>Landing pad<select id="pad">
+          <option value="auto"></option><option value="S">Small or larger</option><option value="M">Medium or larger</option><option value="L">Large</option>
+        </select></label>
+        <label title="Light seconds from the star you arrive at to the station. 0 or empty: any distance">Max. distance from star (ls)<input id="maxStarLs" type="number" min="0" step="500"></label>
+        <label>Surface stations<select id="surface">
+          <option value="odyssey">All of them</option><option value="horizons">No Odyssey settlements</option><option value="none">None</option>
+        </select></label>
+        <label>Fleet carriers<select id="carriers"><option value="false">Leave out</option><option value="true">Include</option></select></label>
+        <label id="docking-label" title="A carrier's owner decides who may dock. Studio asks Spansh what each one is set to; that is as old as the last report, so a carrier listed as open can still turn you away." hidden>Carrier docking<select id="docking"><option value="open">Open to all only</option><option value="any">Any (may refuse you)</option></select></label>
+        <label id="age-label">Max. price age<select id="maxAgeHours"></select></label>
+        <label id="volume-label" title="Tons on sale when buying, tons wanted when selling: stations with less are left out"><span id="volume-caption"></span><select id="volume"></select></label>
+      </div>
+      <button type="button" class="btn" id="mine" title="Back to the filters of your Trades settings. What you change here is kept for this page, and changes nothing on Trades." hidden>Trades' filters</button>
+      <button type="button" class="btn" id="sniff" title="Keeps this commodity search on the Sniffer tab, where you add a price. Studio then runs it every hour, anywhere in the galaxy, and can play a sound when it is met.">Save to Sniffer</button>
     </div>
-    <button type="button" class="btn" id="mine" title="Back to the filters of your Trades settings. What you change here is kept for this page, and changes nothing on Trades." hidden>Trades' filters</button>
-    <button type="button" class="btn" id="sniff" title="Keeps this commodity search on the Sniffer tab, where you add a price. Studio then runs it every hour, anywhere in the galaxy, and can play a sound when it is met.">Save to Sniffer</button>
-  </div>
 
-  <div class="line quick">
-    <span class="muted small">Nearest:</span>
+    <div class="line quick">
+      <span class="muted small">Nearest:</span>
+    </div>
+    <p class="small warn" id="names-problem" hidden></p>
   </div>
-  <p class="small warn" id="names-problem" hidden></p>
 </form>
 
 <main class="found">
-  <h2 id="what" hidden></h2>
-  <p class="muted small" id="about" hidden><span id="about-text"></span><a id="on-site" target="_blank" rel="noopener" title="Opens this search on spansh.co.uk in your browser">See it on Spansh</a></p>
-  <p id="note" hidden><span id="note-text"></span><button type="button" class="btn small" id="more" title="Asks the service for the places that come next, farther out, and adds them to the list" hidden>Show more</button></p>
-  <p class="busy" id="busy" hidden><span class="spin"></span><span id="busy-text"></span></p>
-  <p class="card bad" id="problem" hidden></p>
-  <p class="muted" id="empty">Pick what to find and press Find, or press one of the Nearest buttons. Studio lists the nearest places that have it, measured from the system under From, and you copy a system's name into the galaxy map.</p>
-  <div class="tablebox" id="rows" hidden>
-    <table>
-      <thead><tr id="heads"></tr></thead>
-      <tbody id="places"></tbody>
-    </table>
+  <h2 id="what" class="ctag" hidden></h2>
+  <div class="card hits">
+    <p class="muted small" id="about" hidden><span id="about-text"></span><a id="on-site" target="_blank" rel="noopener" title="Opens this search on spansh.co.uk in your browser">See it on Spansh</a></p>
+    <p id="note" hidden><span id="note-text"></span><button type="button" class="btn small" id="more" title="Asks the service for the places that come next, farther out, and adds them to the list" hidden>Show more</button></p>
+    <p class="busy" id="busy" hidden><span class="spin"></span><span id="busy-text"></span></p>
+    <p class="card bad" id="problem" hidden></p>
+    <p class="muted" id="empty">Pick what to find and press Find, or press one of the Nearest buttons. Studio lists the nearest places that have it, measured from the system under From, and you copy a system's name into the galaxy map.</p>
+    <div class="tablebox" id="rows" hidden>
+      <table>
+        <thead><tr id="heads"></tr></thead>
+        <tbody id="places"></tbody>
+      </table>
+    </div>
   </div>
   <section id="prices" hidden>
     <div id="station" class="sheet" hidden></div>
@@ -162,11 +196,11 @@
     </div>
     <div id="prices-box">
       <div class="half">
-        <h3 id="sells-what"></h3>
+        <h3 id="sells-what" class="ctag"></h3>
         <div class="tablebox"><table><thead><tr id="sells-heads"></tr></thead><tbody id="sells-rows"></tbody></table></div>
       </div>
       <div class="half">
-        <h3 id="buys-what"></h3>
+        <h3 id="buys-what" class="ctag"></h3>
         <div class="tablebox"><table><thead><tr id="buys-heads"></tr></thead><tbody id="buys-rows"></tbody></table></div>
       </div>
     </div>
@@ -434,7 +468,7 @@ const columns = {
   system: { title: 'System', value: r => r.system, text: r => Studio.link('system', r.system) },
   ly: { title: 'Distance (ly)', num: true, value: r => r.distanceLy, text: r => r.distanceLy == null ? '' : r.distanceLy.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
   ls: { title: 'From star (ls)', num: true, value: r => r.starLs, text: r => r.starLs == null ? '' : whole(r.starLs), hint: 'Light seconds from the star you arrive at' },
-  pad: { title: 'Pad', value: r => r.pad ? 'SML'.indexOf(r.pad) : null, text: r => r.pad || '?', hint: 'The largest landing pad' },
+  pad: { title: 'Pad', value: r => r.pad ? 'SML'.indexOf(r.pad) : null, text: r => h('span', { class: 'badge' }, r.pad || '?'), hint: 'The largest landing pad' },
   type: { title: 'Station type', value: r => r.type, text: r => r.access ? [r.type, h('div', { class: 'muted small' }, r.access)] : r.type },
   item: { title: 'On sale', value: r => r.item, hint: 'Class and rating, as on the outfitting screen: 5A is class 5, rating A' },
   price: { title: 'Price (cr)', num: true, value: r => r.price, text: r => r.price == null ? '' : whole(r.price) },
@@ -451,7 +485,7 @@ const columns = {
   age: { title: 'Reported', value: r => r.updated ? -Date.parse(r.updated) : null, text: r => r.updated ? ago(r.updated) : '', hint: 'When a player\'s tool last reported this' },
   // A ship: whether EDSM, which keeps only the ships really on sale, agrees with Spansh. Stations it says do not sell it are not listed at all.
   edsm: { title: 'EDSM', value: r => ['confirmed', 'no list', 'not checked'].indexOf(r.edsm), hint: 'Checked against EDSM, which lists only the ships a shipyard is selling right now',
-    text: r => r.edsm === 'confirmed' ? h('span', { class: 'good' }, 'Confirmed') : h('span', { class: 'warn' }, r.edsm === 'no list' ? 'No EDSM list' : 'Not checked') },
+    text: r => r.edsm === 'confirmed' ? h('span', { class: 'badge good' }, 'Confirmed') : h('span', { class: 'badge warn' }, r.edsm === 'no list' ? 'No EDSM list' : 'Not checked') },
 };
 const shownColumns = {
   commodity: ['station', 'system', 'ly', 'ls', 'pad', 'type', 'price', 'tons', 'age'],

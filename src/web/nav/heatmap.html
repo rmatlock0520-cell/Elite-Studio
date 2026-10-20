@@ -75,12 +75,20 @@
 @media (max-width:1280px){ .layout{--side:340px} }
 .side{border-right:1px solid var(--line);padding:16px;overflow:auto}
 .side h2:not(:first-child){margin-top:22px}
+/* Each part of the side column (Find, Route check, Your finds...) is a framed card with its name on a filled tag on its
+   top edge (the shared .ctag and .card). The tag is still the part's heading (an h2), so a screen reader lists the
+   parts as before. A smaller window gives the cards less padding, so their contents keep the width they had. */
+.side h2.ctag{display:flex;width:fit-content;max-width:100%;margin:18px 0 0}
+.side .card.sect{margin:0;padding:12px}
+.side .card.sect>:last-child{margin-bottom:0}
+@media (max-width:1180px){ .side .card.sect{padding:10px 8px} }
+@media (max-width:1000px){ .side .card.sect{padding:8px 6px} }
 /* Spec v5: the column can be put away to a thin strip at the window's left edge ("◂ Hide side column", kept in this
    browser), so a small window gives the map all its width; the strip (a button the height of the window) brings it
    back, and shows a turning ring while a request of the map is under way, a red dot when one went wrong. */
 .side-top{display:flex;align-items:baseline;gap:8px;margin:0 0 10px}
 .side-top h2{margin:0;flex:1;min-width:0}
-.side-hide{flex:none;font-size:12px;color:var(--muted);white-space:nowrap;border-radius:5px;padding:2px 6px;margin-right:-6px}
+.side-hide{flex:none;font-size:12px;color:var(--muted);white-space:nowrap;border-radius:2px;padding:2px 6px;margin-right:-6px}
 .side-hide:hover{color:var(--text);background:var(--accent-soft)}
 .layout.side-shut{--side:34px}
 .layout.side-shut .side{padding:0;overflow:hidden}
@@ -97,8 +105,8 @@
 /* the Place and Star fields, each with its own list of what was found */
 .find{position:relative}
 .find+.row,.row+.find,.find+.find{margin-top:10px}
-.picks{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:20;display:grid;padding:4px;max-height:320px;overflow:auto;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;box-shadow:0 14px 36px rgba(0,0,0,.6)}
-.picks button{display:flex;align-items:baseline;gap:8px;width:100%;min-width:0;border:0;background:none;text-align:left;padding:6px 10px;border-radius:5px;color:var(--text)}
+.picks{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:20;display:grid;padding:4px;max-height:320px;overflow:auto;background:var(--panel2);border:1px solid var(--line2);border-top-color:var(--accent-line);border-radius:2px;box-shadow:0 14px 36px rgba(0,0,0,.6)}
+.picks button{display:flex;align-items:baseline;gap:8px;width:100%;min-width:0;border:0;background:none;text-align:left;padding:6px 10px;border-radius:1px;color:var(--text)}
 .picks button.on,.picks button:hover{background:var(--accent-soft)}
 .picks b{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .picks .what{margin-left:auto;flex:none;font-size:12px;color:var(--muted);white-space:nowrap}
@@ -119,13 +127,17 @@
 .pick p{font-size:13px}
 .pick p.bad{color:var(--bad)}
 .acts{display:flex;flex-wrap:wrap;gap:6px}
+/* In the narrow side column a long button label (the Detailed map card's "No list on this PC to build from", in the
+   shared buttons' wider capitals) goes onto a second line inside its card instead of sticking out past the card's
+   edge, which made the column scroll sideways in a small window. A label that fits keeps its one line and its height. */
+.side .acts .btn.small{max-width:100%;white-space:normal;height:auto;min-height:28px;padding-block:4px}
 /* "2 of 9 along this line": where a click's choice is among what lies under that spot */
 .pick p.along{margin:0 0 10px;font-size:12.5px;color:var(--muted)}
 /* the card's own arrows: they move the highlight (as the arrow keys do), never the camera */
-.movepad{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:0 0 10px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg2)}
+.movepad{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin:0 0 10px;padding:8px;border:1px solid var(--line);border-radius:2px;background:var(--bg2)}
 .movepad .cross{display:grid;grid-template-columns:repeat(3,28px);grid-auto-rows:28px;gap:3px}
 .movepad .stack{display:grid;gap:3px}
-.movepad button{height:28px;min-width:28px;padding:0 8px;border:1px solid var(--line2);border-radius:6px;background:var(--panel2);color:var(--text);font-size:12.5px;line-height:1}
+.movepad button{height:28px;min-width:28px;padding:0 8px;border:1px solid var(--line2);border-radius:2px;background:var(--panel2);color:var(--text);font-size:12.5px;line-height:1}
 .movepad button:hover{border-color:var(--accent-line)}
 .movepad button:active{background:var(--accent-soft)}
 .movepad .mid{color:var(--accent)}
@@ -136,16 +148,16 @@
 
 /* the layers: an eye to show or hide, the name to show it bright, Solo */
 .layers{display:grid;gap:4px;margin-bottom:8px}
-.lrow{display:flex;align-items:center;gap:8px;padding:4px 6px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.lrow{display:flex;align-items:center;gap:8px;padding:4px 6px;border:1px solid var(--line);border-radius:2px;background:var(--panel)}
 .lrow.shown{border-color:var(--accent-line);background:var(--accent-soft)}
 .lname{flex:1;min-width:0;display:grid;color:var(--text);padding:2px 0}
 .lname b{font-weight:600;font-size:13.5px}
 .lrow.off .lname{opacity:.45}
-.here{display:inline-block;margin-left:8px;font-family:var(--hud);font-weight:600;font-size:11px;letter-spacing:.12em;color:var(--accent);white-space:nowrap}
-.eye{flex:none;width:28px;height:28px;padding:0;display:grid;place-items:center;border:1px solid var(--line2);border-radius:6px;background:var(--panel2);color:var(--text)}
+.here{display:inline-block;margin-left:8px;font-family:var(--hud);font-weight:600;font-size:11px;letter-spacing:.12em;color:var(--accent-hi);white-space:nowrap}
+.eye{flex:none;width:28px;height:28px;padding:0;display:grid;place-items:center;border:1px solid var(--line2);border-radius:2px;background:var(--panel2);color:var(--text)}
 .eye svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .lrow.off .eye{color:var(--faint)}
-.solo.on{border-color:var(--accent);color:var(--accent)}
+.solo.on{border-color:var(--accent);color:var(--accent-hi)}
 
 /* settings */
 .side .field+p,.side .seg+p{margin-top:6px}
@@ -160,7 +172,7 @@
 .legend p{margin:10px 0 4px}
 .legend canvas{display:block;width:100%;height:34px}
 .read{margin-top:22px}
-.read summary{cursor:pointer;font-family:var(--hud);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:14px}
+.read summary{cursor:pointer;font-family:var(--hud);font-weight:600;letter-spacing:.11em;text-transform:uppercase;font-size:14px;color:var(--accent-hi)}
 .read p{font-size:13px;color:var(--muted);margin:10px 0 0}
 .read b{color:var(--text);font-weight:600}
 .credit{margin:18px 0 0;padding-top:14px;border-top:1px solid var(--line)}
@@ -174,7 +186,7 @@
    drop-downs at its end, so nothing of them lies over the map until asked for. */
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;flex:none;position:relative;z-index:6}
 .bar .group{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
-.bar .group>span{font-size:12px;color:var(--muted);margin-right:4px}
+.bar .group>span{font:500 11.5px var(--hud);letter-spacing:.09em;text-transform:uppercase;color:var(--label);margin-right:4px}
 .bar .ends{margin-left:auto;flex-wrap:nowrap}
 /* In a narrower window the bar's words get shorter ("Top" for "Top (2D)", ◄ for "◄ Back"), so it keeps to one line.
    Studio draws its pages smaller in a small window (a 1,100 px wide one lays the page out about 1,400 px wide), so
@@ -203,7 +215,8 @@
 @media (max-height:640px){ .foot #mouse-help{display:none} }
 .seg.small button{height:28px;padding:0 10px;font-size:13px}
 .dropbox{position:relative}
-.dropbtn[aria-expanded="true"]{border-color:var(--accent);background:var(--accent-soft)}
+/* A drop-down's button while it is open is filled, as a chosen tab is (also under the mouse: .btn's hover would darken it). */
+.bar .btn.dropbtn[aria-expanded="true"]{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
 /* "More ▾": in a narrow window the bar's less-used buttons (Overview, Back and Forward, Route end, then the View
    switch) wait here, in that order, with their whole words; in a wide one it is not there at all. */
 #more-drop{min-width:220px}
@@ -212,10 +225,13 @@
 #more-drop .group>span{display:inline}
 .bar .drop .long{display:inline}
 .bar .drop .short{display:none}
-/* open: a compact panel under the bar, at its right end, over the map's top edge, never over the map's middle */
-.drop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:max-content;max-width:min(600px,calc(100vw - 32px));display:grid;gap:10px;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;background:rgba(14,19,26,.97);box-shadow:0 14px 36px rgba(0,0,0,.6)}
+/* open: a compact panel under the bar, at its right end, over the map's top edge, never over the map's middle. Framed
+   like the shared cards and dialog (a violet top edge and corner bracket on deep navy), and solid, so the map never
+   shows through it. */
+.drop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:max-content;max-width:min(600px,calc(100vw - 32px));display:grid;gap:10px;padding:10px 12px;border:1px solid var(--line2);border-top-color:var(--accent-line);border-radius:2px;box-shadow:0 14px 36px rgba(0,0,0,.6);
+  background:linear-gradient(var(--accent),var(--accent)) top left/14px 2px no-repeat,linear-gradient(var(--accent),var(--accent)) top left/2px 14px no-repeat,linear-gradient(180deg,color-mix(in srgb,var(--panel3) 98%,transparent),color-mix(in srgb,var(--panel) 98%,transparent)) var(--panel)}
 .drop .line{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
-.drop .line>span{font-size:12px;color:var(--muted);margin-right:4px}
+.drop .line>span{font:500 11.5px var(--hud);letter-spacing:.09em;text-transform:uppercase;color:var(--label);margin-right:4px}
 .drop .tick{margin:0;font-size:12.5px;color:var(--muted)}
 .drop .keys{margin:0;max-width:520px}
 /* Camera: one narrow column (the pad, the moves of the map, then Hold height and the keys) down the map's right edge,
@@ -232,19 +248,21 @@
   #cam-drop{left:0;right:auto}
 }
 .moves{display:grid;grid-template-columns:repeat(4,auto);grid-template-rows:14px;grid-auto-rows:28px;gap:3px 4px}
-.moves .cap{grid-column:1/-1;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:center;line-height:14px;height:14px}
+.moves .cap{grid-column:1/-1;font-family:var(--hud);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--label);text-align:center;line-height:14px;height:14px}
 .moves .btn{padding:0 8px}
 /* The map keeps at least 300 px of height (spec v5): in a low window the panel under it gives way first, down to its
    title bar. (A page of 500 px or less has not room for both: the map takes less then. Above it, the 300 px leave the
    panel at least the height of its title bar.) */
 .stage{flex:1 1 0;min-height:300px;display:grid;grid-template-columns:210px minmax(0,1fr);gap:10px}
 @media (max-height:500px){ .stage{min-height:200px} }
-.stripbox,.mapbox{position:relative;min-width:0;min-height:0;background:var(--bg2);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.stripbox,.mapbox{position:relative;min-width:0;min-height:0;background:var(--bg2);border:1px solid var(--line);border-top-color:var(--accent-line);border-radius:2px;overflow:hidden}
 .stripbox canvas,.mapbox canvas{position:absolute;inset:0;width:100%;height:100%}
+/* the frame's violet corner bracket, as the shared cards have, drawn over the canvases (it never takes a click) */
+.stripbox::after,.mapbox::after{content:'';position:absolute;z-index:1;left:0;top:0;width:14px;height:14px;border-top:2px solid var(--accent);border-left:2px solid var(--accent);pointer-events:none}
 #gl{cursor:grab}
 #flat{cursor:crosshair}
-#inset{inset:auto 10px 10px auto;width:168px;height:168px;border:1px solid var(--line2);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
-#tip{position:absolute;z-index:3;max-width:360px;padding:6px 10px;border-radius:7px;background:rgba(14,19,26,.95);border:1px solid var(--line2);font-size:12.5px;pointer-events:none}
+#inset{inset:auto 10px 10px auto;width:168px;height:168px;border:1px solid var(--line2);border-radius:2px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+#tip{position:absolute;z-index:3;max-width:360px;padding:6px 10px;border-radius:2px;background:color-mix(in srgb,var(--panel2) 95%,transparent);border:1px solid var(--line2);font-size:12.5px;pointer-events:none}
 /* the label of a highlight the arrows moved off the map: kept at the map's edge, pointing to it */
 #tip.edge{border-color:var(--accent);color:var(--text)}
 #no-map{position:absolute;inset:0;z-index:2;margin:auto;height:fit-content;max-width:470px;padding:0 16px;text-align:center;color:var(--muted);pointer-events:none;text-shadow:0 1px 3px var(--bg)}
@@ -256,7 +274,7 @@
 .foot #flat-note{white-space:normal}
 /* "Cube level": one level of the opened sector's cubes alone, so the cubes inside can be clicked */
 #level-box{grid-column:2;grid-row:1;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
-#level-box select{height:28px;padding:0 6px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);color:var(--text);font-size:13px}
+#level-box select{height:28px;padding:0 6px;border-radius:2px;border:1px solid var(--line2);background:var(--panel2);color:var(--text);font-size:13px}
 #level-box .btn{min-width:30px;padding:0 6px}
 /* In one of the in-game overlay's boxes the page scrolls as a whole, so the map needs a height of its own. */
 .overlay .view{overflow:visible}
@@ -273,8 +291,8 @@
 .pad .cluster{display:grid;grid-template-columns:repeat(3,26px);grid-template-rows:14px;grid-auto-rows:26px;gap:3px}
 .pad .cluster.zoom{grid-template-columns:26px}
 .pad .cluster.last{grid-template-columns:auto}
-.pad .cap{grid-column:1/-1;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:center;line-height:14px;height:14px}
-.pad button{width:26px;height:26px;padding:0;display:grid;place-items:center;border:1px solid var(--line2);border-radius:6px;background:var(--panel2);color:var(--text);font-size:12px;line-height:1}
+.pad .cap{grid-column:1/-1;font-family:var(--hud);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--label);text-align:center;line-height:14px;height:14px}
+.pad button{width:26px;height:26px;padding:0;display:grid;place-items:center;border:1px solid var(--line2);border-radius:2px;background:var(--panel2);color:var(--text);font-size:12px;line-height:1}
 .pad button:hover:not(:disabled){border-color:var(--accent-line)}
 .pad button:active:not(:disabled){background:var(--accent-soft)}
 .pad button:disabled{opacity:.35;cursor:not-allowed}
@@ -288,18 +306,22 @@
    it gives way first (the map keeps 300 px), and with too little room for a list it is its title bar alone ("squeezed":
    a line says Big view shows it, where the room has a line more), the map taking the rest; it grows back to the
    player's height when the window does. */
-.names{position:relative;flex:0 1 auto;height:var(--names-h,45%);min-height:48px;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.names{position:relative;flex:0 1 auto;height:var(--names-h,45%);min-height:48px;display:flex;flex-direction:column;background-color:var(--panel)}
+/* It is framed as the shared cards are (.card on it: the violet top edge and corner brackets), without a card's padding
+   and margin, which the room worked out for it (namesMost) does not count. The colour under the frame's shading keeps
+   it solid, so in Big view nothing of the page shows through. */
+.names.card{margin:0;padding:0}
 /* Everything but the handle: clipped to the panel's edge, so a panel squeezed lower than its contents never spills. */
 .names-in{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;border-radius:inherit}
 .names.shut{height:auto;min-height:0}
 /* Squeezed (fitPanel): as high as its title bar (and the line), no band of nothing under it. */
 .names.squeezed{flex:none;height:auto;min-height:0}
 .overlay .names{height:560px;max-height:none}
-/* the tabs: the one shown lit and underlined in the accent colour, the others muted */
+/* the tabs: the one shown filled in the accent colour, as the shared tabs are, the others in the accent's light shade */
 .ptabs{display:flex;align-items:stretch;gap:2px;min-width:0;flex:0 1 auto;overflow:hidden}
-.ptabs button{height:28px;padding:0 10px;border:0;border-bottom:2px solid transparent;border-radius:6px 6px 0 0;background:none;color:var(--muted);font-family:var(--hud);font-weight:600;letter-spacing:.07em;text-transform:uppercase;font-size:13px;white-space:nowrap}
+.ptabs button{height:28px;padding:0 10px;border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--accent-hi);font-family:var(--hud);font-weight:600;letter-spacing:.07em;text-transform:uppercase;font-size:13px;white-space:nowrap}
 .ptabs button:hover{color:var(--text);background:var(--accent-soft)}
-.ptabs button[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+.ptabs button[aria-selected="true"]{color:var(--accent-ink);background:var(--accent);border-bottom-color:var(--accent)}
 .ptabs button:focus-visible{outline-offset:-2px}
 /* The first tab says "Systems in this square" whenever the title bar has room for it, and "Systems" when it has not
    (fitPanel measures it): in Big view and in a wide panel the whole words show, whatever the window. */
@@ -330,7 +352,7 @@
 /* where the names come from, small, at the end of the tools' line (the whole of it is its tooltip): no line of its own */
 .names-head #names-from{margin:0 0 0 4px;flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .names-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
-.names-tools input[type=search]{flex:1 1 140px;min-width:120px;max-width:240px;height:28px;padding:0 9px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);font-size:13px}
+.names-tools input[type=search]{flex:1 1 140px;min-width:120px;max-width:240px;height:28px;padding:0 9px;border-radius:2px;border:1px solid var(--line2);background:var(--panel2);font-size:13px}
 .names-tools .tick{margin:0 4px}
 .names-body{flex:1;overflow:auto;min-height:0;padding:8px 12px 10px}
 .names-body>p{margin:0 0 6px}
@@ -339,7 +361,7 @@
    its name, its numbers, its names. auto-fit: one or two boxes stretch over the whole width instead of keeping empty
    columns beside them, and a box of many names (.wide) takes a whole row, so its names are not one long thin column. */
 .groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:8px;align-items:start}
-.grp{min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--bg2)}
+.grp{min-width:0;border:1px solid var(--line);border-radius:2px;background:var(--bg2)}
 .grp.wide{grid-column:1/-1}
 .grp[open]{border-color:var(--line2)}
 .grp>summary{display:block;padding:6px 8px;cursor:pointer;font-size:12.5px;list-style:none}
@@ -349,7 +371,7 @@
 .grp .top b::before{content:'▸ ';color:var(--faint)}
 .grp[open] .top b::before{content:'▾ '}
 .grp .about{display:block;font-size:12px;color:var(--muted)}
-.grp .about .must{color:var(--accent)}
+.grp .about .must{color:var(--accent-hi)}
 .grp .in{padding:0 8px 8px;font-size:12.5px}
 .grp .in p{margin:2px 0}
 /* the numbers to try, after the names known: one row of short chips ("d8-2 must") */
@@ -369,17 +391,17 @@
 .plain h3{margin:8px 0 4px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .plain .cols{columns:230px;column-gap:18px;margin:0;padding:0;list-style:none}
 .plain .cols li{break-inside:avoid}
-.plain-try{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:2px 18px;margin:0 0 8px;padding:4px 10px 8px;border:1px dashed var(--accent-line);border-radius:8px;background:var(--bg2)}
+.plain-try{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:2px 18px;margin:0 0 8px;padding:4px 10px 8px;border:1px dashed var(--accent-line);border-radius:2px;background:var(--bg2)}
 .pname{position:relative;display:block;width:100%;border:0;background:none;padding:1px 6px;border-radius:4px;text-align:left;font:12.5px/1.6 var(--mono);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pname:hover{background:var(--accent-soft)}
-.plain .must .pname{color:var(--accent)}
+.plain .must .pname{color:var(--accent-hi)}
 .plain .may .pname{color:var(--warn)}
-.flyto{border:1px solid var(--line2);border-radius:6px;background:var(--panel2);padding:0 6px;font-size:12px;line-height:20px;color:var(--muted)}
+.flyto{border:1px solid var(--line2);border-radius:2px;background:var(--panel2);padding:0 6px;font-size:12px;line-height:20px;color:var(--muted)}
 .flyto:hover{border-color:var(--accent-line);color:var(--text)}
 
 /* your finds and the detailed map, in the side column */
 .finds{display:grid;gap:4px;margin:0 0 6px}
-.frow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:2px 6px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.frow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:2px 6px;padding:5px 8px;border:1px solid var(--line);border-radius:2px;background:var(--panel)}
 .frow .nm{font-family:var(--mono);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--good)}
 .frow .about{grid-column:1/-1;font-size:12px;color:var(--muted)}
 .fine .bar-out{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin:6px 0}
@@ -412,7 +434,7 @@
 .rdot.failed{background:var(--bad)}
 /* The stops in route order. A long route (a few hundred jumps) scrolls inside its own box, so the column below it
    (the detailed map, the layers) stays within reach. */
-.route-stops{list-style:none;margin:0 0 6px;padding:3px;max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.route-stops{list-style:none;margin:0 0 6px;padding:3px;max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:2px;background:var(--panel)}
 .rstop{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:7px;padding:1px 4px 1px 6px;border-radius:5px}
 .rstop:hover{background:var(--accent-soft)}
 .rstop .nm{min-width:0;font-family:var(--mono);font-size:12.5px;line-height:22px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
@@ -429,7 +451,7 @@
 .tab-tools .tick{margin:0}
 .tab-tools>span{font-size:12.5px;color:var(--muted)}
 .reach-ly{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
-.reach-ly input{width:74px;height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);color:var(--text);font-size:13px}
+.reach-ly input{width:74px;height:28px;padding:0 8px;border-radius:2px;border:1px solid var(--line2);background:var(--panel2);color:var(--text);font-size:13px}
 .tab-line{display:flex;align-items:center;gap:8px;overflow-wrap:anywhere}
 .tab-line .spin{width:12px;height:12px;color:var(--route-checking)}
 .tab-line.good{color:var(--good)}
@@ -448,7 +470,7 @@
 .trow:hover{background:var(--accent-soft)}
 .trow .nm{position:relative;min-width:0;font-family:var(--mono);font-size:12.5px;line-height:22px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
 .trow.not-recorded .nm{color:var(--warn)}
-.trow.must .nm{color:var(--accent)}
+.trow.must .nm{color:var(--accent-hi)}
 .trow.failed .nm,.trow.waiting .nm{color:var(--muted)}
 .trow .far{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .trow .tag{font-size:10.5px;color:var(--muted);border:1px dashed var(--line2);border-radius:999px;padding:0 5px;white-space:nowrap}
@@ -499,72 +521,88 @@
     <p class="muted small" id="card-hint">Click a sector, a cube, a star or a nebula on the map to see what is known of it. Click the same spot again to reach the one behind it; the arrow keys then move the highlight cube by cube.</p>
     <p class="muted small" id="budget"></p>
 
-    <h2>Find</h2>
-    <div class="find">
-      <div class="field"><label>Place<input id="place" autocomplete="off" spellcheck="false" placeholder="A nebula, a star cluster or a sector" aria-controls="place-picks"></label></div>
-      <div class="picks" id="place-picks" role="listbox" aria-label="Places found" hidden></div>
+    <h2 class="ctag">Find</h2>
+    <div class="card sect">
+      <div class="find">
+        <div class="field"><label>Place<input id="place" autocomplete="off" spellcheck="false" placeholder="A nebula, a star cluster or a sector" aria-controls="place-picks"></label></div>
+        <div class="picks" id="place-picks" role="listbox" aria-label="Places found" hidden></div>
+      </div>
+      <div class="row" id="neb-row" hidden><p class="muted small" id="about-neb"></p><button class="btn small" id="get-neb"></button></div>
+      <div class="find">
+        <div class="field"><label>Star<input id="star" autocomplete="off" spellcheck="false" placeholder="A star's name: three letters or more" aria-controls="star-picks"></label></div>
+        <div class="picks" id="star-picks" role="listbox" aria-label="Stars found" hidden></div>
+      </div>
+      <p class="muted small find-note" id="find-note" hidden></p>
     </div>
-    <div class="row" id="neb-row" hidden><p class="muted small" id="about-neb"></p><button class="btn small" id="get-neb"></button></div>
-    <div class="find">
-      <div class="field"><label>Star<input id="star" autocomplete="off" spellcheck="false" placeholder="A star's name: three letters or more" aria-controls="star-picks"></label></div>
-      <div class="picks" id="star-picks" role="listbox" aria-label="Stars found" hidden></div>
-    </div>
-    <p class="muted small find-note" id="find-note" hidden></p>
 
     <!-- Spec v4: every stop of the route plotted in the game, checked. Above Your finds (where what it finds goes), so
          it keeps its place however many finds there are. The switch and the stops are filled in by showRouteCheck();
          the line says how the check stands in every state, and is read out when it changes. -->
-    <h2>Route check</h2>
-    <p class="muted small">Every system on the route you plot in the game, checked: recorded, or not recorded yet. Studio looks in what is kept on this PC first and asks Spansh only for the rest, up to 100 names in one request, counted in the 3D map's requests. Not recorded ones go to Your finds, below.</p>
-    <div class="route-mode"><span>Check</span><div class="seg small" id="route-modes" role="group" aria-label="What Studio checks of your route"></div></div>
-    <p class="route-sum" id="route-sum" role="status" aria-live="polite"></p>
-    <div class="acts route-now" id="route-now" hidden><button type="button" class="btn small primary" id="route-now-btn" title="Checks every stop of the route plotted in the game now: what this PC keeps first, then Spansh for the rest, up to 100 names a request">Check this route</button></div>
-    <p class="muted small" id="route-more" hidden></p>
-    <p class="muted small route-key" id="route-key" hidden></p>
-    <ol class="route-stops" id="route-stops" aria-label="The stops of your route, in order" hidden></ol>
-
-    <h2>Your finds</h2>
-    <p class="muted small">Systems the game knows that no database has: not recorded yet. Studio checks each system you target or plot a route to, first in what is kept on this PC, then (only if needed) with one name lookup at Spansh.</p>
-    <label class="tick" title="On: Studio checks the systems you target or plot a route to, at most once each per session, counted in the 3D map's requests. Off: it checks nothing."><input type="checkbox" id="check-targets" checked>Check my targets</label>
-    <p class="small" id="target-line" hidden></p>
-    <div class="finds" id="finds" aria-live="polite"></div>
-
-    <h2>Detailed map</h2>
-    <div class="fine" id="fine"></div>
-
-    <h2>Layers</h2>
-    <div class="layers" id="layers"></div>
-    <p class="muted small">Click a layer's name to show it bright. The eye hides or shows a layer; Solo shows it alone. Page Up and Page Down move the highlight up or down; with nothing chosen they step from layer to layer.</p>
-
-    <h2>Colour by</h2>
-    <div class="field"><select id="metric" aria-label="Colour by"></select></div>
-    <p class="muted small" id="metric-hint"></p>
-    <div class="row" id="size-row" hidden><span class="muted small">Cube size</span><div class="seg" id="sizes" role="group" aria-label="Cube size"></div></div>
-
-    <h2>Colours</h2>
-    <div class="field"><select id="preset" aria-label="Colours"></select></div>
-    <p class="muted small" id="preset-about"></p>
-    <div class="custom" id="custom" hidden></div>
-    <label class="tick"><input type="checkbox" id="reverse">Reverse: hot means few known</label>
-    <div class="legend">
-      <div id="legend-s-box" hidden><p class="muted small" id="legend-s-title">Sectors of 1,280 ly: systems named after each (EDAstro)</p><canvas id="legend-s"></canvas></div>
-      <div id="legend-c-box" hidden><p class="muted small" id="legend-c-title"></p><canvas id="legend-c"></canvas></div>
-      <p class="muted small" id="legend-grey" hidden>Sectors are grey for this colouring: look inside a sector to see it in cubes.</p>
+    <h2 class="ctag">Route check</h2>
+    <div class="card sect">
+      <p class="muted small">Every system on the route you plot in the game, checked: recorded, or not recorded yet. Studio looks in what is kept on this PC first and asks Spansh only for the rest, up to 100 names in one request, counted in the 3D map's requests. Not recorded ones go to Your finds, below.</p>
+      <div class="route-mode"><span>Check</span><div class="seg small" id="route-modes" role="group" aria-label="What Studio checks of your route"></div></div>
+      <p class="route-sum" id="route-sum" role="status" aria-live="polite"></p>
+      <div class="acts route-now" id="route-now" hidden><button type="button" class="btn small primary" id="route-now-btn" title="Checks every stop of the route plotted in the game now: what this PC keeps first, then Spansh for the rest, up to 100 names a request">Check this route</button></div>
+      <p class="muted small" id="route-more" hidden></p>
+      <p class="muted small route-key" id="route-key" hidden></p>
+      <ol class="route-stops" id="route-stops" aria-label="The stops of your route, in order" hidden></ol>
     </div>
 
-    <h2>Look</h2>
-    <div class="seg" id="looks" role="group" aria-label="Look">
-      <button type="button" data-look="glass" title="See-through, the nearest in front">Glass</button>
-      <button type="button" data-look="glow" title="The colours add up, so the busiest places shine">Glow</button>
-      <button type="button" data-look="solid" title="No see-through: best with the filters below">Solid</button>
+    <h2 class="ctag">Your finds</h2>
+    <div class="card sect">
+      <p class="muted small">Systems the game knows that no database has: not recorded yet. Studio checks each system you target or plot a route to, first in what is kept on this PC, then (only if needed) with one name lookup at Spansh.</p>
+      <label class="tick" title="On: Studio checks the systems you target or plot a route to, at most once each per session, counted in the 3D map's requests. Off: it checks nothing."><input type="checkbox" id="check-targets" checked>Check my targets</label>
+      <p class="small" id="target-line" hidden></p>
+      <div class="finds" id="finds" aria-live="polite"></div>
     </div>
-    <div class="slider"><label for="opacity">Shown layer</label><output id="opacity-out"></output><input type="range" id="opacity" min="0.05" max="1" step="0.01"></div>
-    <div class="slider"><label for="ghost">Other layers</label><output id="ghost-out"></output><input type="range" id="ghost" min="0" max="0.5" step="0.01"></div>
-    <label class="tick" title="Makes the cold sectors and cubes, where few systems are known, more solid than the busy ones"><input type="checkbox" id="stand-out">Unexplored stands out</label>
-    <label class="tick" title="Outlines the sectors and cubes where nothing is known"><input type="checkbox" id="show-empty">Show empty cubes</label>
-    <p class="muted small" id="range-what"></p>
-    <div class="slider"><label for="lo">Hide fewer than</label><output id="lo-out"></output><input type="range" id="lo" min="0" max="1000" step="1"></div>
-    <div class="slider"><label for="hi">Hide more than</label><output id="hi-out"></output><input type="range" id="hi" min="0" max="1000" step="1"></div>
+
+    <h2 class="ctag">Detailed map</h2>
+    <div class="card sect">
+      <div class="fine" id="fine"></div>
+    </div>
+
+    <h2 class="ctag">Layers</h2>
+    <div class="card sect">
+      <div class="layers" id="layers"></div>
+      <p class="muted small">Click a layer's name to show it bright. The eye hides or shows a layer; Solo shows it alone. Page Up and Page Down move the highlight up or down; with nothing chosen they step from layer to layer.</p>
+    </div>
+
+    <h2 class="ctag">Colour by</h2>
+    <div class="card sect">
+      <div class="field"><select id="metric" aria-label="Colour by"></select></div>
+      <p class="muted small" id="metric-hint"></p>
+      <div class="row" id="size-row" hidden><span class="muted small">Cube size</span><div class="seg" id="sizes" role="group" aria-label="Cube size"></div></div>
+    </div>
+
+    <h2 class="ctag">Colours</h2>
+    <div class="card sect">
+      <div class="field"><select id="preset" aria-label="Colours"></select></div>
+      <p class="muted small" id="preset-about"></p>
+      <div class="custom" id="custom" hidden></div>
+      <label class="tick"><input type="checkbox" id="reverse">Reverse: hot means few known</label>
+      <div class="legend">
+        <div id="legend-s-box" hidden><p class="muted small" id="legend-s-title">Sectors of 1,280 ly: systems named after each (EDAstro)</p><canvas id="legend-s"></canvas></div>
+        <div id="legend-c-box" hidden><p class="muted small" id="legend-c-title"></p><canvas id="legend-c"></canvas></div>
+        <p class="muted small" id="legend-grey" hidden>Sectors are grey for this colouring: look inside a sector to see it in cubes.</p>
+      </div>
+    </div>
+
+    <h2 class="ctag">Look</h2>
+    <div class="card sect">
+      <div class="seg" id="looks" role="group" aria-label="Look">
+        <button type="button" data-look="glass" title="See-through, the nearest in front">Glass</button>
+        <button type="button" data-look="glow" title="The colours add up, so the busiest places shine">Glow</button>
+        <button type="button" data-look="solid" title="No see-through: best with the filters below">Solid</button>
+      </div>
+      <div class="slider"><label for="opacity">Shown layer</label><output id="opacity-out"></output><input type="range" id="opacity" min="0.05" max="1" step="0.01"></div>
+      <div class="slider"><label for="ghost">Other layers</label><output id="ghost-out"></output><input type="range" id="ghost" min="0" max="0.5" step="0.01"></div>
+      <label class="tick" title="Makes the cold sectors and cubes, where few systems are known, more solid than the busy ones"><input type="checkbox" id="stand-out">Unexplored stands out</label>
+      <label class="tick" title="Outlines the sectors and cubes where nothing is known"><input type="checkbox" id="show-empty">Show empty cubes</label>
+      <p class="muted small" id="range-what"></p>
+      <div class="slider"><label for="lo">Hide fewer than</label><output id="lo-out"></output><input type="range" id="lo" min="0" max="1000" step="1"></div>
+      <div class="slider"><label for="hi">Hide more than</label><output id="hi-out"></output><input type="range" id="hi" min="0" max="1000" step="1"></div>
+    </div>
 
     <details class="read">
       <summary>How to read this</summary>
@@ -707,7 +745,7 @@
     <!-- The panel under the map (spec v5): three tabs in its title bar, the chosen one kept. "Systems in this square"
          is the list of names as it was; "Within reach" (#tab-reach, spec v5 C) and "Nav scan" (#tab-navscan, spec v5 D)
          are filled in by their own parts. #names-h, the panel's title, follows the tab. -->
-    <section class="names" id="names" aria-labelledby="names-h">
+    <section class="names card" id="names" aria-labelledby="names-h">
       <div class="names-grip" id="names-grip" role="separator" aria-orientation="horizontal" aria-controls="names" aria-label="Height of the panel under the map" tabindex="0" title="Drag up or down to make the panel taller or shorter (the map gives or takes the room). Double-click: back to the usual height."></div>
       <div class="names-in">
       <div class="names-head">

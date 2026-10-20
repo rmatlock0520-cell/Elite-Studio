@@ -164,13 +164,19 @@ public static class Program
         var settings = new Settings(Path.Combine(Paths.DataDir, "settings.json"));
         // The control presets that ship with the game are in its install folder: the practice one, else the
         // first one a launcher knows of, else the one the player picked by hand in Studio UI.
-        using var watcher = new GameWatcher(Paths.JournalDir, Paths.BindingsDir,
-            gameDir: () => Paths.GameDir ?? GameFolder.FindAll().FirstOrDefault()?.Dir ?? settings.Get<UiSettings>("ui").GameDir);
+        string? GameDir() => Paths.GameDir ?? GameFolder.FindAll().FirstOrDefault()?.Dir ?? settings.Get<UiSettings>("ui").GameDir;
+        using var watcher = new GameWatcher(Paths.JournalDir, Paths.BindingsDir, gameDir: GameDir);
         using var web = new WebServer(Paths.WebRoot);
         MainWindow? window = options.ContainsKey("headless") ? null : new MainWindow(smoke);
         AppApi.Map(web, watcher.State, window);
         ThemeApi.Map(web, settings, options.ContainsKey("offline") ? new Offline() : null);
         using var overlay = new Overlay.OverlayHost(web, settings, watcher.State, headless: window is null);
+        // Studio Flight, for flying with Flight Assist off: the trainer's stream of the sticks, the flight overlay (shown by
+        // itself while Flight Assist is off), and Joystick Gremlin's profile with an FA Off mode. A practice copy must not
+        // touch the player's real Gremlin files: it uses "gremlin\profile.xml" in its own data folder, when there is one.
+        string practiceProfile = Path.Combine(Paths.DataDir, "gremlin", "profile.xml");
+        using var flight = new Flight.FlightApi(web, settings, watcher.State, overlay, Paths.BindingsDir, GameDir,
+            gremlinProfile: Paths.Practice ? () => File.Exists(practiceProfile) ? practiceProfile : null : null);
         // The clients for the community's services are made here and closed when the app ends. Studio Nav's, for Spansh
         // (--offline: a practice run reaches neither Spansh nor EDAstro):
         using var spansh = new Nav.Spansh(options.ContainsKey("offline") ? new Offline() : null);

@@ -1,0 +1,75 @@
+using System.Text.RegularExpressions;
+
+namespace EliteStudio.Flight;
+
+/// <summary>One curve for each of the three turning controls.</summary>
+public sealed record FlightCurves(StickCurve Pitch, StickCurve Roll, StickCurve Yaw)
+{
+    public FlightCurves() : this(new StickCurve(), new StickCurve(), new StickCurve()) { }
+
+    public StickCurve Of(string control) => control switch { "roll" => Roll, "yaw" => Yaw, _ => Pitch };
+
+    internal FlightCurves Cleaned() => new((Pitch ?? new()).Cleaned(), (Roll ?? new()).Cleaned(), (Yaw ?? new()).Cleaned());
+}
+
+/// <summary>How the player has done at one exercise of the trainer: sets flown, the most attempts that came off in one set, and whether a set was passed (three of five) and when.</summary>
+public sealed record ExerciseRecord(int Sets = 0, int Best = 0, bool Passed = false, string? PassedOn = null);
+
+/// <summary>
+/// The "flight" section of settings.json: Studio Flight's curves, the trainer's progress and the
+/// flight overlay's own switch. The overlay box itself (key, place, size) is the overlay's (see
+/// <see cref="Overlay.OverlaySettings"/>, box "flight").
+/// </summary>
+public sealed record FlightSettings
+{
+    /// <summary>The curves for flying with Flight Assist on; null until the player saves some (until then Gremlin's, read from its profile).</summary>
+    public FlightCurves? FaOn { get; init; }
+    /// <summary>The curves for Flight Assist off, the ones the trainer flies with; null until the player saves some.</summary>
+    public FlightCurves? FaOff { get; init; }
+    /// <summary>The ship the trainer flies like, by coriolis-data's name ("cobra_mk_iii"); empty for the ship the player is flying.</summary>
+    public string Ship { get; init; } = "";
+    /// <summary>Show the flight overlay by itself while Flight Assist is off, and hide it again when it comes back on.</summary>
+    public bool ShowWhenFaOff { get; init; } = true;
+    /// <summary>What the trainer reads: "stick", the real stick with the FA off curves applied by Studio; "game", what the game itself gets (Gremlin's vJoy).</summary>
+    public string Input { get; init; } = "stick";
+    /// <summary>
+    /// The player's corrections of which of Windows' axis letters a control of a device is: "046D:C215 U" → "Z"
+    /// (the device, the game's letter for the axis; Windows' letter, see <see cref="StickState"/>).
+    /// </summary>
+    public Dictionary<string, string> AxisFix { get; init; } = [];
+    /// <summary>The real stick behind each control where Studio cannot tell it from Gremlin: "pitch" → "046D:C215 Y".</summary>
+    public Dictionary<string, string> Sources { get; init; } = [];
+    /// <summary>Keys the trainer turns the ship with when the game has none for that: "pitchUp" → "Key_Numpad_5".</summary>
+    public Dictionary<string, string> TrainerKeys { get; init; } = new(DefaultTrainerKeys);
+    /// <summary>The trainer's progress by exercise ("spin-1", "tunnel-2", "track-3").</summary>
+    public Dictionary<string, ExerciseRecord> Progress { get; init; } = [];
+    /// <summary>
+    /// Not a setting, a marker kept with them: the flight overlay is up because Flight Assist went off, not because the
+    /// player showed it, so it goes again when Flight Assist comes back on, also after Studio was restarted in between.
+    /// </summary>
+    public bool ShownForFaOff { get; init; }
+
+    internal static readonly Dictionary<string, string> DefaultTrainerKeys = new()
+    {
+        ["pitchUp"] = "Key_Numpad_5", ["pitchDown"] = "Key_Numpad_8", ["yawLeft"] = "Key_Numpad_4",
+        ["yawRight"] = "Key_Numpad_6", ["rollLeft"] = "Key_Numpad_7", ["rollRight"] = "Key_Numpad_9",
+    };
+
+    static readonly Regex DeviceAxis = new(@"^[0-9A-F]{4}:[0-9A-F]{4}(#\d{1,2})? (X|Y|Z|RX|RY|RZ|U|V)$");
+    static readonly Regex Exercise = new(@"^(spin|tunnel|track)-[1-3]$");
+
+    /// <summary>Every value made usable: the file can be edited by hand, and a page may send anything.</summary>
+    internal FlightSettings Cleaned() => this with
+    {
+        FaOn = FaOn?.Cleaned(),
+        FaOff = FaOff?.Cleaned(),
+        Ship = Regex.IsMatch(Ship ?? "", "^[a-z0-9_]{1,40}$") ? Ship! : "",
+        Input = Input == "game" ? "game" : "stick",
+        // JSON can put null where a value belongs (a hand-edited file): such an entry is left out.
+        AxisFix = (AxisFix ?? []).Where(p => p.Value is not null && DeviceAxis.IsMatch(p.Key) && WindowsSticks.Letters.Contains(p.Value)).ToDictionary(),
+        Sources = (Sources ?? []).Where(p => p.Value is not null && p.Key is "pitch" or "roll" or "yaw" && DeviceAxis.IsMatch(p.Value)).ToDictionary(),
+        TrainerKeys = (TrainerKeys ?? []).Where(p => p.Value is not null && DefaultTrainerKeys.ContainsKey(p.Key) && KeyNames.ScanCode(p.Value) is not null).ToDictionary(),
+        Progress = (Progress ?? []).Where(p => Exercise.IsMatch(p.Key) && p.Value is not null)
+            .ToDictionary(p => p.Key, p => p.Value with { Sets = Math.Max(0, p.Value.Sets), Best = Math.Clamp(p.Value.Best, 0, 5) }),
+    };
+}

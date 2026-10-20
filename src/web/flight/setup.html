@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="studio-token" content="__STUDIO_TOKEN__">
+<title>Stick setup - Studio Flight - Elite Studio</title>
+<link rel="icon" href="../studio.svg">
+<link rel="stylesheet" href="../studio.css">
+<!--
+  STUDIO FLIGHT, STICK SETUP: the stick's curves for flying with Flight Assist off, and taking them to Joystick Gremlin.
+  Left column: the stick check (check.js: guided steps with the hands off and with the hand resting on the stick; it sets
+  the Flight Assist off dead zones by itself, with a button to put back the ones before, and lists earlier checks); the
+  hands live (as the in-game flight overlay draws them) with which stick axis each control is read from; the curve
+  editor (Flight Assist off and on, one curve each for pitch, roll and yaw; "Copy to all three" copies the shape and
+  leaves each axis its own dead zones and travel, which the check measured for that axis). Right column: the player's
+  Elite bindings for flight with what in them matters for Flight Assist off; Joystick Gremlin, with the button that
+  writes the profile with an "FA Off" mode; the flight overlay's switches.
+  GET /api/flight and the "flight" event carry everything; POST /api/flight/settings saves curves and fixes,
+  POST /api/flight/gremlin writes the profile; the overlay's own settings go through /api/overlay/settings.
+-->
+<style>
+.page{flex:1;min-height:0;overflow:auto;padding:16px}
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;align-items:start}
+.card h2{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.hands{height:200px;position:relative}
+.hands canvas,.graph canvas{position:absolute;inset:0;width:100%;height:100%}
+.graph{height:260px;position:relative;border:1px solid var(--line);border-radius:8px;background:var(--bg2);margin:10px 0}
+.sources{display:grid;grid-template-columns:70px 1fr auto;gap:4px 10px;align-items:center;font-size:13px;margin-top:8px}
+.sources .n{color:var(--muted)}
+.sl{display:grid;grid-template-columns:150px minmax(0,1fr) 46px;gap:10px;align-items:center;margin:6px 0}
+.sl span{font-size:13.5px}
+.sl small{display:block;color:var(--muted);font-size:11.5px;line-height:1.2}
+.sl output{font-family:var(--mono);text-align:right;color:var(--accent)}
+/* A look other than Velvet Ice puts its colours on <html> (studio.js); its lighter accent shade reads better as text. */
+:root[style*="--accent-hi:"] .sl output{color:var(--accent-hi)}
+.sl input{width:100%;accent-color:var(--accent)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.readout{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.readout b{color:var(--text);font-weight:500}
+table.binds{width:100%;border-collapse:collapse;font-size:13px}
+table.binds td{padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+table.binds td:first-child{color:var(--muted);white-space:nowrap;width:150px}
+.none{color:var(--faint)}
+.notes{margin:8px 0 0;padding-left:18px;font-size:13px}
+.notes li{margin:4px 0}
+.path{font-family:var(--mono);font-size:12.5px;word-break:break-all}
+.check{display:flex;gap:8px;align-items:center;font-size:13.5px;margin:6px 0}
+/* the stick check: the device's axes as bars, the step on screen with its timer, and what it found */
+.check-top .field{flex:1;min-width:0}
+.axisbars{display:grid;gap:6px;margin:10px 0}
+.axisbar{display:grid;grid-template-columns:150px minmax(0,1fr) 56px;gap:10px;align-items:center;font-size:13px}
+.axisbar .track{position:relative;height:14px;border-radius:7px;background:var(--bg2);border:1px solid var(--line2);overflow:hidden}
+.axisbar .fill{position:absolute;top:0;bottom:0;background:var(--accent);opacity:.85}
+.axisbar .dead{position:absolute;top:0;bottom:0;background:rgba(255,255,255,.12)}
+.axisbar .mid{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--muted)}
+.check-run{border:1px solid var(--accent-line);background:var(--accent-soft);border-radius:10px;padding:14px 16px;margin:10px 0}
+.check-say{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.check-say b{font-family:var(--hud);font-size:26px;letter-spacing:.03em;line-height:1.15}
+.check-say b.push{color:var(--warn)}
+.check-say b.rest{color:var(--good)}
+.check-say span{font-family:var(--hud);font-size:34px;color:var(--text);min-width:40px;text-align:right}
+.check-run p{margin:4px 0 10px}
+.check-timer{height:10px;border-radius:5px;background:var(--bg2);overflow:hidden;margin-bottom:8px}
+.check-timer i{display:block;height:100%;width:0;background:var(--accent)}
+.check-run .row{justify-content:space-between}
+#check-result h3{font-family:var(--hud);font-size:15px;letter-spacing:.06em;text-transform:uppercase;margin:12px 0 8px}
+#check-result small{color:var(--muted)}
+#check-result .row{margin-top:10px}
+.check-status p{margin:10px 0 6px}
+.check-history{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.check-history>summary{cursor:pointer;font-family:var(--hud);font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.check-earlier{margin:10px 0 14px}
+.check-earlier p{margin:4px 0}
+</style>
+</head>
+<body>
+<nav class="subtabs"><a href="./">Trainer</a><a class="active" href="setup.html">Stick setup</a></nav>
+<div class="page"><div class="grid">
+  <div>
+    <section class="card" id="check-card">
+      <h2>Stick check <span class="small muted">guided, about 2½ minutes</span></h2>
+      <p class="small muted">With Flight Assist off, anything the stick gives at rest keeps turning the ship faster and faster, and an old stick seldom comes back to exactly the middle. This check finds where yours rests, by itself and with your hand resting on it as in flight, and how far it reaches, then sets your Flight Assist off dead zones to match (and, for a worn stick that never reaches its end, how far it travels), with a button to put back the ones before. The trainer's exercises are then for tuning the curves. Pick the device, press Start, and follow the steps on screen: each moves on by itself.</p>
+      <div class="row check-top">
+        <div class="field"><label>Device<select id="check-device"></select></label></div>
+        <label class="check"><input type="checkbox" id="check-sound" checked>Beep at each step</label>
+        <button class="btn primary" id="check-start">Start</button>
+      </div>
+      <div class="axisbars" id="check-bars"></div>
+      <div class="check-run" id="check-run" hidden>
+        <div class="check-say"><b id="check-what">Hands off the stick</b><span id="check-left">5</span></div>
+        <p id="check-sub" class="muted"></p>
+        <div class="check-timer"><i id="check-timer"></i></div>
+        <p class="small muted" id="check-next"></p>
+        <div class="row"><span class="small muted" id="check-count"></span><button class="btn small" id="check-stop">Stop</button></div>
+      </div>
+      <div id="check-result"></div>
+      <details class="check-history" id="check-history" hidden><summary>Earlier checks</summary><div id="check-history-list"></div></details>
+    </section>
+
+    <section class="card">
+      <h2>Your hands, live</h2>
+      <div class="hands"><canvas id="hands"></canvas></div>
+      <div class="sources" id="sources"></div>
+      <p class="small muted" id="stick-note"></p>
+    </section>
+
+    <section class="card">
+      <h2>Curves <span class="seg" id="mode"><button data-mode="faOff">Flight Assist off</button><button data-mode="faOn">Flight Assist on</button></span></h2>
+      <div class="row"><span class="seg" id="axis"><button data-axis="pitch">Pitch</button><button data-axis="roll">Roll</button><button data-axis="yaw">Yaw</button></span><span class="readout" id="readout"></span></div>
+      <div class="graph"><canvas id="graph"></canvas></div>
+      <div class="sl"><span>Dead zone, − side<small>left, pushed forward, twist left</small></span><input type="range" id="deadLow" min="0" max="25" step="0.5"><output></output></div>
+      <div class="sl"><span>Dead zone, + side<small>right, pulled back, twist right</small></span><input type="range" id="deadHigh" min="0" max="25" step="0.5"><output></output></div>
+      <div class="sl"><span>Saturation X<small>stick travel used</small></span><input type="range" id="satX" min="50" max="100" step="1"><output></output></div>
+      <div class="sl"><span>Saturation Y<small>most it gives at full stick</small></span><input type="range" id="satY" min="20" max="100" step="1"><output></output></div>
+      <div class="sl"><span>Bend<small>a softer middle</small></span><input type="range" id="bend" min="0" max="100" step="1"><output></output></div>
+      <label class="check"><input type="checkbox" id="link">Both dead zones together</label>
+      <div class="row"><button class="btn small" id="copy-all" title="Copies this curve's shape (Saturation Y and bend) to pitch, roll and yaw; each keeps its own dead zones and travel">Copy to all three</button><button class="btn small" id="reset">Back to the suggestion</button><span class="small muted" id="saved"></span></div>
+      <p class="small muted" id="mode-note"></p>
+    </section>
+  </div>
+
+  <div>
+    <section class="card">
+      <h2>Your Elite flight bindings <span class="small muted" id="preset"></span></h2>
+      <table class="binds" id="binds"></table>
+      <ul class="notes" id="bind-notes"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Joystick Gremlin</h2>
+      <div id="gremlin"></div>
+      <div class="row" style="margin-top:10px"><button class="btn primary" id="export">Save the FA Off profile for Gremlin</button></div>
+      <div id="export-result" class="small" style="margin-top:8px"></div>
+    </section>
+
+    <section class="card">
+      <h2>Flight inputs overlay</h2>
+      <p class="small muted">The throttle hand and the stick hand drawn over the game, like the picture above. It never takes the mouse, so you fly with it up. Elite must be in Borderless (Options › Graphics › Display).</p>
+      <label class="check"><input type="checkbox" id="auto">Show it by itself while Flight Assist is off</label>
+      <label class="check"><input type="checkbox" data-ov="flightOn">Show it now</label>
+      <p class="small">Its key: <b id="ov-key">F6</b> <span class="muted" id="ov-pad"></span> · <span id="ov-change"></span></p>
+      <div class="sl"><span>Size</span><input type="range" data-ov="flightScale" min="0.7" max="2" step="0.01"><output></output></div>
+      <div class="sl"><span>Left to right</span><input type="range" data-ov="flightX" min="0" max="100" step="0.5"><output></output></div>
+      <div class="sl"><span>Top to bottom</span><input type="range" data-ov="flightY" min="0" max="100" step="0.5"><output></output></div>
+    </section>
+  </div>
+</div></div>
+
+<script src="../studio.js"></script>
+<script src="flight.js"></script>
+<script src="check.js"></script>
+<script>
+(() => {
+'use strict';
+const { $, h, toast } = Studio;
+if (!Studio.served) return;
+
+let info = null, frame = null, ov = null;
+let mode = 'faOff', axis = 'pitch';
+const read = Flight.reader();
+const NAMES = { pitch: 'Pitch', roll: 'Roll', yaw: 'Yaw' };
+const FIELDS = ['deadLow', 'deadHigh', 'satX', 'satY', 'bend'];
+
+const call = Studio.follow('flight', '/api/flight', answer => {
+  info = answer;
+  if (pending) info.settings[pending.mode] = JSON.parse(JSON.stringify(pending.curves));   // not sent yet: still the player's
+  draw();
+});
+const overlay = Studio.follow('overlay', '/api/overlay/settings', answer => { ov = answer; drawOverlay(); });
+Flight.stream(f => { frame = f; });
+FlightCheck.init({ getInfo: () => info, getFrame: () => frame, call, toast, flush });
+const accent = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff7100';
+
+// ============================================================ drawing what the app says
+function draw() {
+  if (!info) return;
+  for (const b of document.querySelectorAll('#mode button')) b.classList.toggle('active', b.dataset.mode === mode);
+  for (const b of document.querySelectorAll('#axis button')) b.classList.toggle('active', b.dataset.axis === axis);
+  if (!editing) sliders();
+  $('#mode-note').textContent = mode === 'faOff'
+    ? (info.saved.faOff ? 'Your own Flight Assist off curves.' : 'A starting point made from your FA on curves: full stick for full thrust, and a softer middle. The trainer flies with these.')
+    + ' The trainer reads your real stick through them.'
+    : (info.saved.faOn ? 'Your own Flight Assist on curves.' : 'Read from your Gremlin profile (its Default mode).') + ' Gremlin uses these while Flight Assist is on.';
+  $('#auto').checked = info.settings.showWhenFaOff;
+  drawBinds();
+  drawGremlin();
+}
+
+// A change is sent a moment after the slider stops. Until then it waits in "pending" with the curves it belongs to (FA off
+// or on), so switching to the other set cannot send it to the wrong one, and a live event arriving meanwhile keeps it.
+let editing = false, saveTimer = 0, pending = null;
+function current() { return info.settings[mode][axis]; }
+function sliders() {
+  const c = current();
+  for (const f of FIELDS) { $('#' + f).value = c[f]; $('#' + f).nextElementSibling.textContent = c[f]; }
+}
+for (const f of FIELDS) {
+  const el = $('#' + f);
+  el.addEventListener('input', () => {
+    editing = true;
+    const c = info.settings[mode][axis];
+    c[f] = +el.value;
+    if ($('#link').checked && (f === 'deadLow' || f === 'deadHigh')) { c.deadLow = c.deadHigh = +el.value; }
+    sliders();
+    pending = { mode, curves: JSON.parse(JSON.stringify(info.settings[mode])) };
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(flush, 450);
+  });
+}
+async function flush() {
+  clearTimeout(saveTimer);
+  const sending = pending;
+  pending = null;
+  if (!sending) { editing = false; return; }
+  try {
+    await call('POST', '/api/flight/settings', { [sending.mode]: sending.curves });
+    $('#saved').textContent = 'Saved.';
+    setTimeout(() => { $('#saved').textContent = ''; }, 1500);
+  } catch (e) { toast(e.message, true); }
+  editing = !!pending;
+}
+// The pending change is already taken by flush(), so the sliders may show the other set at once.
+for (const b of document.querySelectorAll('#mode button')) b.addEventListener('click', () => { flush(); editing = false; mode = b.dataset.mode; draw(); });
+for (const b of document.querySelectorAll('#axis button')) b.addEventListener('click', () => { axis = b.dataset.axis; draw(); });
+// The shape only: each axis keeps its own dead zones and travel (Saturation X), which the stick check measured for that axis.
+$('#copy-all').addEventListener('click', () => {
+  const c = current();
+  for (const a of ['pitch', 'roll', 'yaw']) {
+    const own = info.settings[mode][a];
+    info.settings[mode][a] = { ...c, deadLow: own.deadLow, deadHigh: own.deadHigh, satX: own.satX };
+  }
+  pending = { mode, curves: JSON.parse(JSON.stringify(info.settings[mode])) };
+  flush();
+});
+$('#reset').addEventListener('click', () => {
+  clearTimeout(saveTimer);   // a change still waiting would undo the reset
+  pending = null;
+  editing = false;
+  call('POST', '/api/flight/settings', { [mode]: null }).catch(e => toast(e.message, true));
+});
+
+// ---- the bindings, and what in them matters for Flight Assist off
+function drawBinds() {
+  const b = info.binds;
+  $('#preset').textContent = b ? 'preset "' + b.preset + '"' : '';
+  if (!b) { $('#binds').replaceChildren(h('tr', null, h('td', { colspan: 2, class: 'warn' }, info.bindsProblem || 'Not known yet.'))); $('#bind-notes').replaceChildren(); return; }
+  const axisRow = (label, name) => h('tr', null, h('td', null, label), h('td', null, b.axes[name] ? Flight.axisText(b.axes[name]) : h('span', { class: 'none' }, 'not bound')));
+  const buttonRow = (label, ...names) => h('tr', null, h('td', null, label), h('td', null,
+    names.map(n => b.buttons[n] ? b.buttons[n].map(Flight.buttonText).join(' or ') : null).filter(Boolean).join(' / ') || h('span', { class: 'none' }, 'not bound')));
+  $('#binds').replaceChildren(
+    axisRow('Pitch', 'pitch'), axisRow('Roll', 'roll'), axisRow('Yaw', 'yaw'), axisRow('Throttle', 'throttle'),
+    axisRow('Lateral thrust', 'lateral'), axisRow('Vertical thrust', 'vertical'),
+    buttonRow('Pitch up / down', 'pitchUp', 'pitchDown'), buttonRow('Roll left / right', 'rollLeft', 'rollRight'), buttonRow('Yaw left / right', 'yawLeft', 'yawRight'),
+    buttonRow('Thrust fwd / back', 'forward', 'backward'), buttonRow('Thrust left / right', 'left', 'right'), buttonRow('Thrust up / down', 'up', 'down'),
+    buttonRow('Speed', 'speedMinus75', 'speedZero', 'speed75', 'speed100'), buttonRow('Boost', 'boost'),
+    buttonRow('Flight Assist', 'fa'), buttonRow('Alternate controls', 'alternate'),
+    buttonRow('Chaff / ECM', 'chaff', 'ecm'), buttonRow('Heat sink / shield', 'heat', 'shield'));
+
+  const notes = [];
+  const alt = ['pitchAlt', 'rollAlt', 'yawAlt'].map(n => b.axes[n]).filter(Boolean);
+  if (b.buttons.alternate && alt.length) {
+    const worst = Math.max(...alt.map(a => a.deadzone));
+    notes.push(h('li', { class: worst > 0.2 ? 'warn' : '' }, `${b.buttons.alternate.map(Flight.buttonText).join(' or ')} switches to "alternate flight controls": `
+      + alt.map(a => Flight.axisText(a)).join('; ') + '.' + (worst > 0.2 ? ` Those dead zones (up to ${Math.round(worst * 100)}%) make half the stick do nothing, and they skip Gremlin. Pressed by mistake in flight, Flight Assist off becomes nearly impossible. Clear that key, or the alternate dead zones, in Elite's controls.` : '')));
+  }
+  if (!b.axes.throttle) notes.push(h('li', null, 'No throttle axis: your throttle is the speed keys. With Flight Assist off the throttle is forward thrust, so a slider or a throttle axis makes speed much easier to hold.'));
+  if (b.toggles && b.toggles.fa === false) notes.push(h('li', null, 'Flight Assist is set to "hold" in Elite: it is off only while the key is held. Gremlin\'s FA Off mode follows that.'));
+  const yawRoll = b.values.YawToRollMode_FAOff;
+  if (yawRoll) notes.push(h('li', null, 'Yaw into roll with Flight Assist off: ' + yawRoll.replace('Bindings_YawIntoRoll', '').replace(/([a-z])([A-Z])/g, '$1 $2') + '. With "Time", holding yaw turns into roll after a moment; many FA off pilots set it to "None" so yaw stays yaw.'));
+  const gameDead = ['pitch', 'roll', 'yaw'].map(n => b.axes[n]).filter(a => a && a.device === 'vJoy' && a.deadzone > 0.01);
+  if (gameDead.length) notes.push(h('li', null, 'Elite adds its own dead zone on top of Gremlin\'s for ' + gameDead.map(a => a.axis).join(', ') + '. Set those to 0 in Elite: Gremlin already has one.'));
+  if (!b.buttons.fa) notes.push(h('li', { class: 'warn' }, 'Flight Assist has no key in Elite. Bind one: Gremlin\'s FA Off mode switches on the same key.'));
+  $('#bind-notes').replaceChildren(...notes);
+}
+
+// ---- Gremlin
+function drawGremlin() {
+  const g = info.gremlin;
+  const parts = [];
+  if (!g.profile) parts.push(h('p', { class: 'warn' }, 'Studio found no Joystick Gremlin profile. Open your profile in Joystick Gremlin once, then come back.'));
+  else {
+    parts.push(h('p', null, 'Your profile: ', h('span', { class: 'path' }, g.profile)));
+    if (g.problem) parts.push(h('p', { class: 'bad' }, 'Studio could not read it: ' + g.problem));
+    const modes = [...new Set(g.modes)];
+    parts.push(h('p', { class: 'small muted' }, (g.axes.length ? g.axes.length + ' axes go to vJoy' : 'No axes go to vJoy') + ' · modes: ' + (modes.join(', ') || 'Default')));
+    parts.push(h('p', { class: 'small muted' }, 'Saving writes a new copy of your profile, ending "-fa-off", with a second mode "FA Off" that has your Flight Assist off curves. '
+      + (info.saved.faOn ? 'Its Default mode gets the Flight Assist on curves you saved here. ' : 'Its Default mode keeps your own Gremlin curves exactly as they are. ')
+      + 'Your Flight Assist key switches Gremlin\'s mode as it switches the game: Gremlin hears the key and still lets Elite have it. Your own profile is never changed, and nothing reaches Gremlin until you press the button.'));
+    if (g.unread && g.unread.length) parts.push(h('p', { class: 'small warn' }, 'Studio cannot read your Gremlin curve for ' + g.unread.join(', ')
+      + ' exactly (it is not the kind Studio makes). Saving always keeps that curve in Default as it is, also with Flight Assist on curves saved here; the Flight Assist on picture for it is only Studio\'s default.'));
+    if (g.faOffFile) parts.push(h('p', { class: 'small' }, 'Saved before: ', h('span', { class: 'path' }, g.faOffFile)));
+  }
+  $('#gremlin').replaceChildren(...parts);
+  $('#export').disabled = !g.profile || !!g.problem;
+}
+$('#export').addEventListener('click', async () => {
+  try {
+    const done = await Studio.api('POST', '/api/flight/gremlin', {});
+    $('#export-result').replaceChildren(h('div', null,   // in h(), a part with nothing to say (null) is left out
+      h('p', { class: 'good' }, 'Saved: ', h('span', { class: 'path' }, done.path)),
+      h('ol', { class: 'notes' },
+        h('li', null, 'In Joystick Gremlin: File › Open, and pick that file.'),
+        h('li', null, 'Turn the profile on (the "activate" button), as with your old one.'),
+        h('li', null, 'Start Elite with Flight Assist on (as it always starts): Gremlin starts in Default. Each press of your Flight Assist key now switches both.'),
+        h('li', null, 'If they ever get out of step, switch Flight Assist on in the game, then turn Gremlin\'s profile off and on again.')),
+      done.notes.length ? h('ul', { class: 'notes warn' }, done.notes.map(n => h('li', null, n))) : null));
+  } catch (e) { $('#export-result').replaceChildren(h('p', { class: 'bad' }, e.message)); }
+});
+
+// ---- the overlay's switches
+function drawOverlay() {
+  if (!ov) return;
+  const s = ov.settings;
+  for (const el of document.querySelectorAll('[data-ov]')) {
+    if (el.type === 'checkbox') el.checked = !!s[el.dataset.ov];
+    else if (document.activeElement !== el) el.value = s[el.dataset.ov];
+    const out = el.nextElementSibling;
+    if (out && out.tagName === 'OUTPUT') out.textContent = Math.round(el.value * (/[XY]$/.test(el.dataset.ov) ? 1 : 100)) + '%';
+  }
+  const key = ov.keys.find(k => k.action === 'flight');
+  $('#ov-key').textContent = key ? key.key : 'F6';
+  $('#ov-pad').textContent = key && key.pad ? 'or ' + key.pad : '';
+  $('#ov-change').replaceChildren(Studio.go('Change the key', 'Opens Studio Market\'s overlay settings, where every overlay key is set', 'market', ''));
+}
+for (const el of document.querySelectorAll('[data-ov]')) {
+  const send = () => overlay('POST', '/api/overlay/settings', { [el.dataset.ov]: el.type === 'checkbox' ? el.checked : +el.value }).catch(e => toast(e.message, true));
+  el.addEventListener('change', send);
+  if (el.type !== 'checkbox') el.addEventListener('input', () => { el.nextElementSibling.textContent = Math.round(el.value * (/[XY]$/.test(el.dataset.ov) ? 1 : 100)) + '%'; });
+}
+$('#auto').addEventListener('change', () => call('POST', '/api/flight/settings', { showWhenFaOff: $('#auto').checked }).catch(e => toast(e.message, true)));
+
+// ============================================================ every frame: the hands, the curve, where each control is read from
+function fit(canvas) {
+  const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(r.width * dpr)), hh = Math.max(1, Math.round(r.height * dpr));
+  if (canvas.width !== w || canvas.height !== hh) { canvas.width = w; canvas.height = hh; }
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, r.width, r.height);
+  return { g, w: r.width, h: r.height };
+}
+
+function drawGraph(g, w, hgt) {
+  if (!info) return;
+  const c = current(), L = 34, B = 22, T = 10, R = 10, pw = w - L - R, ph = hgt - T - B;
+  const X = v => L + (v + 1) / 2 * pw, Y = v => T + (1 - (v + 1) / 2) * ph;
+  g.strokeStyle = 'rgba(255,255,255,.08)';
+  g.fillStyle = Flight.look('--muted', '#8d99aa');
+  g.font = '11px Consolas,monospace';
+  g.lineWidth = 1;
+  for (const v of [-1, -0.5, 0, 0.5, 1]) {
+    g.beginPath(); g.moveTo(X(v), T); g.lineTo(X(v), T + ph); g.moveTo(L, Y(v)); g.lineTo(L + pw, Y(v)); g.stroke();
+    g.textAlign = 'center'; g.fillText(v * 100, X(v), hgt - 6);
+    g.textAlign = 'right'; g.fillText(v * 100, L - 4, Y(v) + 4);
+  }
+  g.textAlign = 'left';
+  // The dead zone band in the accent's soft shade, as the curve beside it follows the accent.
+  g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent-soft').trim() || 'rgba(255,113,0,.12)';
+  g.fillRect(X(-c.deadLow / 100), T, X(c.deadHigh / 100) - X(-c.deadLow / 100), ph);
+  g.setLineDash([4, 4]); g.strokeStyle = 'rgba(255,255,255,.25)';
+  g.beginPath(); g.moveTo(X(-1), Y(-1)); g.lineTo(X(1), Y(1)); g.stroke(); g.setLineDash([]);
+  g.strokeStyle = accent(); g.lineWidth = 2.5;
+  g.beginPath();
+  for (let i = 0; i <= 300; i++) { const v = -1 + i / 150; const o = Flight.curve(v, c); if (i) g.lineTo(X(v), Y(o)); else g.moveTo(X(v), Y(o)); }
+  g.stroke();
+  const live = frame && frame.controls[axis];
+  const v = live ? (live.real != null ? live.real : live.game) : null;
+  if (v != null) {
+    const o = Flight.curve(v, c);
+    g.fillStyle = '#e8eef7'; g.beginPath(); g.arc(X(v), Y(o), 5, 0, 7); g.fill();
+    $('#readout').innerHTML = '';
+    $('#readout').append('stick ', h('b', null, Math.round(v * 100) + '%'), ' → ', h('b', null, Math.round(o * 100) + '%'));
+  } else $('#readout').textContent = 'no stick reading for ' + NAMES[axis].toLowerCase();
+}
+
+// Where each control is read from, and the player's fix when Studio's guess of a stick axis is wrong. The rows are made
+// once and only their words change afterwards, so a click on Detect is never lost to a row made anew under the mouse.
+let detecting = null;
+const sourceRows = {};
+function drawSources() {
+  if (!info || !frame) return;
+  if (!sourceRows.pitch) for (const a of ['pitch', 'roll', 'yaw']) {
+    const row = { where: h('span', { class: 'small' }), value: h('span', { class: 'n' }), button: h('button', { class: 'btn small', title: 'Click, then move only this control on the stick, all the way', onclick: () => detect(a) }, 'Detect') };
+    sourceRows[a] = row;
+    $('#sources').append(h('span', null, NAMES[a]), h('span', null, row.where, ' ', row.value), row.button);
+  }
+  for (const a of ['pitch', 'roll', 'yaw']) {
+    const v = frame.controls[a] || {}, row = sourceRows[a];
+    const bound = info.binds && info.binds.axes[a];
+    const through = throughFor(bound);
+    row.where.textContent = through ? `${through.deviceName || 'your stick'} ${through.axis} → Gremlin → vJoy ${bound.axis}` : bound ? Flight.axisText(bound) : 'not bound';
+    row.value.textContent = v.real != null ? Math.round(v.real * 100) + '%' : v.game != null ? Math.round(v.game * 100) + '%' : 'no reading';
+    row.button.textContent = detecting && detecting.control === a ? 'Move it…' : 'Detect';
+  }
+  const sticks = frame.sticks.map(s => s.name || s.device).join(', ');
+  $('#stick-note').textContent = frame.sticks.length ? 'Sticks Studio sees: ' + sticks + '. If a dot moves for the wrong control, click Detect beside the right one and move that control.' : 'Studio sees no stick. Plug it in; Windows has to show it in "Set up USB game controllers".';
+}
+function detect(control) {
+  if (!frame) return;
+  detecting = { control, base: frame.sticks.map(s => ({ device: s.device, axes: { ...s.axes } })), until: performance.now() + 6000, peaks: {}, realAt: 0 };
+}
+// The Gremlin axis behind a vJoy axis the game reads: on vJoy device 1 when the profile feeds several (as the app picks it).
+function throughFor(bound) {
+  if (!bound || bound.device !== 'vJoy') return null;
+  const all = info.gremlin.axes.filter(x => x.mode === 'Default' && x.vjoyAxis === bound.axis);
+  return all.find(x => x.vjoyDevice === 1) || all[0] || null;
+}
+// Windows' letter for an axis back to the game's (the reverse of the app's guess), for a stick Studio has to be told about.
+const GAME_LETTER = { X: 'X', Y: 'Y', Z: 'Z', R: 'RZ', U: 'U', V: 'V' };
+async function detectStep() {
+  if (!detecting || !frame) return;
+  // How far each axis has moved at most since the click: vJoy follows the real stick through Gremlin's curve, a little
+  // later and a little less, so the peaks are kept over the whole wait rather than judged in one reading.
+  for (const s of frame.sticks) {
+    const base = detecting.base.find(b => b.device === s.device);
+    if (!base) continue;
+    for (const [letter, value] of Object.entries(s.axes)) {
+      const key = s.device + ' ' + letter, moved = Math.abs(value - (base.axes[letter] || 0));
+      if (!detecting.peaks[key] || moved > detecting.peaks[key].moved) detecting.peaks[key] = { device: s.device, letter, moved };
+    }
+  }
+  const most = (vjoy, least) => Object.values(detecting.peaks).filter(p => /^1234:BEAD/i.test(p.device) === vjoy && p.moved > least)
+    .sort((a, b) => b.moved - a.moved)[0] || null;
+  const now = performance.now(), real = most(false, 0.4), game = most(true, 0.25);
+  if (real && !detecting.realAt) detecting.realAt = now;
+  // Done when the real stick has moved and vJoy has followed it (or had a second and a half to), or when time is up.
+  if (now < detecting.until && !(real && (game || now - detecting.realAt > 1500))) return;
+  const control = detecting.control;
+  detecting = null;
+  if (!real && !game) { toast('Nothing moved far enough. Click Detect again and move the control all the way.', true); return; }
+  // A fix names the device and the game's letter for the axis (Gremlin's, for the real stick behind it), and gives Windows' letter.
+  const bound = info.binds && info.binds.axes[control];
+  const through = throughFor(bound);
+  const fix = { ...info.settings.axisFix }, changes = { axisFix: fix };
+  if (real) {
+    const letter = through ? through.axis : bound && bound.device !== 'vJoy' ? bound.axis : GAME_LETTER[real.letter];
+    fix[real.device + ' ' + letter] = real.letter;
+    // The stick itself is named when nothing else would find it, or when it is the second of two alike (Gremlin knows a
+    // stick only by a name both share, and the game's own binding by numbers both share).
+    if (real.device.includes('#') || (!through && !(bound && bound.device !== 'vJoy'))) changes.sources = { ...info.settings.sources, [control]: real.device + ' ' + letter };
+  }
+  if (game && bound && bound.device === 'vJoy') fix[game.device + ' ' + bound.axis] = game.letter;
+  try {
+    await call('POST', '/api/flight/settings', changes);
+    toast(NAMES[control] + ': ' + [real && 'your stick\'s axis ' + real.letter, game && 'vJoy\'s axis ' + game.letter].filter(Boolean).join(', ') + '.');
+  } catch (e) { toast(e.message, true); }
+}
+
+const hands = $('#hands'), graph = $('#graph');
+// Each part on its own: one that fails in a frame must not stop the others, nor the next frame.
+function tick() {
+  let failure = null;
+  for (const part of [drawHands, drawGraphNow, drawSources, () => FlightCheck.tick(performance.now()), detectStep]) {
+    try { part(); } catch (e) { failure = failure || e; }
+  }
+  requestAnimationFrame(tick);
+  // reported once (studio.js sends it to the app's log), after the next frame is already asked for
+  if (failure && !tick.failed) { tick.failed = true; throw failure; }
+}
+function drawHands() {
+  const cmd = read(frame, info, true);
+  const a = fit(hands);
+  Flight.drawInputs(a.g, a.w, a.h, cmd, !!(info && info.faOff), accent());
+}
+function drawGraphNow() {
+  const b = fit(graph);
+  drawGraph(b.g, b.w, b.h);
+}
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

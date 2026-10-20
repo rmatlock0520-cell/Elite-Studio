@@ -19,14 +19,20 @@ namespace EliteStudio.Overlay;
 public readonly record struct BoxLook(bool On, double X, double Y, double Scale);
 
 /// <summary>
-/// The "overlay" section of settings.json. The overlay is four boxes, one per studio part: hauling,
-/// Find by name ("market"), the route ("nav") and loadouts. Each has its own key that shows or hides
-/// it, its own place and its own size; the colour and the background are shared.
+/// The "overlay" section of settings.json. The overlay is five boxes, one per studio part: hauling,
+/// Find by name ("market"), the route ("nav"), loadouts and the flight inputs ("flight"). Each has its
+/// own key that shows or hides it, its own place and its own size; the colour and the background are shared.
 /// </summary>
 public sealed record OverlaySettings
 {
     /// <summary>The boxes by the names code uses, in the order of their keys.</summary>
-    public static readonly IReadOnlyList<string> Boxes = ["haul", "market", "nav", "loadouts"];
+    public static readonly IReadOnlyList<string> Boxes = ["haul", "market", "nav", "loadouts", "flight"];
+
+    /// <summary>
+    /// The box that only shows and never takes the mouse: the flight inputs are watched while flying,
+    /// and the game must keep the stick and the keys the whole time. It is moved and sized from Studio.
+    /// </summary>
+    public const string ShowOnly = "flight";
     static readonly OverlaySettings Defaults = new();
 
     // The key that shows or hides each box, as Ctrl, Alt, Shift and Win joined with "+" and then a
@@ -35,13 +41,15 @@ public sealed record OverlaySettings
     public string HotMarket { get; init; } = "F3";
     public string HotNav { get; init; } = "F4";
     public string HotLoadouts { get; init; } = "F5";
+    public string HotFlight { get; init; } = "F6";
 
-    // A second way to each of the four: a button on a game controller, or one held while another is
+    // A second way to each of the five: a button on a game controller, or one held while another is
     // pressed, as PadChord writes them ("046D:C215 7", "046D:C215 3 + 046D:C215 7"). Empty: none.
     public string PadHaul { get; init; } = "";
     public string PadMarket { get; init; } = "";
     public string PadNav { get; init; } = "";
     public string PadLoadouts { get; init; } = "";
+    public string PadFlight { get; init; } = "";
 
     // Each box: shown or not, where it sits and how big it is (see BoxLook). Every box starts hidden.
     public bool HaulOn { get; init; }
@@ -60,6 +68,10 @@ public sealed record OverlaySettings
     public double LoadoutsX { get; init; } = 98;
     public double LoadoutsY { get; init; } = 35;
     public double LoadoutsScale { get; init; } = 1.0;
+    public bool FlightOn { get; init; }
+    public double FlightX { get; init; } = 50;
+    public double FlightY { get; init; } = 70;
+    public double FlightScale { get; init; } = 1.0;
 
     /// <summary>How solid the background is, 0.2 to 1. Text and border are always solid.</summary>
     public double Opacity { get; init; } = 0.92;
@@ -86,6 +98,7 @@ public sealed record OverlaySettings
         "market" => new(MarketOn, MarketX, MarketY, MarketScale),
         "nav" => new(NavOn, NavX, NavY, NavScale),
         "loadouts" => new(LoadoutsOn, LoadoutsX, LoadoutsY, LoadoutsScale),
+        "flight" => new(FlightOn, FlightX, FlightY, FlightScale),
         _ => new(HaulOn, HaulX, HaulY, HaulScale),
     };
 
@@ -95,6 +108,7 @@ public sealed record OverlaySettings
         "market" => this with { MarketOn = box.On, MarketX = box.X, MarketY = box.Y, MarketScale = box.Scale },
         "nav" => this with { NavOn = box.On, NavX = box.X, NavY = box.Y, NavScale = box.Scale },
         "loadouts" => this with { LoadoutsOn = box.On, LoadoutsX = box.X, LoadoutsY = box.Y, LoadoutsScale = box.Scale },
+        "flight" => this with { FlightOn = box.On, FlightX = box.X, FlightY = box.Y, FlightScale = box.Scale },
         _ => this with { HaulOn = box.On, HaulX = box.X, HaulY = box.Y, HaulScale = box.Scale },
     };
 
@@ -104,11 +118,11 @@ public sealed record OverlaySettings
     /// earlier one gets it.
     /// </summary>
     public IReadOnlyList<(string Action, string Setting, string Key)> Hotkeys() =>
-        [("haul", "hotHaul", HotHaul), ("market", "hotMarket", HotMarket), ("nav", "hotNav", HotNav), ("loadouts", "hotLoadouts", HotLoadouts)];
+        [("haul", "hotHaul", HotHaul), ("market", "hotMarket", HotMarket), ("nav", "hotNav", HotNav), ("loadouts", "hotLoadouts", HotLoadouts), ("flight", "hotFlight", HotFlight)];
 
     /// <summary>The controller buttons of the same boxes in the same order, with the name of the setting that holds each.</summary>
     public IReadOnlyList<(string Action, string Setting, string Buttons)> PadButtons() =>
-        [("haul", "padHaul", PadHaul), ("market", "padMarket", PadMarket), ("nav", "padNav", PadNav), ("loadouts", "padLoadouts", PadLoadouts)];
+        [("haul", "padHaul", PadHaul), ("market", "padMarket", PadMarket), ("nav", "padNav", PadNav), ("loadouts", "padLoadouts", PadLoadouts), ("flight", "padFlight", PadFlight)];
 
     /// <summary>
     /// The same settings with every value made usable: numbers inside their ranges, an unknown colour
@@ -123,10 +137,12 @@ public sealed record OverlaySettings
             PadMarket = PadOrNone(PadMarket),
             PadNav = PadOrNone(PadNav),
             PadLoadouts = PadOrNone(PadLoadouts),
+            PadFlight = PadOrNone(PadFlight),
             HotHaul = KeyOr(HotHaul, Defaults.HotHaul),
             HotMarket = KeyOr(HotMarket, Defaults.HotMarket),
             HotNav = KeyOr(HotNav, Defaults.HotNav),
             HotLoadouts = KeyOr(HotLoadouts, Defaults.HotLoadouts),
+            HotFlight = KeyOr(HotFlight, Defaults.HotFlight),
             Opacity = Math.Round(Math.Clamp(Opacity, 0.2, 1), 2),
             PageOpacity = Math.Round(Math.Clamp(PageOpacity, 0.3, 1), 2),
             Accent = Accent is not null && Regex.IsMatch(Accent, "^#[0-9A-Fa-f]{6}$") ? Accent : Defaults.Accent,
@@ -375,7 +391,7 @@ public sealed class OverlayHost : IDisposable
     {
         foreach ((string name, OverlayWindow box) in boxes)
         {
-            box.TakeClicks(Settings.Box(name).On && inGame);
+            box.TakeClicks(Settings.Box(name).On && inGame && name != OverlaySettings.ShowOnly);
             box.Apply(Settings);
         }
         return boxes.Count > 0 && inGame;

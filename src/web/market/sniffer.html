@@ -24,24 +24,61 @@
 <style>
 /* Only what is this page's own; the shared look is in ../studio.css. */
 body{overflow:auto}
-.ask{flex:none;display:grid;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--bg2)}
+/* The page is three cards, one under the other, each with its name on a tag on its top edge: the form a search is
+   made with (its tag is only the bell, as it has no heading), the saved searches, and the stations found. */
+.part{flex:none;display:flex;flex-direction:column;min-width:0}
+.part>.ctag{align-self:flex-start}
+.part>.card{margin:0}
+.ctag .glyph{width:14px;height:14px;stroke-width:2}
+body>.part{margin:16px 16px 0}
+.ask{display:grid;gap:10px}
 .ask .line{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-end}
 .ask .name{flex:1 1 240px}
 .ask .target{flex:0 1 560px}
 .ask .filters .field{flex:1 1 0}
 .ask p{margin:0}
-.kept{flex:none;display:flex;flex-direction:column;gap:10px;padding:14px 16px}
+/* Save search is the page's one big action, at the end of the first line where it always stood (so Tab still
+   reaches it straight after the amount). It keeps its btn and primary classes; this lets the wide ice-blue look
+   (.cta in ../studio.css) win over theirs. It is only as wide as its words, so the line still holds the commodity
+   box with its whole hint at 1400 wide. */
+#save.cta{flex:none;width:auto;height:52px;padding:0 28px;border:0;background:none;color:var(--act-ink);font:500 17px var(--hud);letter-spacing:.1em;clip-path:none;filter:none;box-shadow:none}
+.kept{flex:none;display:flex;flex-direction:column;gap:16px;padding:16px 16px 14px}
 .kept h2,.kept p{margin:0}
-.kept .head{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
-.kept .head h2{margin-right:auto}
+/* A card that holds a table: a bar on top (what the list is, and its own buttons), then the table from edge to edge */
+.card.flush{padding:0}
+.card.flush>.head,.card.flush>#found-about,.card.flush>#empty{padding:10px var(--pad)}
+.card.flush>.tablebox{border:0;border-top:1px solid var(--line);border-radius:0;background:none}
+.kept .head{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center}
+.kept .head #about{order:-1;flex:1 1 360px}
 .kept .loud{display:flex;align-items:center;gap:8px}
 .kept .loud input{width:140px}
+#volume-text{min-width:2.6em;color:var(--frost);font-family:var(--hud);letter-spacing:.04em}
+/* The stations found card shows only while there are stations: its tag (#what) is hidden together with them.
+   (Two rules: a browser without :has drops the first one only.) */
+#what[hidden]+.card{display:none}
+.part:has(>#what[hidden]){display:none}
+#problem{margin:0}
 /* Every column's title and what stands under it are centred on each other (the owner, 11 October 2026). */
 #list th,#list td,#rows th,#rows td{text-align:center;vertical-align:middle}
+/* The saved searches' column titles may take two lines, so the table fits the window's width (the long titles over
+   the number columns, th.r, are kept wide enough not to need three) */
+#list th{white-space:normal}
+#list th.r{min-width:118px}
+#list th,#list td{padding-left:9px;padding-right:9px}
 #list select.inrow{width:auto;margin-top:4px;padding:0 4px;text-align:left}
-#list .inrow{width:110px;height:28px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--panel2);color:var(--text);text-align:right}
+#list .inrow{width:110px;height:28px;padding:0 8px;border-radius:2px;border:1px solid var(--accent-line);background:var(--bg2);color:var(--text);text-align:right}
+#list .inrow:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan),0 0 12px color-mix(in srgb,var(--cyan) 22%,transparent)}
+/* The row being changed in its place is lit, like a chosen line */
+#searches tr:has(.inrow) td{background:var(--accent-soft)}
 #list td.met{color:var(--good);font-weight:600}
-#list input[type=checkbox]{width:17px;height:17px;accent-color:var(--accent)}
+/* To buy in ice blue, to sell in violet */
+#list .badge.buy{color:var(--cyan);border-color:var(--ice-line)}
+#list .badge.sell{color:var(--accent-hi);border-color:var(--accent-line)}
+/* The On and Sound ticks drawn as small switches. They are still tick boxes: Space turns them, and they read as such. */
+#list input[type=checkbox]{appearance:none;position:relative;display:inline-block;width:30px;height:16px;margin:0;vertical-align:middle;background:var(--bg2);border:1px solid var(--edge);cursor:pointer}
+#list input[type=checkbox]::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;background:var(--faint);transition:left .15s}
+#list input[type=checkbox]:checked{border-color:var(--accent-line);background:var(--accent-soft)}
+#list input[type=checkbox]:checked::after{left:16px;background:var(--cyan)}
 #list .btn,#rows .btn{height:24px}
 #rows{max-height:420px}
 </style>
@@ -50,7 +87,9 @@ body{overflow:auto}
 
 <nav class="subtabs"><a href="./">Trades</a><a href="find.html">Find by name</a><a class="active" href="sniffer.html">Sniffer</a></nav>
 
-<form class="ask" id="form" novalidate>
+<section class="part">
+<span class="ctag ice" aria-hidden="true"><svg class="glyph"><use href="../glyphs.svg#g-sniff"/></svg></span>
+<form class="ask card" id="form" novalidate>
   <div class="line">
     <div class="field name">
       <label>Commodity<input id="name" list="names" autocomplete="off" spellcheck="false" placeholder="Type a few letters, then pick from the list"></label>
@@ -65,7 +104,7 @@ body{overflow:auto}
       <label id="avg-label">Against the galactic average<select id="avg"></select></label>
       <label title="Tons. Empty or 0: any amount"><span id="tons-caption"></span><input id="tons" type="number" min="0" step="100" placeholder="any"></label>
     </div>
-    <button class="btn primary" id="save">Save search</button>
+    <button class="btn primary cta" id="save">Save search</button>
   </div>
   <div class="line filters">
     <div class="field">
@@ -84,14 +123,17 @@ body{overflow:auto}
     </div>
   </div>
 </form>
+</section>
 
 <main class="kept">
+  <section class="part">
+  <h2 class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-save"/></svg>Saved searches</h2>
+  <div class="card flush">
   <div class="head">
-    <h2>Saved searches</h2>
-    <button type="button" class="btn small" id="test-sound" title="Plays the alert once">Test sound</button>
+    <button type="button" class="btn small" id="test-sound" title="Plays the alert once"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-sniff"/></svg>Test sound</button>
     <label class="loud muted small" title="How loud the alert is. Letting go plays it.">Alert volume<input id="volume" type="range" min="0" max="100" step="5"><output id="volume-text"></output></label>
+    <p class="muted small" id="about"></p>
   </div>
-  <p class="muted small" id="about"></p>
   <p class="muted" id="empty" hidden>Nothing saved yet. Fill in the form above and press Save search, or press "Save to Sniffer" on Find by name.</p>
   <div class="tablebox" id="list" hidden>
     <table>
@@ -108,16 +150,22 @@ body{overflow:auto}
       <tbody id="searches"></tbody>
     </table>
   </div>
+  </div>
+  </section>
 
-  <h2 id="what" hidden></h2>
-  <p class="muted small" id="found-about" hidden></p>
   <p class="card bad" id="problem" hidden></p>
+  <section class="part">
+  <h2 class="ctag" id="what" hidden></h2>
+  <div class="card flush">
+  <p class="muted small" id="found-about" hidden></p>
   <div class="tablebox" id="rows" hidden>
     <table>
       <thead><tr id="heads"></tr></thead>
       <tbody id="places"></tbody>
     </table>
   </div>
+  </div>
+  </section>
   <p class="muted small credit">Prices come from <a href="https://ardent-insight.com/" target="_blank" rel="noopener">Ardent Insight</a>, a free service that volunteers run for all of us, fed by what players' tools report: an alert means somebody reported this, not that it is still there. The sniffer works while Elite Studio is open.</p>
 </main>
 
@@ -242,7 +290,7 @@ function words(s) {
 
 function found(line) {
   if (line.running) return [h('span', { class: 'spin' }), ' Asking…'];
-  if (line.problem) return [h('span', { class: 'warn' }, 'No answer'), h('div', { class: 'muted small', style: 'white-space:normal;max-width:320px' }, line.problem)];
+  if (line.problem) return [h('span', { class: 'badge warn' }, 'No answer'), h('div', { class: 'muted small', style: 'white-space:normal;max-width:320px' }, line.problem)];
   if (!line.ranUtc) return h('span', { class: 'muted' }, line.search.on ? 'Waiting its turn' : 'Off');
   if (!line.found) return h('span', { class: 'muted' }, 'Not met');
   // The count is itself the way to its stations, with a word under it that says so.
@@ -312,7 +360,7 @@ const columns = {
   system: { title: 'System', value: r => r.system, text: r => Studio.link('system', r.system) },
   ly: { title: 'Distance (ly)', num: true, value: r => r.distanceLy, text: r => r.distanceLy.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
   ls: { title: 'From star (ls)', num: true, value: r => r.starLs, text: r => r.starLs == null ? '' : whole(r.starLs) },
-  pad: { title: 'Pad', value: r => r.pad ? 'SML'.indexOf(r.pad) : null, text: r => r.pad || '?' },
+  pad: { title: 'Pad', value: r => r.pad ? 'SML'.indexOf(r.pad) : null, text: r => h('span', { class: 'badge' }, r.pad || '?') },
   type: { title: 'Station type', value: r => r.type },
   price: { title: 'Price (cr)', num: true, value: r => r.price, text: r => whole(r.price) },
   // Its title says which: supply for searches to buy, demand for searches to sell. Only a list of both says it on each line.
@@ -336,7 +384,7 @@ function render() {
     return h('tr', null,
       h('td', null, h('input', { type: 'checkbox', checked: s.on, 'aria-label': 'Run this search every hour', onchange: e => set(s.id, { on: e.target.checked }) })),
       h('td', null, h('input', { type: 'checkbox', checked: s.sound, 'aria-label': 'Play a sound when it is met', onchange: e => set(s.id, { sound: e.target.checked }) })),
-      h('td', null, s.side === 'sell' ? 'Sell' : 'Buy'),
+      h('td', null, h('span', { class: 'badge ' + (selling ? 'sell' : 'buy') }, s.side === 'sell' ? 'Sell' : 'Buy')),
       h('td', null, words(s)),
       h('td', { class: 'r' }, changing ? [box(s, 'price', 'Price in credits'), h('div', null, h('select', { class: 'inrow', 'data-edit': 'avg', 'aria-label': 'Against the galactic average', onchange: e => { draft.avg = e.target.value; } },
         averages(selling).map(([value, text]) => h('option', { value, selected: value === draft.avg }, text))))] : priceWords(line)),
