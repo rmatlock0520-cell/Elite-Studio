@@ -120,11 +120,11 @@ sealed partial class Finder
     static StationDetails Details(Station station, string name)
     {
         static int Count(double? pads) => (int)Math.Clamp(Math.Round(pads ?? 0), 0, 999);
-        // A material trader's and a technology broker's kind is a field of its own; it is put beside the service's name.
-        // A broker's is Spansh's guess from the main economy (FindStations.cs), and a station with another has none.
+        // A material trader's kind is a field of its own, and a technology broker's a guess from the station (BrokerKind,
+        // FindStations.cs) that a megaship's may not have; it is put beside the service's name.
         string Service(string service) =>
             Letters(service) == "materialtrader" && station.MaterialTrader is { Length: > 0 } trades ? $"{service} ({trades})"
-            : Letters(service) == "technologybroker" ? $"{service} ({(station.TechnologyBroker is { Length: > 0 } broker ? "probably " + broker : "kind not known")})"
+            : Letters(service) == "technologybroker" ? $"{service} ({(BrokerKind(station) is { } broker ? "probably " + broker : "kind not known")})"
             : service;
         Part[] economies = [.. (station.Economies ?? []).OfType<Part>().Where(part => part.Name is { Length: > 0 })];
         return new StationDetails(name, station.SystemName ?? "", station.Type ?? "", station.CarrierName ?? "", AccessWords(station.CarrierDockingAccess),

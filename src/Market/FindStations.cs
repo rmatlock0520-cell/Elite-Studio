@@ -56,7 +56,9 @@ sealed partial class Finder
     // 6,198 with any other main economy have no kind at all. The owner found human brokers (Shock Cannon and the
     // like) at two stations it calls Guardian: Ray Gateway in Diaguandri and Soukup City in Latuba, both 80% High
     // Tech, and both with Guardian modules in their outfitting lists, so those are no proof either (October 2026).
-    // So a broker search says it is a guess.
+    // Inara calls Ray Gateway Guardian too. Then a human one at Dodectech, a colony's High Tech station, which
+    // Inara calls human: a colony's station has a human broker whatever its economy (BrokerKind, 21 October 2026).
+    // So a broker search goes by BrokerKind, and says it is a guess.
     static readonly (string Name, string Field, string Value)[] Services =
     [
         ("Raw material trader", "material_trader", "Raw"), ("Manufactured material trader", "material_trader", "Manufactured"),
@@ -85,7 +87,7 @@ sealed partial class Finder
         // what the station's own page shows besides (FindByStation.cs)
         string? CarrierName = null, string? Allegiance = null, string? Government = null, string? ControllingMinorFaction = null, List<Part?>? Economies = null,
         string? SystemControllingPower = null, string? SystemPowerState = null, string? State = null, double? SystemPopulation = null,
-        string? PrimaryEconomy = null);
+        string? PrimaryEconomy = null, bool? SystemIsColonised = null);
 
     /// <summary>One of a station's economies and how much of the station it is, in hundredths.</summary>
     sealed record Part(string? Name, double? Share);
@@ -192,6 +194,7 @@ sealed partial class Finder
         int first = Math.Max(0, request.More), next = first, seen = 0, strangers = 0, known = 0;
         int notSold = 0, sold = 0, noList = 0, notChecked = 0, edsmAsked = 0;   // ships: what EDSM said of the stations, and how many it was asked about
         int otherKind = 0;   // brokers: stations left out because the player saw a broker of the other kind there
+        int notThisKind = 0; // brokers: stations Spansh calls this kind that BrokerKind does not
         bool last;   // the page just read is Spansh's last: shorter than was asked for
         string? searchName = null;
         DateTime asked = default;
@@ -211,6 +214,12 @@ sealed partial class Finder
                 // A broker the player saw to be of the other kind is left out; one they saw to be of this kind says so.
                 string? saw = sought.Broker.Length > 0 ? brokers?.KindAt(station.MarketId ?? 0) : null;
                 if (saw is not null && saw != sought.Broker) { otherKind++; continue; }
+                // One they have not marked goes by BrokerKind: the human search is asked for every broker, and Spansh calls a colony's station Guardian.
+                if (saw is null && sought.Broker.Length > 0 && BrokerKind(station) != sought.Broker)
+                {
+                    if (Same(station.TechnologyBroker, sought.Broker)) notThisKind++;
+                    continue;
+                }
                 found.Add((station, kept, saw is null ? has : has with { Seen = saw }));
             }
             // Spansh's shipyard lists hold the ships a station is not selling right now too (the tools that report
@@ -253,15 +262,17 @@ sealed partial class Finder
         // The player's own brokers of this kind that Spansh guesses otherwise: its filter never sends them. They go with the
         // nearest stations, as no later page has them.
         if (sought.Broker.Length > 0 && first == 0 && brokers?.Of(sought.Broker) is { Length: > 0 } mine)
-            await OwnBrokers(mine, sought.Broker, rows, filter, from, here, ask);
+            await OwnBrokers(mine, sought, rows, filter, from, here, ask);
 
         bool more = known > first * sought.Size + seen;
         var notes = new List<string>();
         if (rows.Count > 0 && more)
             notes.Add($"The {(first == 0 ? "nearest" : "next")} {rows.Count} of {(known >= 10000 ? "more than 10,000" : known.ToString("N0", CultureInfo.InvariantCulture))} stations.");
-        if (rows.Count > 0 && sought.Field == "technology_broker") notes.Add(BrokerWarning);
+        if (rows.Count > 0 && sought.Broker.Length > 0) notes.Add(BrokerWarning);
         if (otherKind > 0)
             notes.Add(Invariant($"{otherKind} {(otherKind == 1 ? "station" : "stations")} where you saw a {(sought.Broker == "Guardian" ? "Human" : "Guardian")} broker {(otherKind == 1 ? "was" : "were")} left out."));
+        if (notThisKind > 0)
+            notes.Add(Invariant($"{notThisKind} {(notThisKind == 1 ? "station" : "stations")} that Spansh calls {sought.Broker} {(notThisKind == 1 ? "was" : "were")} left out: a colony's station has a human broker, and a megaship's kind is not known."));
         if (rows.Count == 0)
         {
             notes.Add(more
@@ -277,6 +288,10 @@ sealed partial class Finder
         if (notChecked > 0)
             notes.Add(Invariant($"{notChecked} {(notChecked == 1 ? "was" : "were")} not checked with {EdsmName} and may well not have it.")
                 + (utcNow() < edsmQuietUntil ? $" {EdsmName} asked Studio to slow down, so it is asked again in a few minutes." : ""));
+        // Spansh leaves out the stations far from their star by itself, so no answer can say how many there were (the owner,
+        // 21 October 2026: Kerwin Horizons, 18,751 ls out, was missing from a Guardian broker search).
+        if (kind == "services" && filter.MaxStarLs > 0)
+            notes.Add(Invariant($"Stations more than {filter.MaxStarLs:N0} ls from their star are left out, as your filters ask."));
         // The name is put into an address, so it has to be the kind of name Spansh gives out and nothing else.
         string? link = Guid.TryParse(searchName, out Guid reference) ? $"https://spansh.co.uk/stations/search/{reference.ToString().ToUpperInvariant()}/1" : null;
         return new FindAnswer(sought.What, from, [.. rows.OrderBy(row => row.DistanceLy)], SpanshName, link, notes.Count > 0 ? string.Join(" ", notes) : null,
@@ -444,28 +459,54 @@ sealed partial class Finder
     {
         (string? name, string field, string value) = Services.FirstOrDefault(service => Same(service.Name, request.Name.Trim()));
         if (name is null) throw new FindProblem("Unknown kind of service.");
-        // Spansh's site wraps a service's name once more than it does a trader's or a broker's kind.
+        if (field == "technology_broker") return Broker(name, value);
+        // Spansh's site wraps a service's name once more than it does a trader's kind.
         return new Sought($"Nearest: {name}", field, field == "services" ? new[] { new { name = Value(value) } } : Value(value), Nearest,
-            station => (field switch
-            {
-                "material_trader" => Same(station.MaterialTrader, value),
-                "technology_broker" => Same(station.TechnologyBroker, value),
-                _ => station.Services?.Any(service => Same(service?.Name, value)) == true,
-            }) ? new Listing("", null, station.UpdatedAt, Broker: field == "technology_broker" ? BrokerGuess(station) : "") : null,
-            Broker: field == "technology_broker" ? value : "");
+            station => (field == "material_trader" ? Same(station.MaterialTrader, value) : HasService(station, value)) ? new Listing("", null, station.UpdatedAt) : null);
     }
 
-    const string BrokerWarning = "No service records which kind of technology broker a station has: Spansh guesses it from the station's main economy "
-        + "(High Tech for Guardian, Industrial for Human), and the guess can be wrong. Stations with another main economy are not listed, though some have a broker of either kind. "
+    /// <summary>
+    /// A technology broker search. Spansh's own filter finds the Guardian ones, for every station
+    /// BrokerKind calls Guardian Spansh does too. The human ones are asked for as any broker:
+    /// Spansh calls a colony's station Guardian or gives it no kind.
+    /// </summary>
+    static Sought Broker(string name, string kind)
+    {
+        bool guardian = kind == "Guardian";
+        return new Sought($"Nearest: {name}", guardian ? "technology_broker" : "services", guardian ? Value(kind) : new[] { new { name = Value(BrokerService) } }, Nearest,
+            station => (guardian ? Same(station.TechnologyBroker, kind) : HasService(station, BrokerService)) ? new Listing("", null, station.UpdatedAt, Broker: BrokerGuess(station)) : null,
+            Broker: kind);
+    }
+
+    const string BrokerService = "Technology Broker";   // as Spansh names the service
+
+    static bool HasService(Station station, string service) => station.Services?.Any(listed => Same(listed?.Name, service)) == true;
+
+    const string BrokerWarning = "No service records which kind of technology broker a station has. Studio goes by the station, as Inara does: a colony's station has a human broker, "
+        + "and any other station a Guardian one when its main economy is High Tech and a human one when it is not. A few stations are not like that. "
         + "Once you have seen a station's broker, mark its kind, and Studio goes by that.";
 
     /// <summary>
+    /// The kind of a station's technology broker, as far as it can be told without the player's mark: a
+    /// colony's station has a human one; a megaship Spansh calls Guardian is not known; any other station's
+    /// is Spansh's kind, which is its main economy in other words, and human where Spansh gives none.
+    /// That is how Inara tells them apart. Matched against its lists around Col 285 Sector LT-V b17-4
+    /// (21 October 2026): its 100 Guardian brokers within 126 ly are the 100 Studio calls Guardian there,
+    /// with one more (Moxon's Mojo in Bolg, which Inara calls human); its 99 human ones within 91 ly are 98
+    /// of the 100 Studio calls human (two colony stations newer than Inara's list).
+    /// </summary>
+    static string? BrokerKind(Station station) =>
+        station.SystemIsColonised == true ? "Human"
+        : Same(station.TechnologyBroker, "Guardian") ? (Same(station.Type, "Mega ship") ? null : "Guardian")
+        : "Human";
+
+    /// <summary>
     /// Adds to a broker search the stations where the player saw a broker of the kind looked for but
-    /// Spansh guesses another kind or none. One question names them all by market id; the station
+    /// that the search's own list does not hold. One question names them all by market id; the station
     /// filters count for them as for the rest. Without an answer from Spansh they are left out, which
     /// goes to the log: Spansh's own list is still the answer.
     /// </summary>
-    async Task OwnBrokers(BrokerSeen[] mine, string kind, List<FoundPlace> rows, StationFilter filter, string from, double[]? here, MarketData.Asking ask)
+    async Task OwnBrokers(BrokerSeen[] mine, Sought sought, List<FoundPlace> rows, StationFilter filter, string from, double[]? here, MarketData.Asking ask)
     {
         string[] ids = [.. mine.Where(mark => !rows.Any(row => row.MarketId == mark.MarketId)).Select(mark => mark.MarketId.ToString(CultureInfo.InvariantCulture))];
         if (ids.Length == 0) return;
@@ -474,16 +515,16 @@ sealed partial class Finder
             (StationPage page, _) = await Page(Question(new() { ["market_id"] = Value(ids) }, filter, ids.Length, from, here), here is null ? from : null, ask);
             foreach (Station station in page.Results?.OfType<Station>() ?? [])
             {
-                // One Spansh calls this kind comes in its own list, on whichever page its distance puts it.
-                if (Same(station.TechnologyBroker, kind) || Kept(station, filter) is not { } kept) continue;
+                // One the search's own list holds comes in it, on whichever page its distance puts it.
+                if (sought.At(station) is not null || Kept(station, filter) is not { } kept) continue;
                 rows.Add(new FoundPlace(station.Name ?? "", station.SystemName ?? "", Math.Round(station.Distance ?? 0, 2), station.DistanceToArrival,
                     StationFilter.PadLetter(kept.Pad), Shown(kept.Type), "", null, null, MarketData.Time(station.UpdatedAt), station.MarketId ?? 0,
-                    Broker: station.TechnologyBroker is { Length: > 0 } other ? $"Spansh guesses {other}" : "Spansh gives no kind", BrokerSeen: kind));
+                    Broker: station.TechnologyBroker is { Length: > 0 } other ? $"Spansh guesses {other}" : "Spansh gives no kind", BrokerSeen: sought.Broker));
             }
         }
         catch (Exception problem) when (Lost(problem))
         {
-            App.Log.Error($"The {kind} brokers the player marked could not be fetched from Spansh, so the search lists Spansh's own only", problem);
+            App.Log.Error($"The {sought.Broker} brokers the player marked could not be fetched from Spansh, so the search lists Spansh's own only", problem);
         }
     }
 
@@ -508,12 +549,14 @@ sealed partial class Finder
     }
 
     /// <summary>
-    /// What Spansh's kind of a station's broker rests on, in words for a row: "a guess from its High
-    /// Tech economy", with the main economy's part of the station when it has several ("(80%)"). The
-    /// parts of a colony's station need not add up to a hundred, so the part is worked out of their sum.
+    /// What a station's broker's kind (<see cref="BrokerKind"/>) rests on, in words for a row: "a
+    /// colony's station", or "a guess from its High Tech economy", with the main economy's part of the
+    /// station when it has several ("(80%)"). The parts of a colony's station need not add up to a
+    /// hundred, so the part is worked out of their sum.
     /// </summary>
     static string BrokerGuess(Station station)
     {
+        if (station.SystemIsColonised == true) return "a colony's station";
         Part[] parts = [.. (station.Economies ?? []).OfType<Part>().Where(part => part.Name is { Length: > 0 } && part.Share is > 0)];
         string? main = station.PrimaryEconomy is { Length: > 0 } named ? named : parts.MaxBy(part => part.Share)?.Name;
         if (main is null) return "a guess";

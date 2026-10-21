@@ -172,7 +172,7 @@ html:not(.overlay) .found.two .hits>#rows{border-top:0}
 <main class="found">
   <h2 id="what" class="ctag" hidden></h2>
   <div class="card hits">
-    <p class="muted small" id="about" hidden><span id="about-text"></span><a id="on-site" target="_blank" rel="noopener" title="Opens this search on spansh.co.uk in your browser">See it on Spansh</a></p>
+    <p class="muted small" id="about" hidden><span id="about-text"></span><a id="on-site" target="_blank" rel="noopener" title="Opens this search on spansh.co.uk in your browser">See it on Spansh</a><span id="inara-dot"></span><a id="on-inara" target="_blank" rel="noopener" title="Opens the same broker search on inara.cz in your browser" hidden>See it on Inara</a></p>
     <p id="note" hidden><span id="note-text"></span><button type="button" class="btn small" id="more" title="Asks the service for the places that come next, farther out, and adds them to the list" hidden>Show more</button></p>
     <p class="busy" id="busy" hidden><span class="spin"></span><span id="busy-text"></span></p>
     <p class="card bad" id="problem" hidden></p>
@@ -489,16 +489,16 @@ const columns = {
   // A ship: whether EDSM, which keeps only the ships really on sale, agrees with Spansh. Stations it says do not sell it are not listed at all.
   edsm: { title: 'EDSM', value: r => ['confirmed', 'no list', 'not checked'].indexOf(r.edsm), hint: 'Checked against EDSM, which lists only the ships a shipyard is selling right now',
     text: r => r.edsm === 'confirmed' ? h('span', { class: 'badge good' }, 'Confirmed') : h('span', { class: 'badge warn' }, r.edsm === 'no list' ? 'No EDSM list' : 'Not checked') },
-  // A technology broker: its kind is Spansh's guess from the station's main economy, unless the player saw it and marked it.
+  // A technology broker: its kind is a guess from the station (as Inara makes it), unless the player saw it and marked it.
   broker: { title: 'Broker kind', value: r => (r.brokerSeen ? '0' : '1') + r.broker,
-    hint: 'No service records which kind of broker a station has: Spansh goes by its main economy, and that can be wrong. Mark what you saw in game, and Studio goes by that.',
+    hint: 'No service records which kind of broker a station has. Studio goes by the station, as Inara does: a station a colony built has a human broker, any other a Guardian one when its main economy is High Tech. A few stations are not like that. Mark what you saw in game, and Studio goes by that.',
     text: r => [r.brokerSeen ? h('span', { class: 'badge good' }, 'You saw it') : h('span', { class: 'badge warn' }, 'Not certain'),
       h('div', { class: 'muted small' }, r.brokerSeen ? 'you marked it ' + r.brokerSeen : r.broker), brokerButtons(r)] },
 };
 
 // A broker's row: a button for each kind the player may have seen there, or Undo once they marked one.
 const brokerButtons = r => r.marketId ? h('div', { class: 'marks' }, r.brokerSeen
-  ? h('button', { type: 'button', class: 'btn small', title: 'Takes your mark away: Studio goes by Spansh\'s guess again', onclick: () => markBroker(r, '') }, 'Undo')
+  ? h('button', { type: 'button', class: 'btn small', title: 'Takes your mark away: Studio goes by its guess again', onclick: () => markBroker(r, '') }, 'Undo')
   : ['Human', 'Guardian'].map(kind => h('button', { type: 'button', class: 'btn small', title: 'You saw a ' + kind + ' broker here: Studio remembers it in every broker search',
       onclick: () => markBroker(r, kind) }, 'Saw ' + kind))) : null;
 
@@ -540,6 +540,10 @@ function render() {
   $('#more').hidden = a.more == null;   // beside the line that says there is more
   $('#on-site').hidden = !a.link;
   if (a.link) $('#on-site').href = a.link;
+  const inara = inaraLink();
+  $('#on-inara').hidden = !inara;
+  if (inara) $('#on-inara').href = inara;
+  $('#inara-dot').textContent = a.link && inara ? wideDot : '';
   showAsked();
   columns.tons.title = shown.side === 'sell' ? 'Demand (t)' : 'Supply (t)';
   // A broker search has one column more: what the broker's kind rests on.
@@ -580,7 +584,13 @@ $('#next').onclick = () => { pageAt += pageRows; render(); };
 function showAsked() {
   if (!shown) return;
   const a = shown.answer;
-  $('#about-text').textContent = count(a.rows.length, 'place') + ', measured from ' + a.from + wideDot + a.source + ' was asked ' + ago(a.askedUtc) + (a.link ? wideDot : '');
+  $('#about-text').textContent = count(a.rows.length, 'place') + ', measured from ' + a.from + wideDot + a.source + ' was asked ' + ago(a.askedUtc) + (a.link || inaraLink() ? wideDot : '');
+}
+
+// A broker search, the same on Inara: players check a broker's kind there. The overlay's box opens no browser.
+function inaraLink() {
+  const broker = !Studio.boxed && shown.kind === 'services' && /^(Human|Guardian) technology broker$/.exec(shown.body.name);
+  return broker && 'https://inara.cz/elite/nearest-stations/?formbrief=1&ps1=' + encodeURIComponent(shown.answer.from) + '&pa1%5B%5D=' + (broker[1] === 'Guardian' ? '26-30' : '26-10');
 }
 
 // ============================================================ what the app says

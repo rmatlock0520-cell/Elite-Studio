@@ -22,8 +22,8 @@ namespace EliteStudio.Market;
 /// <param name="Edsm">Ships: what EDSM, which keeps only the ships really on sale, says of the station: "confirmed" (it sells the ship), "no list"
 /// (EDSM has none for its shipyard) or "not checked" (EDSM was not asked, or did not answer). A station EDSM says does not sell the ship is left
 /// out. "" for everything else.</param>
-/// <param name="Broker">Technology brokers: what the kind rests on, in words for the player ("a guess from its High Tech economy (80%)"). No
-/// service records which kind a station has; Spansh goes by the station's main economy. "" for everything else.</param>
+/// <param name="Broker">Technology brokers: what the kind rests on, in words for the player ("a guess from its High Tech economy (80%)",
+/// "a colony's station"). No service records which kind a station has (Finder.BrokerKind). "" for everything else.</param>
 /// <param name="BrokerSeen">Technology brokers: the kind the player saw there and marked (<see cref="BrokerBook"/>); "" when they have not.</param>
 public sealed record FoundPlace(
     string Station, string System, double? DistanceLy, double? StarLs, string Pad, string Type, string Item, long? Price, int? Tons, DateTime? Updated, long MarketId = 0,
@@ -67,7 +67,7 @@ public sealed record NameList(IReadOnlyList<string> Names, IReadOnlyList<string>
 /// Commodities come from Ardent Insight, which knows prices but not what outfitting and shipyards
 /// stock. Everything else comes from Spansh: its stations search tells the three kinds of material
 /// trader and the two kinds of technology broker apart, and it takes most of the station filters
-/// itself. A broker's kind is Spansh's guess from the station's main economy, so a broker search
+/// itself. A broker's kind is a guess from the station, made as Inara makes it, so a broker search
 /// says so (FindStations.cs). (Ardent's own "nearest service" gives the 20 nearest stations of any type, which around
 /// a busy system are nearly all fleet carriers and settlements.) Spansh's shipyard lists also name ships
 /// a station is not selling right now, so each station a ship search finds is checked against EDSM,

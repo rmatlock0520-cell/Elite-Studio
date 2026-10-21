@@ -792,7 +792,8 @@ public sealed class FindTests : IDisposable
     [InlineData("Raw material trader", "material_trader", """{"value":["Raw"]}""", 338, "Broglie Terminal | 61 Cygni | 11.37", 5)]
     [InlineData("Manufactured material trader", "material_trader", """{"value":["Manufactured"]}""", 721, "Patterson Enterprise | Sirius | 8.59", 5)]
     [InlineData("Encoded material trader", "material_trader", """{"value":["Encoded"]}""", 402, "Magnus Gateway | EZ Aquarii | 11.1", 5)]
-    [InlineData("Human technology broker", "technology_broker", """{"value":["Human"]}""", 1638, "Dobrovolskiy Enterprise | WISE 1506+7027 | 10.52", 5)]
+    // The human brokers are asked for as any broker: of Spansh's ten nearest, five are Guardian by BrokerKind.
+    [InlineData("Human technology broker", "services", """[{"name":{"value":["Technology Broker"]}}]""", 7960, "Dobrovolskiy Enterprise | WISE 1506+7027 | 10.52", 5)]
     [InlineData("Guardian technology broker", "technology_broker", """{"value":["Guardian"]}""", 780, "Magnus Gateway | EZ Aquarii | 11.1", 5)]
     // Of the five nearest with interstellar factors one settlement has only a small pad, and of those with a black
     // market one settlement likewise and one ship has no known pads at all: no place for a Type-8.
@@ -812,30 +813,44 @@ public sealed class FindTests : IDisposable
         Assert.Equal(listed, Rows(found).Length);
         NearestFirst(found);
         // A broker's kind is a guess, which the answer says. (The recording leaves out the economies it rests on: the next test has them.)
-        bool broker = field == "technology_broker";
-        Assert.Equal($"The nearest {listed} of {(known == 10000 ? "more than 10,000" : known.ToString("N0", CultureInfo.InvariantCulture))} stations." + (broker ? " " + BrokerWarning : ""),
+        bool broker = name.EndsWith("technology broker", StringComparison.Ordinal);
+        Assert.Equal($"The nearest {listed} of {(known == 10000 ? "more than 10,000" : known.ToString("N0", CultureInfo.InvariantCulture))} stations." + (broker ? " " + BrokerWarning : "") + FarNote,
             found.GetProperty("note").GetString());
-        Assert.All(Rows(found), row => Assert.Equal(broker ? "a guess" : "", row.GetProperty("broker").GetString()));
+        Assert.All(Rows(found), row => Assert.Contains(row.GetProperty("broker").GetString(), broker ? (string[])["a guess", "a colony's station"] : [""]));
         Assert.All(Rows(found), row => Assert.Contains(row.GetProperty("pad").GetString(), (string[])["M", "L"]));
     }
 
-    const string BrokerWarning = "No service records which kind of technology broker a station has: Spansh guesses it from the station's main economy "
-        + "(High Tech for Guardian, Industrial for Human), and the guess can be wrong. Stations with another main economy are not listed, though some have a broker of either kind. "
+    const string BrokerWarning = "No service records which kind of technology broker a station has. Studio goes by the station, as Inara does: a colony's station has a human broker, "
+        + "and any other station a Guardian one when its main economy is High Tech and a human one when it is not. A few stations are not like that. "
         + "Once you have seen a station's broker, mark its kind, and Studio goes by that.";
+
+    // Spansh leaves out the stations far from their star itself, so a service search says the filter did (the owner, 21 October 2026:
+    // Kerwin Horizons, 18,751 ls out, was missing from a Guardian broker search).
+    const string FarNote = " Stations more than 5,000 ls from their star are left out, as your filters ask.";
+
+    const string ColonyLeftOut = " 1 station that Spansh calls Guardian was left out: a colony's station has a human broker, and a megaship's kind is not known.";
+
+    /// <summary>The part of a question that asks Spansh for any technology broker: the human search's.</summary>
+    const string AnyBroker = "\"services\":[{\"name\":{\"value\":[\"Technology Broker\"]}}]";
 
     // Spansh's nearest "Guardian" brokers, cut down. The first two are the owner's: they docked at both (15 and 20 October
     // 2026) for a Guardian broker and found a human one. Spansh's kind is the main economy in other words: High Tech is
-    // "Guardian". The third is a colony's station, whose parts need not add up to a hundred; the fourth has one economy.
+    // "Guardian". The third is a colony's station, whose parts need not add up to a hundred, and so has a human broker
+    // (BrokerKind); the fourth has one economy.
     const string OwnersBrokers = """
             {"count":4,"results":[
               {"name":"Ray Gateway","system_name":"Diaguandri","type":"Coriolis Starport","distance":3.5,"distance_to_arrival":475.75,"large_pads":4,"market_id":3223343616,
-               "technology_broker":"Guardian","material_trader":"Encoded","primary_economy":"High Tech","economies":[{"name":"High Tech","share":80.0},{"name":"Refinery","share":20.0}],"updated_at":"2026-10-20T21:29:43Z"},
+               "technology_broker":"Guardian","material_trader":"Encoded","primary_economy":"High Tech","economies":[{"name":"High Tech","share":80.0},{"name":"Refinery","share":20.0}],"updated_at":"2026-10-20T21:29:43Z",
+               "services":[{"name":"Technology Broker"}]},
               {"name":"Soukup City","system_name":"Latuba","type":"Coriolis Starport","distance":4.25,"distance_to_arrival":1210.5,"large_pads":4,"market_id":3224837632,
-               "technology_broker":"Guardian","material_trader":"Encoded","primary_economy":"High Tech","economies":[{"name":"High Tech","share":80.0},{"name":"Refinery","share":20.0}],"updated_at":"2026-10-20T20:36:00Z"},
+               "technology_broker":"Guardian","material_trader":"Encoded","primary_economy":"High Tech","economies":[{"name":"High Tech","share":80.0},{"name":"Refinery","share":20.0}],"updated_at":"2026-10-20T20:36:00Z",
+               "services":[{"name":"Technology Broker"}]},
               {"name":"Colony Port","system_name":"Col 285 Sector AA-A a1-1","type":"Coriolis Starport","distance":6,"distance_to_arrival":12,"large_pads":2,"market_id":3,
-               "technology_broker":"Guardian","primary_economy":"High Tech","economies":[{"name":"High Tech","share":140.0},{"name":"Industrial","share":60.0}],"updated_at":"2026-10-19T10:00:00Z"},
+               "technology_broker":"Guardian","primary_economy":"High Tech","economies":[{"name":"High Tech","share":140.0},{"name":"Industrial","share":60.0}],"updated_at":"2026-10-19T10:00:00Z",
+               "system_is_colonised":true,"services":[{"name":"Technology Broker"}]},
               {"name":"Magnus Gateway","system_name":"EZ Aquarii","type":"Orbis Starport","distance":11.1,"distance_to_arrival":832,"large_pads":4,"market_id":4,
-               "technology_broker":"Guardian","primary_economy":"High Tech","economies":[{"name":"High Tech","share":100.0}],"updated_at":"2026-10-20T21:15:09Z"}]}
+               "technology_broker":"Guardian","primary_economy":"High Tech","economies":[{"name":"High Tech","share":100.0}],"updated_at":"2026-10-20T21:15:09Z",
+               "services":[{"name":"Technology Broker"}]}]}
             """;
 
     /// <summary>Spansh's answer to a question for the Guardian brokers; null for any other question.</summary>
@@ -860,16 +875,18 @@ public sealed class FindTests : IDisposable
 
         Assert.Equal("Nearest: Guardian technology broker", found.GetProperty("what").GetString());
         Assert.Equal(["Ray Gateway: a guess from its High Tech economy (80%)", "Soukup City: a guess from its High Tech economy (80%)",
-                "Colony Port: a guess from its High Tech economy (70%)", "Magnus Gateway: a guess from its High Tech economy"],
+                "Magnus Gateway: a guess from its High Tech economy"],
             Rows(found).Select(row => $"{row.GetProperty("station").GetString()}: {row.GetProperty("broker").GetString()}"));
-        // All four fit on Spansh's one page, so the warning is the whole note.
-        Assert.Equal(BrokerWarning, found.GetProperty("note").GetString());
+        // All four fit on Spansh's one page, so there is no count. The colony's station is left out.
+        Assert.Equal(BrokerWarning + ColonyLeftOut + FarNote, found.GetProperty("note").GetString());
 
-        // A human broker's kind rests on its economy just the same; the other services have no kind to guess.
-        net.Instead = asked => asked.Contains("\"technology_broker\":{\"value\":[\"Human\"]}", StringComparison.Ordinal)
+        // A human broker's kind rests on its economy just the same, but a colony's station is human whatever its economy;
+        // the other services have no kind to guess.
+        net.Instead = asked => asked.Contains(AnyBroker, StringComparison.Ordinal)
             ? stations.Replace("\"Guardian\"", "\"Human\"", StringComparison.Ordinal).Replace("High Tech", "Industrial", StringComparison.Ordinal) : null;
         found = await Find("services", """{ "name": "Human technology broker" }""");
-        Assert.Equal("a guess from its Industrial economy (80%)", Rows(found)[0].GetProperty("broker").GetString());
+        Assert.Equal(["a guess from its Industrial economy (80%)", "a guess from its Industrial economy (80%)", "a colony's station", "a guess from its Industrial economy"],
+            Rows(found).Select(row => row.GetProperty("broker").GetString()));
         net.Instead = null;
         JsonElement traders = await Find("services", """{ "name": "Encoded material trader" }""");
         Assert.All(Rows(traders), row => Assert.Equal("", row.GetProperty("broker").GetString()));
@@ -877,16 +894,39 @@ public sealed class FindTests : IDisposable
     }
 
     [Fact]
-    public async Task A_station_sheet_calls_a_brokers_kind_probable_and_says_when_spansh_has_none()
+    public async Task A_colonys_station_has_a_human_broker_and_a_megaship_Spansh_calls_Guardian_is_neither()
+    {
+        // Dodectech, a colony's High Tech station that Spansh calls Guardian: the owner found a human broker there, and
+        // Inara calls it human (21 October 2026). The human search asks for any broker and goes by the station.
+        net.Instead = asked => asked.Contains(AnyBroker, StringComparison.Ordinal) ? OwnersBrokers : GuardianBrokers(asked);
+        Assert.Equal(["Colony Port:  | a colony's station"], Brokers(await Find("services", """{ "name": "Human technology broker" }""")));
+        Assert.DoesNotContain("Colony Port", Stations(await Find("services", """{ "name": "Guardian technology broker" }""")));
+
+        // Inara lists a megaship Spansh calls Guardian under neither kind.
+        const string megaship = """
+            {"count":1,"results":[{"name":"Spirit of Laelaps","system_name":"Sol","type":"Mega ship","distance":43.4,"distance_to_arrival":10,"large_pads":1,"market_id":5,
+              "technology_broker":"Guardian","services":[{"name":"Technology Broker"}]}]}
+            """;
+        net.Instead = _ => megaship;
+        clock = clock.AddMinutes(11);   // Spansh's answers from before are forgotten
+        JsonElement guardian = await Find("services", """{ "name": "Guardian technology broker" }""");
+        Assert.Empty(Rows(guardian));
+        Assert.Contains(ColonyLeftOut.Trim(), guardian.GetProperty("note").GetString(), StringComparison.Ordinal);
+        Assert.Empty(Rows(await Find("services", """{ "name": "Human technology broker" }""")));
+    }
+
+    [Fact]
+    public async Task A_station_sheet_calls_a_brokers_kind_probable()
     {
         // Two stations of the name: the owner's Ray Gateway, which Spansh calls Guardian for its High Tech economy, and a
-        // colony's station with a broker and an Industrial and Extraction economy, of which Spansh gives no kind at all.
+        // colony's station with a broker and an Industrial and Extraction economy, of which Spansh gives no kind at all:
+        // a colony's station has a human broker (BrokerKind).
         const string namesakes = """
             {"count":2,"results":[
               {"name":"Ray Gateway","system_name":"Diaguandri","type":"Coriolis Starport","distance":3.5,"market_id":3223343616,"market_updated_at":"2026-10-20T21:28:27Z",
                "technology_broker":"Guardian","material_trader":"Encoded","services":[{"name":"Dock"},{"name":"Material Trader"},{"name":"Technology Broker"}],
                "market":[{"commodity":"Gold","buy_price":45000,"sell_price":44000,"supply":10,"demand":0}]},
-              {"name":"Ray Gateway","system_name":"Col 285 Sector DR-V d2-53","type":"Outpost","distance":40.2,"market_id":7,"market_updated_at":"2025-10-12T10:22:44Z",
+              {"name":"Ray Gateway","system_name":"Col 285 Sector DR-V d2-53","type":"Outpost","distance":40.2,"market_id":7,"market_updated_at":"2025-10-12T10:22:44Z","system_is_colonised":true,
                "services":[{"name":"Dock"},{"name":"Technology Broker"}],
                "market":[{"commodity":"Gold","buy_price":45000,"sell_price":44000,"supply":10,"demand":0}]}]}
             """;
@@ -901,7 +941,7 @@ public sealed class FindTests : IDisposable
             return Texts(prices.GetProperty("details").GetProperty("services"));
         }
         Assert.Equal(["Dock", "Material Trader (Encoded)", "Technology Broker (probably Guardian)"], await Services(3223343616));
-        Assert.Equal(["Dock", "Technology Broker (kind not known)"], await Services(7));
+        Assert.Equal(["Dock", "Technology Broker (probably Human)"], await Services(7));
 
         // Marked as what the owner saw there, the sheet says so, also on its way from the station's own search (Inspect).
         Assert.Equal((200, "Human"), await Mark(3223343616, "Ray Gateway", "Human"));
@@ -909,11 +949,11 @@ public sealed class FindTests : IDisposable
         var (_, sheet) = await Call(web, "GET", "/api/market/inspect/station?name=Ray%20Gateway&system=Diaguandri");
         Assert.Equal((3223343616, "Human"), (sheet.GetProperty("marketId").GetInt64(), sheet.GetProperty("brokerSeen").GetString()));
         Assert.Contains("Technology Broker (Human, you saw it)", Texts(sheet.GetProperty("services")));
-        // Where Spansh gives no kind at all, the kind the player saw is the one there is; taken away, it is not known again.
+        // The kind the player saw goes before the guess; taken away, the guess is back.
         Assert.Equal((200, "Guardian"), await Mark(7, "Ray Gateway", "Guardian"));
         Assert.Equal(["Dock", "Technology Broker (Guardian, you saw it)"], await Services(7));
         Assert.Equal((200, ""), await Mark(7, "Ray Gateway", ""));
-        Assert.Equal(["Dock", "Technology Broker (kind not known)"], await Services(7));
+        Assert.Equal(["Dock", "Technology Broker (probably Human)"], await Services(7));
     }
 
     [Fact]
@@ -928,16 +968,16 @@ public sealed class FindTests : IDisposable
         // The Guardian search leaves out the two human ones and says so; the one the owner saw says that too.
         net.Instead = GuardianBrokers;
         JsonElement found = await Find("services", """{ "name": "Guardian technology broker" }""");
-        Assert.Equal(["Colony Port:  | a guess from its High Tech economy (70%)", "Magnus Gateway: Guardian | a guess from its High Tech economy"], Brokers(found));
-        Assert.Equal(BrokerWarning + " 2 stations where you saw a Human broker were left out.", found.GetProperty("note").GetString());
+        Assert.Equal(["Magnus Gateway: Guardian | a guess from its High Tech economy"], Brokers(found));
+        Assert.Equal(BrokerWarning + " 2 stations where you saw a Human broker were left out." + ColonyLeftOut + FarNote, found.GetProperty("note").GetString());
         Assert.Single(net.Asked);   // no station was marked Guardian that Spansh does not call so
 
         // The Human search: the two human ones say they were seen, and Magnus Gateway, seen to be Guardian, is left out.
-        net.Instead = asked => asked.Contains("\"technology_broker\":{\"value\":[\"Human\"]}", StringComparison.Ordinal) ? OwnersBrokers.Replace("\"Guardian\"", "\"Human\"", StringComparison.Ordinal)
+        net.Instead = asked => asked.Contains(AnyBroker, StringComparison.Ordinal) ? OwnersBrokers.Replace("\"Guardian\"", "\"Human\"", StringComparison.Ordinal)
             : asked.Contains("\"market_id\"", StringComparison.Ordinal) ? """{"count":0,"results":[]}""" : null;
         found = await Find("services", """{ "name": "Human technology broker" }""");
         Assert.Equal(["Ray Gateway: Human", "Soukup City: Human", "Colony Port: "], Brokers(found).Select(line => line.Split(" | ")[0]));
-        Assert.EndsWith(" 1 station where you saw a Guardian broker was left out.", found.GetProperty("note").GetString());
+        Assert.EndsWith(" 1 station where you saw a Guardian broker was left out." + FarNote, found.GetProperty("note").GetString());
 
         // A Guardian broker the owner saw where Spansh guesses Human: Spansh's filter never sends it, so the Guardian search
         // asks for it by its market id, nearest page only, with the same station filters.
@@ -950,8 +990,7 @@ public sealed class FindTests : IDisposable
         net.Instead = asked => asked.Contains("\"market_id\"", StringComparison.Ordinal) ? dirac : GuardianBrokers(asked);
         clock = clock.AddMinutes(11);   // Spansh's answer from before is forgotten: the question is sent again
         found = await Find("services", """{ "name": "Guardian technology broker" }""");
-        Assert.Equal(["Colony Port:  | a guess from its High Tech economy (70%)", "Magnus Gateway: Guardian | a guess from its High Tech economy",
-            "Dirac Terminal: Guardian | Spansh guesses Human"], Brokers(found));
+        Assert.Equal(["Magnus Gateway: Guardian | a guess from its High Tech economy", "Dirac Terminal: Guardian | Spansh guesses Human"], Brokers(found));
         Assert.Equal(2, net.Asked.Count);
         Assert.Contains("{\"filters\":{\"market_id\":{\"value\":[\"99\"]}," + StandardTypes, net.Asked[1]);
         // "Show more" never lists it again.
@@ -1050,7 +1089,7 @@ public sealed class FindTests : IDisposable
         Assert.Equal([question, question.Replace("\"page\":0", "\"page\":1")], net.Asked);
         Assert.Equal(["Hub 12", "Hub 14", "Hub 15", "Hub 18", "Hub 19"], Stations(found));
         Assert.Equal("Hub 12 | Alpha Centauri | 12 | 4233.149805 | M | Settlement |  | - | - | 2026-10-04T02:07:49Z", Line(Rows(found)[0]));
-        Assert.Equal("The nearest 5 of more than 10,000 stations.", found.GetProperty("note").GetString());
+        Assert.Equal("The nearest 5 of more than 10,000 stations." + FarNote, found.GetProperty("note").GetString());
         Assert.Equal("https://spansh.co.uk/stations/search/59A29F08-C3DC-11F1-8D68-D7C1D08B7A5E/1", found.GetProperty("link").GetString());
 
         // Nothing for the ship on three pages: there the asking stops (a fourth request would fail this test), and
@@ -1061,7 +1100,7 @@ public sealed class FindTests : IDisposable
         Assert.Equal(5, net.Asked.Count);
         Assert.Equal(question.Replace("\"page\":0", "\"page\":2"), net.Asked[^1]);
         Assert.Empty(Rows(found));
-        Assert.Equal("None of the 30 nearest stations that have this passes your filters, and Spansh knows more farther out. Try other filters, or search from another system.",
+        Assert.Equal("None of the 30 nearest stations that have this passes your filters, and Spansh knows more farther out. Try other filters, or search from another system." + FarNote,
             found.GetProperty("note").GetString());
 
         // A small ship can use every one of them, so the first page is its whole list. (The same question, minutes later: nothing is asked.)
@@ -1075,7 +1114,7 @@ public sealed class FindTests : IDisposable
         pages = [Hubs(1, new int[4], known: 4)];
         found = await Find("services", blackMarket);
         Assert.Equal(6, net.Asked.Count);
-        Assert.Equal("No station that passes your filters is known to have this.", found.GetProperty("note").GetString());
+        Assert.Equal("No station that passes your filters is known to have this." + FarNote, found.GetProperty("note").GetString());
     }
 
     [Fact]
@@ -1090,11 +1129,11 @@ public sealed class FindTests : IDisposable
 
         // A small ship can use every hub. Spansh knows 25 of them: two full pages and a short one.
         pages = [Hubs(1, new int[10], known: 25), Hubs(11, new int[10], known: 25), Hubs(21, new int[5], known: 25)];
-        Assert.Equal("10 rows, Hub 1 to Hub 10 | The nearest 10 of 25 stations. | more: 1", Batch(await BlackMarkets("S", 0)));
+        Assert.Equal("10 rows, Hub 1 to Hub 10 | The nearest 10 of 25 stations. Stations more than 5,000 ls from their star are left out, as your filters ask. | more: 1", Batch(await BlackMarkets("S", 0)));
         Assert.Equal([Page(0)], net.Asked);                             // a first search asks what it always asked
-        Assert.Equal("10 rows, Hub 11 to Hub 20 | The next 10 of 25 stations. | more: 2", Batch(await BlackMarkets("S", 1)));
+        Assert.Equal("10 rows, Hub 11 to Hub 20 | The next 10 of 25 stations. Stations more than 5,000 ls from their star are left out, as your filters ask. | more: 2", Batch(await BlackMarkets("S", 1)));
         Assert.Equal([Page(0), Page(1)], net.Asked);                    // the page that comes next, and the first one not again
-        Assert.Equal("5 rows, Hub 21 to Hub 25 |  | more: ", Batch(await BlackMarkets("S", 2)));   // Spansh's last page: nothing more to ask for
+        Assert.Equal("5 rows, Hub 21 to Hub 25 | Stations more than 5,000 ls from their star are left out, as your filters ask. | more: ", Batch(await BlackMarkets("S", 2)));   // Spansh's last page: nothing more to ask for
         Assert.Equal(3, net.Asked.Count);
 
         // A Type-8 needs a medium pad. Its first search reads two pages to find five hubs, so more of it starts at the
@@ -1103,11 +1142,11 @@ public sealed class FindTests : IDisposable
         clock = clock.AddMinutes(11);
         net.Asked.Clear();
         pages = [Hubs(1, new int[10]), Hubs(11, [0, 1, 0, 2, 1, 0, 0, 1, 1, 0]), Hubs(21, new int[10]), Hubs(31, new int[10]), Hubs(41, new int[10]), Hubs(51, new int[4], known: 54)];
-        Assert.Equal("5 rows, Hub 12 to Hub 19 | The nearest 5 of more than 10,000 stations. | more: 2", Batch(await BlackMarkets("auto", 0)));
-        Assert.Equal("0 rows,  to  | None of the next 30 stations that have this passes your filters, and Spansh knows more farther out. Try other filters, or search from another system. | more: 5",
+        Assert.Equal("5 rows, Hub 12 to Hub 19 | The nearest 5 of more than 10,000 stations. Stations more than 5,000 ls from their star are left out, as your filters ask. | more: 2", Batch(await BlackMarkets("auto", 0)));
+        Assert.Equal("0 rows,  to  | None of the next 30 stations that have this passes your filters, and Spansh knows more farther out. Try other filters, or search from another system. Stations more than 5,000 ls from their star are left out, as your filters ask. | more: 5",
             Batch(await BlackMarkets("auto", 2)));
         Assert.Equal([Page(0), Page(1), Page(2), Page(3), Page(4)], net.Asked);
-        Assert.Equal("0 rows,  to  | No more stations that pass your filters are known to have this. | more: ", Batch(await BlackMarkets("auto", 5)));
+        Assert.Equal("0 rows,  to  | No more stations that pass your filters are known to have this. Stations more than 5,000 ls from their star are left out, as your filters ask. | more: ", Batch(await BlackMarkets("auto", 5)));
         Assert.Equal(Page(5), net.Asked[^1]);
     }
 
