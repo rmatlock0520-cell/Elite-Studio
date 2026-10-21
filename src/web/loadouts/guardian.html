@@ -12,6 +12,10 @@
   Right: every module, weapon and fighter with its recipe, what the commander holds toward it, and whether it
   is unlocked already; under it, every known Guardian site, nearest first, by what it is for. A Guardian
   material still short in a recipe has a "where" link that shows the sites that give it.
+  Under the checklist, the modified Guardian weapons that only the broker at Prospect's Deep in Mbooni unlocks: whether
+  they are worth the trip, how to get the Mbooni permit, and their recipes against what the commander holds. The app
+  knows nothing of these (their codes in the journal are not known), so this part is written into the page, its
+  recipes are Inara's, and none is ever ticked off as unlocked.
   Left: the three kinds of blueprint segment the recipes start with, how many are still needed, which kind of
   Guardian site gives each, and the three nearest of each with their distance from the ship.
   The page only draws what the app says: GET /api/loadouts/guardian/list and every "guardian" event carry the
@@ -69,6 +73,17 @@ tr.done td.what,tr.done .part{color:var(--faint)}
 .part .go,.part .where{margin-left:6px;font-size:12px}
 .part .where{color:var(--accent-hi)}
 
+/* the modified weapons: what they are, whether to go and how to get the permit side by side, then their recipes */
+#modified{margin-top:28px}
+.modcard>p{margin:0 0 10px;max-width:960px}
+.modcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px 32px;margin:6px 0 14px}
+.modcols h3{margin:0 0 6px;color:var(--label);font:600 12px var(--hud);letter-spacing:.09em;text-transform:uppercase}
+.modcols ul,.modcols ol{margin:0 0 8px;padding-left:20px;font-size:13.5px;line-height:1.5}
+.modcols li{margin-bottom:6px}
+.modcols .name{font-size:13.5px}
+.modcard>.tablebox{margin:0 calc(-1 * var(--pad));border:0;border-top:1px solid var(--accent-line);border-bottom:1px solid var(--line);border-radius:0;background:none}
+.modcard>p.modnote{margin:12px 0 0}
+
 /* every Guardian site: what it is for (the filter), what that means, then the list, all in one tagged card */
 #sites{margin-top:28px}
 #kindnote{font-size:13.5px;margin:0 0 12px;max-width:960px}
@@ -102,7 +117,9 @@ td.site .muted{font-size:12.5px}
     <p class="muted small credit">Recipes compared between <a href="https://github.com/msarilar/EDEngineer" target="_blank" rel="noopener">EDEngineer</a>
       and <a href="https://github.com/jixxed/ed-odyssey-materials-helper" target="_blank" rel="noopener">ED Odyssey Materials Helper</a>.
       The sites are <a href="https://canonn.science/codex/guardian-structure/" target="_blank" rel="noopener">Canonn</a>'s survey of Guardian ruins and structures,
-      with the beacons and further structures from ED Odyssey Materials Helper's list. Thank you to all three.</p>
+      with the beacons and further structures from ED Odyssey Materials Helper's list. The modified weapons' recipes and
+      Prospect's Deep are from <a href="https://inara.cz/elite/techbroker/" target="_blank" rel="noopener">Inara</a>, the way to the
+      Mbooni permit from Galnet and players' reports. Thank you to all of them.</p>
   </aside>
 
   <main>
@@ -111,6 +128,50 @@ td.site .muted{font-size:12.5px}
       <span class="busy" id="reading" hidden><span class="spin"></span>Reading your older journals for things you unlocked before…</span>
     </div>
     <div id="groups"></div>
+    <section id="modified" hidden>
+      <h2 class="ctag">Modified Guardian weapons · Mbooni only</h2>
+      <div class="card modcard">
+        <p>Salvation's pre-engineered versions of three Guardian weapons: the gauss cannon, the plasma charger and the shard cannon,
+          fixed and in small and medium only. The one broker that unlocks them is the Guardian technology broker at Prospect's Deep
+          in Mbooni, and Mbooni needs a permit.</p>
+        <div class="modcols">
+          <div>
+            <h3>Is it worth the trip?</h3>
+            <ul>
+              <li><b>One unlock, one weapon.</b> A weapon above, once unlocked, can be bought again and again. A modified one has
+                to be unlocked again for every one you fit.</li>
+              <li><b>Small recipes.</b> One Guardian Weapon Blueprint Segment and a handful of materials each (the list below),
+                so once you have the permit they cost little.</li>
+              <li><b>Not better at everything.</b> Players rate the modified plasma charger highly and call the modified gauss
+                cannon a sidegrade at best. Nobody has published their numbers, so fit one and try it before you unlock a set.</li>
+              <li><b>Worth it</b> when you already fight Thargoids with Guardian weapons and want more from the same hardpoints. For a
+                first Guardian weapon, the ones above are unlocked at any Guardian broker and need no permit.</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Getting the Mbooni permit</h3>
+            <ol>
+              <li><b>Go to <span data-system="LHS 1163"></span>.</b> The permit mission only appears within about 20 light years
+                of Mbooni, and LHS 1163 is where Azimuth Biotech, the faction that gives it, keeps its megaship, the Glorious Prospect.</li>
+              <li><b>Become Allied with Azimuth Biotech.</b> Run their missions, or trade at their market, on the Glorious Prospect
+                until your standing with them is Allied.</li>
+              <li><b>Take "Permit Acquisition Opportunity".</b> It is not on the board by itself: once you are Allied it comes as a
+                follow-up mission (the chain icon) after another Azimuth Biotech mission, and not every time. Keep doing their
+                missions until it shows.</li>
+              <li><b>Fly to <span data-system="Mbooni"></span></b> with the permit and land at <span data-station="Prospect's Deep" data-in="Mbooni"></span>
+                on Mbooni 3 a, 1,490 Ls from the star (large pads). Its Guardian technology broker has the modified weapons.</li>
+            </ol>
+            <p class="muted small">The Glorious Prospect has moved before (it was in T Tauri). If it is not in LHS 1163, look for
+              Azimuth Biotech in another system within 20 light years of Mbooni. Mbooni has also spent weeks in lockdown, when
+              stations can close some services: look at its state before a long trip.</p>
+          </div>
+        </div>
+        <div class="tablebox"><table><tbody id="modrows"></tbody></table></div>
+        <p class="muted small modnote">Studio cannot tell whether you have unlocked these: the game's names for them in the journal
+          are not known yet, so none is ever ticked off. The recipes are Inara's, from one source and not compared like the ones
+          above: check them at the broker before you fly out.</p>
+      </div>
+    </section>
     <section id="sites" hidden>
       <h2 class="ctag">Guardian sites</h2>
       <div class="card sitescard">
@@ -171,6 +232,45 @@ function row(item) {
     h('td', { class: 'what' }, h('b', null, item.name), h('div', { class: 'muted' }, item.detail, state)),
     h('td', { class: 'recipe' }, item.recipe.map(p => part(p, item.unlocked))));
 }
+
+// ============================================================ the modified weapons (Prospect's Deep, Mbooni)
+// The app does not know these (see the note at the top), so they are written here: Inara's recipes, in the names Studio
+// gives the materials and the cargo. A line is [how many, name], and the kind for one the checklist above does not use.
+const SEGMENT = 'Guardian Weapon Blueprint Segment', CELL = 'Guardian Power Cell', CONDUIT = 'Guardian Power Conduit',
+  TECH = 'Guardian Technology Component', PARTS = 'Guardian Sentinel Weapon Parts', WRECKAGE = 'Guardian Sentinel Wreckage Components';
+const MODIFIED = [
+  ['Modified Guardian Gauss Cannon', 'Fixed, small', [[1, SEGMENT], [3, CONDUIT], [3, WRECKAGE], [4, PARTS], [2, 'Niobium', 'Raw']]],
+  ['Modified Guardian Gauss Cannon', 'Fixed, medium', [[1, SEGMENT], [5, CELL], [5, TECH], [4, 'Niobium', 'Raw'], [2, 'Thermal Cooling Units', 'Commodity']]],
+  ['Modified Guardian Plasma Charger', 'Fixed, small', [[1, SEGMENT], [3, CELL], [3, PARTS], [4, TECH], [2, 'Arsenic', 'Raw']]],
+  ['Modified Guardian Plasma Charger', 'Fixed, medium', [[1, SEGMENT], [5, CONDUIT], [5, PARTS], [4, 'Arsenic', 'Raw'], [2, 'Power Transfer Bus', 'Commodity']]],
+  ['Modified Guardian Shard Cannon', 'Fixed, small', [[1, SEGMENT], [3, CONDUIT], [3, WRECKAGE], [4, PARTS], [2, 'Germanium', 'Raw']]],
+  ['Modified Guardian Shard Cannon', 'Fixed, medium', [[1, SEGMENT], [5, WRECKAGE], [5, TECH], [4, 'Germanium', 'Raw'], [2, 'Power Converter', 'Commodity']]],
+];
+// What the commander holds, by name, from the checklist's own recipes: the app counts only what those use.
+let held = new Map();
+
+// One line of a modified recipe: like the checklist's when Studio counts it, else without "have".
+function modPart([need, name, kind]) {
+  const known = held.get(name);
+  if (known) return part({ name, kind: known.kind, need, have: known.have }, false);
+  const cargo = kind === 'Commodity';
+  return h('span', { class: 'part', title: (cargo ? 'Cargo: it has to be in your ship\'s hold at the broker.' : kind + ' material.')
+      + ' Studio does not count this one here: look in your ' + (cargo ? 'hold' : 'stores') + ' in game.' },
+    whole(need) + ' ' + name, cargo && ' (cargo)',
+    cargo && go('where to buy', 'Opens Find by name in Studio Market and looks for the nearest places that sell ' + name,
+      'market', 'find.html?find=commodity&name=' + encodeURIComponent(name)));
+}
+
+function modRow([name, detail, recipe]) {
+  return h('tr', null,
+    h('td', { class: 'what' }, h('b', null, name), h('div', { class: 'muted' }, detail,
+      h('span', { class: 'badge', title: 'Each unlock is for one weapon: unlock it again for the next one you fit' }, 'One per unlock'))),
+    h('td', { class: 'recipe' }, recipe.map(modPart)));
+}
+
+// The systems and the station in the permit steps open like the rest of the page's.
+for (const at of document.querySelectorAll('#modified [data-system]')) at.replaceWith(...system(at.dataset.system));
+for (const at of document.querySelectorAll('#modified [data-station]')) at.replaceWith(Studio.link('station', at.dataset.station, at.dataset.in));
 
 // ============================================================ where the segments come from
 function segment(b, items) {
@@ -255,6 +355,9 @@ function show(view) {
     return [h('h2', { class: 'ctag' }, group + dot + items.filter(item => item.unlocked).length + ' of ' + items.length),
       h('div', { class: 'tablebox' }, h('table', null, h('tbody', null, items.map(row))))];
   }));
+  held = new Map(view.items.flatMap(item => item.recipe.map(p => [p.name, p])));
+  $('#modrows').replaceChildren(...MODIFIED.map(modRow));
+  $('#modified').hidden = false;
   $('#segments').replaceChildren(...view.blueprints.map(b => segment(b, view.items)));
   $('#sites').hidden = !sites;
   if (!sites) return;
