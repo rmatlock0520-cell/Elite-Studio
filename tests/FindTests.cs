@@ -916,6 +916,27 @@ public sealed class FindTests : IDisposable
     }
 
     [Fact]
+    public async Task A_station_in_a_system_that_needs_a_permit_says_so()
+    {
+        // Prospect's Deep in Mbooni, the one broker for the modified Guardian weapons, is behind the Mbooni permit. Spansh's
+        // answer, cut down from its own of 21 October 2026, does not say so.
+        const string mbooni = """
+            {"count":2,"results":[
+              {"name":"Chretien Terminal","system_name":"LHS 1197","type":"Coriolis Starport","distance":4.1,"distance_to_arrival":429,"large_pads":4,"market_id":6,
+               "technology_broker":"Guardian","primary_economy":"High Tech","updated_at":"2026-10-20T10:00:00Z","services":[{"name":"Technology Broker"}]},
+              {"name":"Prospect's Deep","system_name":"Mbooni","type":"Planetary Outpost","distance":11.26,"distance_to_arrival":1491.56,"large_pads":2,"market_id":128988470,
+               "technology_broker":"Guardian","primary_economy":"High Tech","updated_at":"2026-10-20T15:31:06Z","services":[{"name":"Technology Broker"}]}]}
+            """;
+        net.Instead = asked => GuardianBrokers(asked) is null ? null : mbooni;
+        JsonElement found = await Find("services", """{ "name": "Guardian technology broker" }""");
+
+        Assert.Equal(["Chretien Terminal: ", "Prospect's Deep: the Mbooni permit"],
+            Rows(found).Select(row => $"{row.GetProperty("station").GetString()}: {row.GetProperty("permit").GetString()}"));
+        Assert.Equal("Mbooni needs the Mbooni permit: become Allied with Azimuth Biotech in LHS 1163, then take their \"Permit Acquisition Opportunity\" mission "
+            + "(Studio Loadouts, Guardian, has the steps). " + BrokerWarning + FarNote, found.GetProperty("note").GetString());
+    }
+
+    [Fact]
     public async Task A_station_sheet_calls_a_brokers_kind_probable()
     {
         // Two stations of the name: the owner's Ray Gateway, which Spansh calls Guardian for its High Tech economy, and a

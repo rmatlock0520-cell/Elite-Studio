@@ -247,7 +247,7 @@ sealed partial class Finder
                 }
                 rows.Add(new FoundPlace(station.Name ?? "", station.SystemName ?? "", Math.Round(station.Distance ?? 0, 2), station.DistanceToArrival,
                     StationFilter.PadLetter(kept.Pad), Shown(kept.Type), has.Item, has.Price, null, MarketData.Time(has.Updated), station.MarketId ?? 0,
-                    Edsm: edsm, Broker: has.Broker, BrokerSeen: has.Seen));
+                    Edsm: edsm, Broker: has.Broker, BrokerSeen: has.Seen, Permit: PermitFor(station.SystemName)));
             }
             // A filter Spansh does not understand it drops without a word, and then sends the nearest stations of any kind.
             if (seen > 0 && strangers == seen) throw new InvalidDataException("It sent stations that do not have what was asked for.");
@@ -268,6 +268,8 @@ sealed partial class Finder
         var notes = new List<string>();
         if (rows.Count > 0 && more)
             notes.Add($"The {(first == 0 ? "nearest" : "next")} {rows.Count} of {(known >= 10000 ? "more than 10,000" : known.ToString("N0", CultureInfo.InvariantCulture))} stations.");
+        foreach (string system in rows.Where(row => row.Permit.Length > 0).Select(row => row.System).Distinct(StringComparer.OrdinalIgnoreCase))
+            notes.Add($"{system} needs {PermitSystems[system].Permit}: {PermitSystems[system].How}.");
         if (rows.Count > 0 && sought.Broker.Length > 0) notes.Add(BrokerWarning);
         if (otherKind > 0)
             notes.Add(Invariant($"{otherKind} {(otherKind == 1 ? "station" : "stations")} where you saw a {(sought.Broker == "Guardian" ? "Human" : "Guardian")} broker {(otherKind == 1 ? "was" : "were")} left out."));
@@ -480,6 +482,19 @@ sealed partial class Finder
 
     const string BrokerService = "Technology Broker";   // as Spansh names the service
 
+    // The systems the game keeps a player out of without a permit, that a search may list: the permit in words for a row,
+    // and how it is had, for the answer's note. Spansh's stations search does not say (its answer for Prospect's Deep,
+    // 21 October 2026, has no such field), so they are named here.
+    static readonly Dictionary<string, (string Permit, string How)> PermitSystems = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Prospect's Deep, the one Guardian broker for the modified Guardian weapons (Studio Loadouts' Guardian page)
+        ["Mbooni"] = ("the Mbooni permit", "become Allied with Azimuth Biotech in LHS 1163, then take their \"Permit Acquisition Opportunity\" mission "
+            + "(Studio Loadouts, Guardian, has the steps)"),
+    };
+
+    /// <summary>The permit a system needs, in words for a row; "" when Studio knows of none.</summary>
+    static string PermitFor(string? system) => system is not null && PermitSystems.TryGetValue(system, out var needs) ? needs.Permit : "";
+
     static bool HasService(Station station, string service) => station.Services?.Any(listed => Same(listed?.Name, service)) == true;
 
     const string BrokerWarning = "No service records which kind of technology broker a station has. Studio goes by the station, as Inara does: a colony's station has a human broker, "
@@ -519,7 +534,8 @@ sealed partial class Finder
                 if (sought.At(station) is not null || Kept(station, filter) is not { } kept) continue;
                 rows.Add(new FoundPlace(station.Name ?? "", station.SystemName ?? "", Math.Round(station.Distance ?? 0, 2), station.DistanceToArrival,
                     StationFilter.PadLetter(kept.Pad), Shown(kept.Type), "", null, null, MarketData.Time(station.UpdatedAt), station.MarketId ?? 0,
-                    Broker: station.TechnologyBroker is { Length: > 0 } other ? $"Spansh guesses {other}" : "Spansh gives no kind", BrokerSeen: sought.Broker));
+                    Broker: station.TechnologyBroker is { Length: > 0 } other ? $"Spansh guesses {other}" : "Spansh gives no kind", BrokerSeen: sought.Broker,
+                    Permit: PermitFor(station.SystemName)));
             }
         }
         catch (Exception problem) when (Lost(problem))

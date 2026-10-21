@@ -468,7 +468,9 @@ function renderPrices() {
 // the button after it hands the system to Studio Nav's Routes page.
 const columns = {
   station: { title: 'Station', value: r => r.station, text: r => [stationIcon(r.type), Studio.link('station', r.station, r.system)] },
-  system: { title: 'System', value: r => r.system, text: r => Studio.link('system', r.system) },
+  // A system the game keeps the player out of without a permit says so; the note above the list says how to get it.
+  system: { title: 'System', value: r => r.system, text: r => !r.permit ? Studio.link('system', r.system) : [Studio.link('system', r.system),
+    h('div', null, h('span', { class: 'badge warn', title: 'The game keeps you out of ' + r.system + ' without ' + r.permit + '. The note above the list says how to get it.' }, 'Needs a permit'))] },
   ly: { title: 'Distance (ly)', num: true, value: r => r.distanceLy, text: r => r.distanceLy == null ? '' : r.distanceLy.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
   ls: { title: 'From star (ls)', num: true, value: r => r.starLs, text: r => r.starLs == null ? '' : whole(r.starLs), hint: 'Light seconds from the star you arrive at' },
   pad: { title: 'Pad', value: r => r.pad ? 'SML'.indexOf(r.pad) : null, text: r => h('span', { class: 'badge' }, r.pad || '?'), hint: 'The largest landing pad' },

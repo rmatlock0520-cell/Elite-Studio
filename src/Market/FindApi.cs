@@ -25,9 +25,11 @@ namespace EliteStudio.Market;
 /// <param name="Broker">Technology brokers: what the kind rests on, in words for the player ("a guess from its High Tech economy (80%)",
 /// "a colony's station"). No service records which kind a station has (Finder.BrokerKind). "" for everything else.</param>
 /// <param name="BrokerSeen">Technology brokers: the kind the player saw there and marked (<see cref="BrokerBook"/>); "" when they have not.</param>
+/// <param name="Permit">Spansh's stations: the permit the game asks for before it lets the player into the system, in words
+/// ("the Mbooni permit"), when Studio knows of one (Finder.PermitSystems); "" otherwise.</param>
 public sealed record FoundPlace(
     string Station, string System, double? DistanceLy, double? StarLs, string Pad, string Type, string Item, long? Price, int? Tons, DateTime? Updated, long MarketId = 0,
-    string Access = "", string Edsm = "", string Broker = "", string BrokerSeen = "");
+    string Access = "", string Edsm = "", string Broker = "", string BrokerSeen = "", string Permit = "");
 
 /// <summary>What one "Find by name" search found.</summary>
 /// <param name="What">The search in words, as a heading: "Where to buy Gold".</param>
