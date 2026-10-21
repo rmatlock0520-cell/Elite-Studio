@@ -156,7 +156,7 @@ input[type=checkbox],input[type=radio],input[type=range]{accent-color:var(--acce
 .seg button:hover:not(.active){background:var(--accent-soft)}
 .seg button.active{background:var(--accent);color:var(--accent-ink)}
 .seg button:focus-visible{outline-offset:-3px}
-.seg button.active:focus-visible,.tabs button.active:focus-visible,.subtabs a.active:focus-visible,.glist>.on:focus-visible{outline-color:var(--accent-ink)}
+.seg button.active:focus-visible,.tabs button.active:focus-visible,.glist>.on:focus-visible{outline-color:var(--accent-ink)}
 
 /* a list as a table: <div class="tablebox"><table>...</table></div>. Compact one-line rows; the box scrolls
    when it is given a height, and the header row stays in view. .r on a th or td = a number (right-aligned,
@@ -212,13 +212,23 @@ html:not(.no-glow) .pips i.on{box-shadow:0 0 5px color-mix(in srgb,var(--cyan) 5
 .dirty{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn);box-shadow:0 0 6px rgba(255,176,32,.6);margin-left:7px;vertical-align:middle}
 
 /* a studio with more than one page: a row of links to them across the top of each, the page being shown marked .active
-   (the links name the pages by relative path, like everything a page loads)
-     <nav class="subtabs"><a class="active" href="./">Trades</a><a href="find.html">Find by name</a></nav> */
-.subtabs{display:flex;gap:0;padding:0 16px;border-bottom:1px solid var(--accent-line);flex:none;background:linear-gradient(180deg,color-mix(in srgb,var(--bg2) 85%,transparent),color-mix(in srgb,var(--bg2) 60%,transparent))}
-.subtabs a{display:inline-flex;align-items:center;height:38px;padding:0 20px;color:var(--accent-hi);font:500 13.5px var(--hud);letter-spacing:.09em;text-transform:uppercase;text-decoration:none;white-space:nowrap}
-.subtabs a:hover:not(.active){background:var(--accent-soft);color:var(--text)}
-.subtabs a.active{background:var(--accent);color:var(--accent-ink)}
-.subtabs a:focus-visible{outline-offset:-3px}
+   (the links name the pages by relative path, like everything a page loads). Each link is a slanted plate with its
+   page's glyph, like the game's own panel tabs; the page shown is the solid plate, and it glows.
+     <nav class="subtabs"><a class="active" href="./"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-trade"/></svg>Trades</a>…</nav>
+   The plate is the link's ::before, cut to its slant; the link itself is not cut, so the glow and the keyboard ring,
+   drawn round the link with filters, follow the slant instead of being cut off with it. (The owner's pick, "D", of the
+   samples in ED Studio\Design\subtab-samples.html, 2026-10-20.) */
+.subtabs{display:flex;gap:4px;padding:10px 16px;border-bottom:1px solid var(--accent-line);flex:none;background:linear-gradient(180deg,color-mix(in srgb,var(--bg2) 85%,transparent),color-mix(in srgb,var(--bg2) 60%,transparent))}
+.subtabs a{position:relative;isolation:isolate;display:inline-flex;align-items:center;gap:10px;height:38px;padding:0 34px;color:var(--accent-hi);font:600 14.5px var(--hud);letter-spacing:.09em;text-transform:uppercase;text-decoration:none;white-space:nowrap}
+.subtabs a::before{content:"";position:absolute;inset:0;z-index:-1;background:color-mix(in srgb,var(--accent) 12%,var(--panel));clip-path:polygon(14px 0,100% 0,calc(100% - 14px) 100%,0 100%)}
+.subtabs a:hover:not(.active){color:var(--text)}
+.subtabs a:hover:not(.active)::before{background:color-mix(in srgb,var(--accent) 24%,var(--panel))}
+.subtabs a.active{color:var(--accent-ink)}
+.subtabs a.active::before{background:var(--accent)}
+html:not(.no-glow) .subtabs a.active{filter:drop-shadow(0 0 8px color-mix(in srgb,var(--accent) 60%,transparent))}
+.subtabs a:focus-visible,html:not(.no-glow) .subtabs a.active:focus-visible{outline:none;filter:drop-shadow(0 0 1px var(--cyan)) drop-shadow(0 0 1px var(--cyan)) drop-shadow(0 0 1px var(--cyan))}
+html.dense .subtabs{padding:6px 16px}
+html.dense .subtabs a{height:32px;padding:0 28px;font-size:13.5px}
 /* A page shown in one of the in-game overlay's boxes: no way to other pages, and no room for the credits. */
 .overlay .subtabs,.overlay .credit{display:none}
 /* There the whole page scrolls, whatever size the box turns out to have: nothing may end up cut off and out of reach.

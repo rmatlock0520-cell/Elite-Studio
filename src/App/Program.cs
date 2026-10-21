@@ -230,7 +230,8 @@ public static class Program
         _ = new Market.HaulOverlay(overlay, hauling, route, trip, watcher.State, oldSettingsFile: oldTool, routeCheck: routeCheck, navScan: navScan);
         // The price list of every station whose commodities screen the player opens, kept for "Find by name" (the owner, 11 October 2026).
         var stationBook = new Market.StationBook(watcher.State, Path.Combine(Paths.DataDir, "stations.json"));
-        Market.Finder finder = Market.FindApi.Map(web, watcher.State, hauling, marketData, book: stationBook);
+        // With the technology brokers the player saw themselves: no service knows a broker's kind for sure (the owner, 20 October 2026).
+        Market.Finder finder = Market.FindApi.Map(web, watcher.State, hauling, marketData, book: stationBook, brokers: new Market.BrokerBook(settings));
         // The market sniffer: saved commodity searches run once an hour, with a chime when one is met (the owner, 11 October 2026).
         Market.Sniffer sniffer = Market.SnifferApi.Map(web, watcher.State, hauling, marketData, settings);
         // Studio Loadouts' box of the overlay. The owner, 10 October 2026: "for now just make it an overlay". So far it names the ship being flown.

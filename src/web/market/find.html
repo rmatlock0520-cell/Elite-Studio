@@ -34,6 +34,8 @@
 .ask .quick{align-items:center;gap:6px}
 .ask .quick span{margin-right:4px;color:var(--label);font:500 12.5px var(--hud);letter-spacing:.03em}   /* "Nearest:" reads as the boxes' captions do */
 .ask .quick .btn{padding:0 8px;font-size:12.5px}   /* ten of them in one row of a 1400 px window */
+.hits .marks{display:flex;gap:4px;margin-top:4px}   /* a broker's row: the kind the player saw there */
+.hits .marks .btn{padding:0 6px;font-size:11.5px}
 #names-problem{margin:0}
 /* In the app window the form is a card with its name on a tag, and what to find runs as tabs across the card's top.
    In the overlay's box it stays the plain band it was, with the choice in its first line: the box has no height to spare. */
@@ -108,7 +110,7 @@ html:not(.overlay) .found.two .hits>#rows{border-top:0}
 </head>
 <body>
 
-<nav class="subtabs"><a href="./">Trades</a><a class="active" href="find.html">Find by name</a><a href="sniffer.html">Sniffer</a></nav>
+<nav class="subtabs"><a href="./"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-trade"/></svg>Trades</a><a class="active" href="find.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-search"/></svg>Find by name</a><a href="sniffer.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-sniff"/></svg>Sniffer</a></nav>
 
 <form class="ask" id="form" novalidate>
   <span class="ctag ice">Find by name</span>
@@ -407,7 +409,8 @@ function renderStation() {
   const box = $('#station'), mark = JSON.stringify([prices.marketId, prices.station, prices.system, prices.details]);
   if (box.dataset.mark === mark) return;
   box.dataset.mark = mark;
-  box.replaceChildren(...[Studio.stationSheet(prices.details, prices.station, prices.system, false)].flat(Infinity).filter(Boolean));
+  // A broker marked on the sheet: its details come again, with the mark.
+  box.replaceChildren(...[Studio.stationSheet(prices.details, prices.station, prices.system, false, () => showPrices(prices.marketId, false))].flat(Infinity).filter(Boolean));
 }
 
 function renderPrices() {
@@ -486,7 +489,31 @@ const columns = {
   // A ship: whether EDSM, which keeps only the ships really on sale, agrees with Spansh. Stations it says do not sell it are not listed at all.
   edsm: { title: 'EDSM', value: r => ['confirmed', 'no list', 'not checked'].indexOf(r.edsm), hint: 'Checked against EDSM, which lists only the ships a shipyard is selling right now',
     text: r => r.edsm === 'confirmed' ? h('span', { class: 'badge good' }, 'Confirmed') : h('span', { class: 'badge warn' }, r.edsm === 'no list' ? 'No EDSM list' : 'Not checked') },
+  // A technology broker: its kind is Spansh's guess from the station's main economy, unless the player saw it and marked it.
+  broker: { title: 'Broker kind', value: r => (r.brokerSeen ? '0' : '1') + r.broker,
+    hint: 'No service records which kind of broker a station has: Spansh goes by its main economy, and that can be wrong. Mark what you saw in game, and Studio goes by that.',
+    text: r => [r.brokerSeen ? h('span', { class: 'badge good' }, 'You saw it') : h('span', { class: 'badge warn' }, 'Not certain'),
+      h('div', { class: 'muted small' }, r.brokerSeen ? 'you marked it ' + r.brokerSeen : r.broker), brokerButtons(r)] },
 };
+
+// A broker's row: a button for each kind the player may have seen there, or Undo once they marked one.
+const brokerButtons = r => r.marketId ? h('div', { class: 'marks' }, r.brokerSeen
+  ? h('button', { type: 'button', class: 'btn small', title: 'Takes your mark away: Studio goes by Spansh\'s guess again', onclick: () => markBroker(r, '') }, 'Undo')
+  : ['Human', 'Guardian'].map(kind => h('button', { type: 'button', class: 'btn small', title: 'You saw a ' + kind + ' broker here: Studio remembers it in every broker search',
+      onclick: () => markBroker(r, kind) }, 'Saw ' + kind))) : null;
+
+// The kind of broker the player saw at a station: the app keeps it, and every broker search goes by it from then on. On
+// screen a station marked the other kind leaves the list, and one marked this kind says it was seen.
+async function markBroker(r, kind) {
+  try {
+    await Studio.api('POST', '/api/market/find/broker', { marketId: r.marketId, station: r.station, system: r.system, kind });
+  } catch (e) { Studio.toast(e.message, true); return; }
+  const sought = shown.body.name.split(' ')[0];   // "Guardian technology broker"
+  if (kind && kind !== sought) shown.answer.rows = shown.answer.rows.filter(row => row !== r);
+  else r.brokerSeen = kind;
+  Studio.toast(r.station + (kind ? ': marked as a ' + kind + ' broker' : ': your mark is taken away'));
+  render();
+}
 const shownColumns = {
   commodity: ['station', 'system', 'ly', 'ls', 'pad', 'type', 'price', 'tons', 'age'],
   module: ['station', 'system', 'ly', 'ls', 'pad', 'type', 'item', 'price', 'age'],
@@ -515,7 +542,8 @@ function render() {
   if (a.link) $('#on-site').href = a.link;
   showAsked();
   columns.tons.title = shown.side === 'sell' ? 'Demand (t)' : 'Supply (t)';
-  const keys = shownColumns[shown.kind];
+  // A broker search has one column more: what the broker's kind rests on.
+  const keys = a.rows.some(r => r.broker) ? [...shownColumns[shown.kind].slice(0, -1), 'broker', 'age'] : shownColumns[shown.kind];
   $('#heads').replaceChildren(...keys.map(key => !columns[key].value ? h('th') : h('th', {
       class: 'sort' + (columns[key].num ? ' r' : '') + (sort.key === key ? sort.down ? ' down' : ' up' : ''), title: columns[key].hint,
       onclick: () => { sort = { key, down: sort.key === key && !sort.down }; render(); },

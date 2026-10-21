@@ -246,7 +246,7 @@ async function showSheet() {
   try {
     const found = await api('GET', '/api/market/inspect/' + at.kind + '?name=' + encodeURIComponent(at.name) + (at.kind === 'station' && at.system ? '&system=' + encodeURIComponent(at.system) : ''));
     if (trail[trail.length - 1] !== at) return;   // another name was opened, or Back pressed, while waiting
-    fill(at.kind === 'station' ? stationSheet(found, found.station, found.system) : systemSheet(found));
+    fill(at.kind === 'station' ? stationSheet(found, found.station, found.system, undefined, showSheet) : systemSheet(found));
   } catch (problem) {
     if (trail[trail.length - 1] !== at) return;
     fill([h('h2', null, at.name), h('p', { class: 'card bad' }, problem.message)]);
@@ -275,10 +275,26 @@ const serviceRows = [
 const everywhere = ['dock', 'autodock', 'flightcontroller', 'stationoperations', 'stationmenu', 'missionsgenerated', 'livery'];
 const lettersOf = text => text.toLowerCase().replace(/\(.*\)/, '').replace(/[^a-z]/g, '');
 
+// A station with a technology broker: Spansh's kind for it is a guess from the economy (two of its "Guardian" brokers
+// were human, the owner found in October 2026), so the player marks the kind they saw in game, which every broker search
+// then goes by. marked() draws the sheet again, with the mark.
+function brokerLine(d, marked) {
+  if (!d.marketId || !(d.brokerSeen || (d.services || []).some(s => lettersOf(s) === 'technologybroker'))) return null;
+  const mark = kind => api('POST', '/api/market/find/broker', { marketId: d.marketId, station: d.station, system: d.system, kind }).then(() => {
+    toast(d.station + (kind ? ': marked as a ' + kind + ' broker' : ': your mark is taken away'));
+    if (marked) marked();
+  }, problem => toast(problem.message, true));
+  return h('p', { class: 'small' }, d.brokerSeen
+    ? ['You marked its technology broker ' + d.brokerSeen + '. ', h('button', { type: 'button', class: 'btn small', title: 'Takes your mark away: Studio goes by Spansh\'s guess again', onclick: () => mark('') }, 'Undo')]
+    : ['Seen its technology broker in game? ', ...['Human', 'Guardian'].map(kind => [h('button', { type: 'button', class: 'btn small',
+        title: 'You saw a ' + kind + ' broker here: Studio remembers it in every broker search', onclick: () => mark(kind) }, 'Saw ' + kind), ' '])]);
+}
+
 // A station's sheet: its name with what it is, two columns of what is known of it, its services as rows of tags (lit
 // when it has them), and for a fleet carrier who may dock. d is what the app knows of it (StationDetails); null when
 // only its name and system are known. The Find by name page shows the same sheet over a station's price list.
-function stationSheet(d, station, system, prices) {
+// marked: draws the sheet again once its broker is marked.
+function stationSheet(d, station, system, prices, marked) {
   const acts = h('div', { class: 'acts' },
     prices !== false && h('button', { type: 'button', class: 'btn small', title: 'Opens Find by name with what this station sells and buys',
       onclick: () => { closeInspector(); open('market', 'find.html?find=station&name=' + encodeURIComponent(station)); } }, 'Its price list'),
@@ -328,6 +344,7 @@ function stationSheet(d, station, system, prices) {
       ])),
     h('h3', null, 'Station services'), rows,
     others.length ? h('div', { class: 'tags' }, others.map(s => h('span', { class: 'tag has' }, s.name))) : null,
+    brokerLine(d, marked),
     carrier ? [h('h3', null, 'Fleet carrier'), facts([
       ['Docking access', d.access && h('span', { class: d.access === 'open to all' ? 'good' : 'warn' }, d.access)],
       ['Owner', unknown('No data service says who owns a carrier. Inara shows it where the owner has registered: press Open on Inara.')],

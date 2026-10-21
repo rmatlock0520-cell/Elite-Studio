@@ -89,13 +89,15 @@ td.site .muted{font-size:12.5px}
 </head>
 <body>
 
-<nav class="subtabs"><a href="./">My ship</a><a href="designer.html">Designer</a><a href="engineering.html">Engineering</a><a class="active" href="guardian.html">Guardian</a></nav>
+<nav class="subtabs"><a href="./"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-ship"/></svg>My ship</a><a href="designer.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-design"/></svg>Designer</a><a href="engineering.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-wrench"/></svg>Engineering</a><a class="active" href="guardian.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-guardian"/></svg>Guardian</a></nav>
 
 <div class="layout">
   <aside class="side">
     <p class="muted small">Every recipe starts with a blueprint segment from a Guardian site. Take the finished recipe to a Guardian technology
-      broker: the materials from your stores, the cargo in your hold.</p>
-    <button class="textbtn go cta" id="broker" title="Opens Find by name in Studio Market and looks for the nearest one">Find the nearest Guardian technology broker</button>
+      broker: the materials from your stores, the cargo in your hold. No service records which kind of broker a station has, so the list
+      goes by each station's economy (High Tech for Guardian), and that can be wrong. Once you have seen a station's broker,
+      mark its kind in the list, and Studio remembers it.</p>
+    <button class="textbtn go cta" id="broker" title="Opens Find by name in Studio Market and looks for the nearest one. Its broker kinds are Spansh's guesses from each station's economy.">Find the nearest Guardian technology broker</button>
     <div id="segments"></div>
     <p class="muted small credit">Recipes compared between <a href="https://github.com/msarilar/EDEngineer" target="_blank" rel="noopener">EDEngineer</a>
       and <a href="https://github.com/jixxed/ed-odyssey-materials-helper" target="_blank" rel="noopener">ED Odyssey Materials Helper</a>.

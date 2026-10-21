@@ -77,7 +77,7 @@ sealed partial class Finder
             Station found = sent.FirstOrDefault(station => system.Length == 0 || Same(station.SystemName, system))
                 ?? throw new FindProblem(system.Length > 0 ? $"Spansh knows no station called \"{name}\" in {system}." : $"Spansh knows no station called \"{name}\".", 404);
             Remember(found);
-            return Details(found, found.Name!);
+            return Marked(Details(found, found.Name!))!;
         });
     }
 

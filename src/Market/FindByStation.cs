@@ -28,10 +28,12 @@ public sealed record StationPrices(long MarketId, string Station, string System,
 /// <param name="Access">A fleet carrier: who may dock, in words (see Finder.AccessWords).</param>
 /// <param name="Services">Every service there by Spansh's name for it; the kind of a material trader or a technology broker stands with it ("Material Trader (Raw)").</param>
 /// <param name="Economies">Each with its share: "High Tech 67%".</param>
+/// <param name="MarketId">The game's number for the station, by which its broker is marked; 0 when Spansh gave none.</param>
+/// <param name="BrokerSeen">The kind of technology broker the player saw there and marked (<see cref="BrokerBook"/>); "" when they have not.</param>
 public sealed record StationDetails(
     string Station, string System, string Type, string CarrierName, string Access, double? StarLs, double? DistanceLy, int LargePads, int MediumPads, int SmallPads,
     IReadOnlyList<string> Services, IReadOnlyList<string> Economies, string Government, string Allegiance, string Faction, string Power, string PowerState, string State,
-    long? Population, DateTime? Updated, DateTime? MarketUpdated, DateTime? ShipyardUpdated, DateTime? OutfittingUpdated);
+    long? Population, DateTime? Updated, DateTime? MarketUpdated, DateTime? ShipyardUpdated, DateTime? OutfittingUpdated, long MarketId = 0, string BrokerSeen = "");
 
 // The part of Finder that finds a station by its name and shows its price list (the owner, 11 October
 // 2026: "add a function to search via station to the find by name tab"). Spansh's stations search
@@ -119,9 +121,10 @@ sealed partial class Finder
     {
         static int Count(double? pads) => (int)Math.Clamp(Math.Round(pads ?? 0), 0, 999);
         // A material trader's and a technology broker's kind is a field of its own; it is put beside the service's name.
+        // A broker's is Spansh's guess from the main economy (FindStations.cs), and a station with another has none.
         string Service(string service) =>
             Letters(service) == "materialtrader" && station.MaterialTrader is { Length: > 0 } trades ? $"{service} ({trades})"
-            : Letters(service) == "technologybroker" && station.TechnologyBroker is { Length: > 0 } broker ? $"{service} ({broker})"
+            : Letters(service) == "technologybroker" ? $"{service} ({(station.TechnologyBroker is { Length: > 0 } broker ? "probably " + broker : "kind not known")})"
             : service;
         Part[] economies = [.. (station.Economies ?? []).OfType<Part>().Where(part => part.Name is { Length: > 0 })];
         return new StationDetails(name, station.SystemName ?? "", station.Type ?? "", station.CarrierName ?? "", AccessWords(station.CarrierDockingAccess),
@@ -131,7 +134,25 @@ sealed partial class Finder
             [.. economies.Select(part => economies.Length > 1 && part.Share is > 0 ? Invariant($"{part.Name} {Math.Round(part.Share.Value)}%") : part.Name!)],
             station.Government ?? "", station.Allegiance ?? "", station.ControllingMinorFaction ?? "", station.SystemControllingPower ?? "", station.SystemPowerState ?? "",
             station.State ?? "", station.SystemPopulation is > 0 ? (long)Math.Round(station.SystemPopulation.Value) : null,
-            MarketData.Time(station.UpdatedAt), MarketData.Time(station.MarketUpdatedAt), MarketData.Time(station.ShipyardUpdatedAt), MarketData.Time(station.OutfittingUpdatedAt));
+            MarketData.Time(station.UpdatedAt), MarketData.Time(station.MarketUpdatedAt), MarketData.Time(station.ShipyardUpdatedAt), MarketData.Time(station.OutfittingUpdatedAt),
+            station.MarketId ?? 0);
+    }
+
+    /// <summary>
+    /// A sheet with the kind of broker the player saw there, where they marked one: it takes the place of
+    /// Spansh's guess. Done each time a sheet is handed out, as a mark can come after the sheet was kept.
+    /// </summary>
+    StationDetails? Marked(StationDetails? sheet)
+    {
+        if (sheet is null || brokers?.KindAt(sheet.MarketId) is not { } kind) return sheet;
+        string seen = $"Technology Broker ({kind}, you saw it)";
+        static bool IsBroker(string service) => Letters(service).StartsWith("technologybroker", StringComparison.Ordinal);
+        // Spansh's list of services can be older than the player's own look at the station.
+        return sheet with
+        {
+            BrokerSeen = kind,
+            Services = sheet.Services.Any(IsBroker) ? [.. sheet.Services.Select(service => IsBroker(service) ? seen : service)] : [.. sheet.Services, seen],
+        };
     }
 
     /// <summary>
@@ -163,7 +184,7 @@ sealed partial class Finder
                },
         ];
         Log.Info(Invariant($"Prices of {(mine ? own!.Station : theirs!.Station)} ({marketId}): {shown.Length} lines, {(mine ? "the player's own" : "Spansh's")}"));
-        StationDetails? known = details.GetValueOrDefault(marketId);
+        StationDetails? known = Marked(details.GetValueOrDefault(marketId));
         return mine ? new StationPrices(marketId, own!.Station, own.System, true, own.SeenUtc, docked?.Station, shown, known)
             : new StationPrices(marketId, theirs!.Station, theirs.System, false, theirs.Updated, docked?.Station, shown, known);
 

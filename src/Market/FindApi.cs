@@ -22,9 +22,12 @@ namespace EliteStudio.Market;
 /// <param name="Edsm">Ships: what EDSM, which keeps only the ships really on sale, says of the station: "confirmed" (it sells the ship), "no list"
 /// (EDSM has none for its shipyard) or "not checked" (EDSM was not asked, or did not answer). A station EDSM says does not sell the ship is left
 /// out. "" for everything else.</param>
+/// <param name="Broker">Technology brokers: what the kind rests on, in words for the player ("a guess from its High Tech economy (80%)"). No
+/// service records which kind a station has; Spansh goes by the station's main economy. "" for everything else.</param>
+/// <param name="BrokerSeen">Technology brokers: the kind the player saw there and marked (<see cref="BrokerBook"/>); "" when they have not.</param>
 public sealed record FoundPlace(
     string Station, string System, double? DistanceLy, double? StarLs, string Pad, string Type, string Item, long? Price, int? Tons, DateTime? Updated, long MarketId = 0,
-    string Access = "", string Edsm = "");
+    string Access = "", string Edsm = "", string Broker = "", string BrokerSeen = "");
 
 /// <summary>What one "Find by name" search found.</summary>
 /// <param name="What">The search in words, as a heading: "Where to buy Gold".</param>
@@ -51,6 +54,8 @@ public sealed record NameList(IReadOnlyList<string> Names, IReadOnlyList<string>
 ///   POST services       {"name":"Raw material trader"}
 ///   POST station        {"name":"Jameson Memorial"}: the stations with a name like that, the best match first
 ///   GET  prices?id=     the price list of a station found by name (a <see cref="StationPrices"/>), by its market id
+///   POST broker         {"marketId":3223343616,"station":"Ray Gateway","system":"Diaguandri","kind":"Human"}: the kind of
+///                       technology broker the player saw there, kept for good; kind "" takes the mark away (<see cref="BrokerBook"/>)
 /// Every search may add "from" (a system other than the one the player is in) and "filters" (pad,
 /// maxStarLs, surface, carriers, and for commodities maxAgeHours, minSupply and minDemand, named
 /// and valued as in settings.json), which replace the player's own for that one search and are not
@@ -62,7 +67,8 @@ public sealed record NameList(IReadOnlyList<string> Names, IReadOnlyList<string>
 /// Commodities come from Ardent Insight, which knows prices but not what outfitting and shipyards
 /// stock. Everything else comes from Spansh: its stations search tells the three kinds of material
 /// trader and the two kinds of technology broker apart, and it takes most of the station filters
-/// itself. (Ardent's own "nearest service" gives the 20 nearest stations of any type, which around
+/// itself. A broker's kind is Spansh's guess from the station's main economy, so a broker search
+/// says so (FindStations.cs). (Ardent's own "nearest service" gives the 20 nearest stations of any type, which around
 /// a busy system are nearly all fleet carriers and settlements.) Spansh's shipyard lists also name ships
 /// a station is not selling right now, so each station a ship search finds is checked against EDSM,
 /// which keeps the ships on sale only (FindStations.cs).
@@ -77,10 +83,12 @@ public static class FindApi
     /// <param name="utcNow">The clock, in UTC; tests pass their own.</param>
     /// <returns>The searches themselves, for whoever else needs a station found (Studio Loadouts, for a shopping trip).</returns>
     /// <param name="book">The price lists the player has seen themselves; without it only the services' lists are known.</param>
-    internal static Finder Map(WebServer web, GameState game, Hauling hauling, MarketData data, Func<DateTime>? utcNow = null, StationBook? book = null)
+    /// <param name="brokers">The technology brokers the player saw themselves; without it there are only Spansh's guesses, and nothing can be marked.</param>
+    internal static Finder Map(WebServer web, GameState game, Hauling hauling, MarketData data, Func<DateTime>? utcNow = null, StationBook? book = null, BrokerBook? brokers = null)
     {
         // One for as long as the app runs, so what it remembers lasts the session.
-        var finder = new Finder(game, hauling, data, utcNow ?? (() => DateTime.UtcNow), book);
+        var finder = new Finder(game, hauling, data, utcNow ?? (() => DateTime.UtcNow), book, brokers);
+        web.Map("POST", "/api/market/find/broker", request => Answered(() => Task.FromResult(finder.MarkBroker(request.Read<BrokerRequest>()))));
         web.Map("GET", "/api/market/find/prices", request => Answered(() => Task.FromResult(finder.Prices(
             long.TryParse(request.Query.GetValueOrDefault("id"), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long id) ? id : 0))));
         web.Map("GET", "/api/market/find/names", request => Answered(() => finder.Names(request.Query.GetValueOrDefault("kind") ?? "")));
@@ -116,6 +124,18 @@ sealed class FindRequest
     public Dictionary<string, JsonElement>? Filters { get; set; }   // station filters for this one search
 }
 
+/// <summary>What the page sends to mark a station's technology broker: the kind the player saw there, or "" to take the mark away.</summary>
+sealed class BrokerRequest
+{
+    public long MarketId { get; set; }
+    public string Station { get; set; } = "";
+    public string System { get; set; } = "";
+    public string Kind { get; set; } = "";
+}
+
+/// <summary>The answer to a mark: the station and the kind it is marked with now ("" for none).</summary>
+public sealed record BrokerMarked(long MarketId, string Kind);
+
 /// <summary>A search that cannot be answered, in words for the player. 400: the request cannot be met as it is; 502: a service gave no answer.</summary>
 sealed class FindProblem(string message, int status = 400) : Exception(message)
 {
@@ -127,7 +147,7 @@ sealed class FindProblem(string message, int status = 400) : Exception(message)
 /// to pick from, the commodity search (Ardent Insight) and what every search shares. The searches
 /// that ask Spansh about stations are in FindStations.cs.
 /// </summary>
-sealed partial class Finder(GameState game, Hauling hauling, MarketData data, Func<DateTime> utcNow, StationBook? book = null)
+sealed partial class Finder(GameState game, Hauling hauling, MarketData data, Func<DateTime> utcNow, StationBook? book = null, BrokerBook? brokers = null)
 {
     public static readonly string[] Kinds = ["commodity", "module", "ship", "services", "station"];
 
