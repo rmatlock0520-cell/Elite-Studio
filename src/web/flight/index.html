@@ -221,7 +221,9 @@ function redrawTips() { if (run && run.phase === 'done') drawReport(); }
 
 function drawKeys() {
   const binds = info.binds;
-  const list = name => binds && binds.buttons[name] ? binds.buttons[name].map(Flight.buttonText).join(' or ') : null;
+  // A controller Elite knows only by Windows' id is named in words (as the sticks seen now call it); its id goes in small print.
+  const devices = Flight.deviceNames(binds, frame && frame.sticks), ids = Flight.idsText(devices);
+  const list = name => binds && binds.buttons[name] ? binds.buttons[name].map(b => Flight.buttonText(b, devices)).join(' or ') : null;
   const line = (label, text) => text ? h('div', null, label + ': ', h('b', null, text)) : null;
   // Each way of turning: the game's own button when it has one, else the trainer's key (only the trainer knows that one).
   const trainer = new Set(info.trainerKeys || []);
@@ -236,8 +238,9 @@ function drawKeys() {
     line('Forward / back thrust', [list('forward'), list('backward')].filter(Boolean).join(' / ') || null),
     line('Left / right', [list('left'), list('right')].filter(Boolean).join(' / ') || null),
     line('Up / down', [list('up'), list('down')].filter(Boolean).join(' / ') || null),
-    line('Throttle', has('throttle') ? Flight.axisText(binds.axes.throttle) : ['speedZero', 'speed75', 'speedMinus75'].map(list).filter(Boolean).join(', ') || null),
+    line('Throttle', has('throttle') ? Flight.axisText(binds.axes.throttle, devices) : ['speedZero', 'speed75', 'speedMinus75'].map(list).filter(Boolean).join(', ') || null),
     line('Boost', list('boost')),
+    ids ? h('div', { class: 'small' }, ids) : null,
     frame && !frame.sticks.length ? h('div', { class: 'warn' }, 'No stick found: fly with the keys, or plug the stick in.') : null));
 }
 
@@ -366,7 +369,7 @@ function drawReport() {
     for (const tip of run.tips) {
       const now = Sim.change(tip, info.settings.faOff);
       const button = !tip.field ? null
-        : run.applied.has(tip.id) ? h('button', { class: 'btn small', disabled: true }, 'Done')   // taken: not offered again
+        : run.applied.has(tip.id) ? h('button', { class: 'btn small', disabled: true }, Sim.taken(tip))   // taken: not offered again, still naming its axis
         : now ? h('button', { class: 'btn small', title: 'Changes your Flight Assist off curve for ' + tip.axis + '.' + feel, onclick: () => apply(tip) }, now.button)
         : null;   // the curve is at the end of the way the tip would move it
       const text = tip.text + (tip.feel && !game ? ' The +/- curve buttons beside the exercise change the feel at once.' : '');
@@ -403,7 +406,7 @@ window.addEventListener('blur', () => { if (run && (run.phase === 'fly' || run.p
 // ============================================================ every frame
 const sky = $('#sky'), hands = $('#hands');
 
-let last = performance.now(), keysShown = false, lostShown = null;
+let last = performance.now(), keysShown = null, lostShown = null;
 function tick(now) {
   try { frameOnce(now); }
   finally { requestAnimationFrame(tick); }   // one bad frame must not stop the trainer for good
@@ -412,7 +415,10 @@ function frameOnce(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const cmd = read(frame, info, !info || info.settings.input !== 'game');
-  if (frame && !keysShown && info) { keysShown = true; drawKeys(); }
+  // The keys again when the sticks seen change (the first reading, one plugged in or out): a controller Elite knows only by
+  // Windows' id is named as Windows calls it now.
+  const sticksNow = frame && info ? frame.sticks.map(s => s.device + ' ' + s.name).join('|') : null;
+  if (sticksNow !== null && sticksNow !== keysShown) { keysShown = sticksNow; drawKeys(); }
   // Reading the real stick, a control whose stick Studio cannot find is flown as the game gets it: one line says so.
   const lost = info && info.settings.input !== 'game' ? Flight.stickLost(frame, info) : null;
   if (lost !== lostShown) { lostShown = lost; $('#stick-lost').textContent = lost || ''; $('#stick-lost').hidden = !lost; }

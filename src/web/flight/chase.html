@@ -43,6 +43,10 @@
 /* the game, and beside it the curve buttons (Flight.tuneBox, which brings its own look), locked while a round is flown */
 .middle{flex:1;min-height:240px;display:grid;grid-template-columns:minmax(0,1fr) 280px;grid-template-rows:minmax(0,1fr);gap:12px}
 .middle .tune-box.locked{opacity:.55;pointer-events:none}
+/* when the report below takes room after a round, the curve's little graph gives way first, so the buttons and "Put back" show whole */
+.middle .tune-box{display:flex;flex-direction:column}
+.middle .tune-box>*{flex:none}
+.middle .tune-box>.tune-graph{flex:0 1 96px;min-height:36px}
 .sky{min-height:0;position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#05070b}
 :root[style*="--bg:"] .sky{background:var(--bg)}
 .sky canvas{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
@@ -183,7 +187,7 @@ function advise(r, curves) {
     if (n < 3 || !c) continue;
     const id = 'over:' + axis, said = `Your mark went past the dot ${n} times ${AXES[axis]}: each correction went too far.`;
     if (c.bend < 70) tips.push({ id, text: said + ' A softer middle makes the small corrections finer.', axis, field: 'bend', step: 10, min: 0, max: 100 });
-    else if (c.satX < 100) tips.push({ id, text: said + ' More stick travel for the same distance makes every move finer.', axis, field: 'satX', step: 5, min: 50, max: 100 });
+    else if (c.satX < 100) tips.push({ id, text: said + ' Raise "How far the stick travels": more stick for the same distance makes every move finer.', axis, field: 'satX', step: 5, min: 50, max: 100 });
     else tips.push({ id, text: said + ' Your curve is as fine as it gets: make each correction smaller, and stop it with a touch the other way.' });
   }
   const reach = Math.max(Math.abs(Chase.markOf(r.peak.pitch, curves && curves.pitch)), Math.abs(Chase.markOf(r.peak.yaw, curves && curves.yaw)));
@@ -262,6 +266,8 @@ function selftest() {
     const tip = advise(result({ overshoots: { pitch: 0, yaw: 4 } }), fine).find(t => t.field);
     return [tip.axis, tipChange(tip, fine)];
   }, ['yaw', { change: { satX: 97 }, button: 'Left and right: How far the stick travels 92 → 97' }]);
+  check('that tip says which way to move "How far the stick travels": raise it', () =>
+    /\bRaise "How far the stick travels"/.test(advise(result({ overshoots: { pitch: 0, yaw: 4 } }), fine).find(t => t.field).text), true);
   check('overshooting with the finest curve: advice, and no button', () => {
     const tips = advise(result({ overshoots: { pitch: 4, yaw: 0 } }), fine);
     return [tips.map(t => t.id), tips.some(t => t.field)];

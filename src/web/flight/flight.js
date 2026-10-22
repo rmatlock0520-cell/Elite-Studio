@@ -7,7 +7,9 @@
 //   Flight.olderLine(gremlin)      Stick setup's line when the FA Off profile saved for Gremlin is older than the curves
 //   Flight.tuneBox(section, ...)   the +/- curve buttons beside a game, for the Flight Assist off or on curves
 //   Flight.fit(canvas)             a canvas sized to its box for the screen's pixels
-//   Flight.keyText / buttonText / axisText / deviceText    a binding in words
+//   Flight.keyText / buttonText / axisText / deviceText    a binding in words;  Flight.stickName(stick): a stick in words
+//   Flight.deviceNames(binds, sticks) / idsText(names) / devicesInWords(text, binds, names)   a controller Elite knows only by
+//                                  Windows' id ("231D0200"), in words, and that id for small print
 //   Flight.selftest()              checks the pictures, that line and the curve buttons' rules, [{ name, ok, got, want }]
 // Loaded after ../studio.js.
 var Flight = (() => {
@@ -16,7 +18,8 @@ var Flight = (() => {
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 // ---- curves
-// The same sum as StickCurve.At: the dead zone either side, the travel used (satX), the most given (satY) and a softer middle (bend).
+// The same sum as StickCurve.At: the dead zone either side, how far the stick travels (satX), the most it gives (satY) and a
+// softer middle (bend). (Pages show only those plain names; satX, satY and bend are the saved settings' names.)
 function curve(x, c) {
   if (!c || !isFinite(x)) return 0;
   const dead = (x < 0 ? c.deadLow : c.deadHigh) / 100, travel = Math.max(c.satX / 100, dead + 0.01);
@@ -219,16 +222,49 @@ function keyText(key) {
   if (SPECIAL[name]) return SPECIAL[name];
   return name.replace(/^Numpad_/, 'Numpad ');
 }
-// "LogitechExtreme3DPro" → "Logitech Extreme 3D Pro"
-const deviceText = device => device === 'vJoy' ? 'vJoy' : String(device || '').replace(/([a-z])([A-Z0-9])/g, '$1 $2').replace(/([A-Z0-9])([A-Z][a-z])/g, '$1 $2');
-function pressText(k) {
+// A device as Elite's bindings name it, in words: "LogitechExtreme3DPro" → "Logitech Extreme 3D Pro". Elite names a controller it
+// has no name for by Windows' id run together ("231D0200"): that never shows, but the name the page found for it (names, from
+// deviceNames) or "Unnamed controller"; the id goes in small print (idsText). names is optional here and below.
+const unnamed = device => /^[0-9a-f]{8}$/i.test(String(device || ''));
+const idOf = device => (String(device).slice(0, 4) + ':' + String(device).slice(4)).toUpperCase();   // "231D0200" → "231D:0200"
+function deviceText(device, names) {
+  if (device === 'vJoy') return 'vJoy';
+  if (unnamed(device)) return (names && names[String(device).toUpperCase()]) || 'Unnamed controller';
+  return String(device || '').replace(/([a-z])([A-Z0-9])/g, '$1 $2').replace(/([A-Z0-9])([A-Z][a-z])/g, '$1 $2');
+}
+function pressText(k, names) {
   if (k.device === 'Keyboard') return keyText(k.key) + ' key';
   if (k.device === 'Mouse') return k.key.replace(/^Mouse_/, 'Mouse ');
   const pov = /^Joy_POV(\d)(Up|Down|Left|Right)$/.exec(k.key);
-  return (pov ? 'Hat ' + pov[2].toLowerCase() : k.key.replace(/^Joy_/, 'Button ')) + ' · ' + deviceText(k.device);
+  return (pov ? 'Hat ' + pov[2].toLowerCase() : k.key.replace(/^Joy_/, 'Button ')) + ' · ' + deviceText(k.device, names);
 }
-const buttonText = b => b.hold.map(pressText).concat(pressText(b.press)).join(' + ');
-const axisText = a => deviceText(a.device) + ' ' + a.axis + ' axis' + (a.inverted ? ', inverted' : '') + (a.deadzone > 0.005 ? ', dead zone ' + Math.round(a.deadzone * 100) + '%' : '');
+const buttonText = (b, names) => b.hold.map(k => pressText(k, names)).concat(pressText(b.press, names)).join(' + ');
+// A stick Studio sees, in words: its name as Windows gives it, never its hex id ("046D:C215"), which Windows puts in the name of a
+// controller it has no name for ("controller 231D:0200", with " #2" behind the second of two alike). The id is for small print.
+const stickName = s => String((s && s.name) || '').trim().replace(/^controller [0-9a-f]{4}:[0-9a-f]{4}/i, 'Unnamed controller') || 'Unnamed controller';
+const axisText = (a, names) => deviceText(a.device, names) + ' ' + a.axis + ' axis' + (a.inverted ? ', inverted' : '') + (a.deadzone > 0.005 ? ', dead zone ' + Math.round(a.deadzone * 100) + '%' : '');
+// Each controller the bindings (GET /api/flight's binds) name only by Windows' id, in words: the name Windows gives the stick with
+// that id in the newest reading (sticks), else "Unnamed controller"; a name that comes twice told apart by a number. Keyed by the
+// id in capitals: { '231D0200': 'VKBsim Gladiator EVO' }. A page draws its bindings again when the sticks it sees change.
+function deviceNames(binds, sticks) {
+  const names = {}, seen = {};
+  for (const device of Object.keys((binds && binds.devices) || {}).filter(unnamed)) {
+    const stick = (sticks || []).find(s => String(s.device).split('#')[0].toUpperCase() === idOf(device));
+    const name = stick ? stickName(stick) : 'Unnamed controller';
+    seen[name] = (seen[name] || 0) + 1;
+    names[device.toUpperCase()] = seen[name] > 1 ? name + ' (' + seen[name] + ')' : name;
+  }
+  return names;
+}
+// The small print under bindings shown that way: Windows' id of each controller Elite knows only by it ('' for none).
+function idsText(names) {
+  const all = Object.entries(names || {});
+  if (all.length === 1) return 'Elite knows ' + all[0][1] + ' only by its id in Windows, ' + idOf(all[0][0]) + '.';
+  return all.length ? 'Elite knows these controllers only by their ids in Windows: ' + all.map(([d, name]) => name + ' ' + idOf(d)).join(', ') + '.' : '';
+}
+// The app's own words naming a device as the bindings do (the notes after saving for Gremlin), with each such name in words.
+const devicesInWords = (text, binds, names) => Object.keys((binds && binds.devices) || {}).sort((a, b) => b.length - a.length)
+  .reduce((said, device) => said.split(device).join(deviceText(device, names)), String(text));
 
 // ---- a real stick Studio cannot find
 // The app says when it cannot read the real stick behind pitch, roll or yaw although the game gets a reading (realUnknown). Two
@@ -313,9 +349,9 @@ function fit(canvas) {
 const TUNE = [
   { key: 'deadLow', label: 'Dead zone, − side', step: 1, min: 0, max: 25, unit: '%' },
   { key: 'deadHigh', label: 'Dead zone, + side', step: 1, min: 0, max: 25, unit: '%' },
-  { key: 'satX', label: 'Travel used', step: 1, min: 50, max: 100, unit: '%' },
+  { key: 'satX', label: 'How far the stick travels', step: 1, min: 50, max: 100, unit: '%' },
   { key: 'satY', label: 'Most it gives', step: 2, min: 20, max: 100, unit: '%' },
-  { key: 'bend', label: 'Bend (softer middle)', step: 5, min: 0, max: 100, unit: '' },
+  { key: 'bend', label: 'Softer middle', step: 5, min: 0, max: 100, unit: '' },
 ];
 const TUNE_LOOK = `.tune-box{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px 12px;overflow:auto;min-height:0}
 .tune-box h2{margin:0 0 8px}
@@ -325,6 +361,7 @@ const TUNE_LOOK = `.tune-box{border:1px solid var(--line);border-radius:10px;bac
 .tune-graph canvas{position:absolute;inset:0;width:100%;height:100%}
 .tune{display:grid;gap:4px}
 .tune-row{display:grid;grid-template-columns:minmax(0,1fr) 30px 52px 30px;align-items:center;gap:6px;font-size:12.5px}
+.tune-row>span{line-height:1.15}
 .tune-row .btn.small{height:26px;padding:0;font-family:var(--hud);font-size:17px;line-height:1;letter-spacing:0}
 .tune-row output{text-align:center;font-family:var(--mono);color:var(--accent)}
 :root[style*="--accent-hi:"] .tune-row output{color:var(--accent-hi)}
@@ -631,8 +668,34 @@ function selftest() {
     p.box.nudge('deadLow', -1);
     return [p.data.settings.faOff.pitch.bend, p.data.settings.faOff.pitch.deadLow];
   }, [100, 0]);
+  // Q2: plain names. The curve box's rows say what each part does (the names curve tools use are only in Stick setup's small
+  // print), and a stick is named in words, never by Windows' hex id.
+  check('the curve box\'s rows say Dead zone, How far the stick travels, Most it gives and Softer middle', () => TUNE.map(t => t.label),
+    ['Dead zone, − side', 'Dead zone, + side', 'How far the stick travels', 'Most it gives', 'Softer middle']);
+  check('a stick\'s name in words: Windows\' hex id never in it, the second of two alike still told apart', () => [
+    { device: '046D:C215', name: 'Logitech Extreme 3D' }, { device: '231D:0200', name: 'controller 231D:0200' },
+    { device: '231D:0200#2', name: 'controller 231D:0200 #2' }, { device: '046D:C215#2', name: 'Logitech Extreme 3D #2' }, { device: '044F:B10A', name: '' }].map(stickName),
+    ['Logitech Extreme 3D', 'Unnamed controller', 'Unnamed controller #2', 'Logitech Extreme 3D #2', 'Unnamed controller']);
+  // Elite names a controller it has no name for by Windows' id run together ("231D0200"): the bindings show it in words.
+  check('a binding on a controller Elite knows only by Windows\' id ("231D0200"): in words, never the id, even before a reading of the sticks', () => [
+    axisText({ device: '231D0200', axis: 'Z', inverted: true }), buttonText({ hold: [{ device: '231D0200', key: 'Joy_2' }], press: { device: '231d0200', key: 'Joy_POV1Up' } })],
+    ['Unnamed controller Z axis, inverted', 'Button 2 · Unnamed controller + Hat up · Unnamed controller']);
+  const idBinds = { devices: { '231D0200': ['231D:0200'], '046DC215': ['046D:C215'], '3344C0DE': ['3344:C0DE'], LogitechExtreme3DPro: ['046D:C215'], vJoy: ['1234:BEAD'] } };
+  const idNames = () => deviceNames(idBinds, [{ device: '046D:C215', name: 'Logitech Extreme 3D' }, { device: '1234:BEAD', name: 'vJoy Device' }]);
+  check('with a reading of the sticks: the name Windows gives the stick with that id, two unnamed told apart, the ids for small print', () => {
+    const names = idNames();
+    return [axisText({ device: '046DC215', axis: 'X' }, names), buttonText({ hold: [], press: { device: '231D0200', key: 'Joy_4' } }, names),
+      buttonText({ hold: [], press: { device: '3344C0DE', key: 'Joy_6' } }, names), idsText(names), idsText(deviceNames({ devices: { '231D0200': [] } }, [])),
+      idsText(deviceNames({ devices: { LogitechExtreme3DPro: ['046D:C215'] } }, []))];
+  }, ['Logitech Extreme 3D X axis', 'Button 4 · Unnamed controller', 'Button 6 · Unnamed controller (2)',
+    'Elite knows these controllers only by their ids in Windows: Unnamed controller 231D:0200, Logitech Extreme 3D 046D:C215, Unnamed controller (2) 3344:C0DE.',
+    'Elite knows Unnamed controller only by its id in Windows, 231D:0200.', '']);
+  check('the notes after saving for Gremlin name a controller in words', () => devicesInWords(
+    'Gremlin cannot switch modes on button 4 of 231D0200, which switches Flight Assist in the game: use button 2 of LogitechExtreme3DPro.', idBinds, idNames()),
+    'Gremlin cannot switch modes on button 4 of Unnamed controller, which switches Flight Assist in the game: use button 2 of Logitech Extreme 3D Pro.');
   return checks;
 }
 
-return { curve, stream, reader, drawInputs, stickLost, olderLine, tuneBox, fit, keyText, buttonText, axisText, deviceText, clamp, look, selftest };
+return { curve, stream, reader, drawInputs, stickLost, olderLine, tuneBox, fit, keyText, buttonText, axisText, deviceText, stickName, deviceNames, idsText,
+  devicesInWords, clamp, look, selftest };
 })();

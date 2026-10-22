@@ -7,7 +7,7 @@
 // the grip and its weight can move an old stick a little. From the readings it works out which axis each push moved,
 // which game control that axis feeds (as the app reads it: through the player's Elite bindings and Gremlin), where it
 // rests by itself and with the hand on (an old stick seldom comes back to exactly the middle), how much it shakes there,
-// and how far it reaches; and from that the dead zones (and, for a stick that never reaches its end, the Saturation X)
+// and how far it reaches; and from that the dead zones (and, for a stick that never reaches its end, how far it travels)
 // that Flight Assist off needs, covering both kinds of rest. A rest during which the stick was moved, or held out beyond
 // any dead zone, is left out and named. At the end Studio sets those dead zones in the Flight Assist off curves by itself
 // (the owner's ask: the check sets the dead zones, the trainer's exercises then tune the curves), with a button to put
@@ -122,12 +122,21 @@ function refreshDevices() {
   if (ids === known) return;
   known = ids;
   if (!picked || (device !== MOUSE && !list.some(s => s.device === device))) device = bestGuess(list);
-  $('#check-device').replaceChildren(...list.map(s => h('option', { value: s.device },
-      (s.name || 'Controller') + (isVjoy(s.device) ? ' (vJoy, the virtual stick)' : '') + ' · ' + s.device)),
-    h('option', { value: MOUSE }, 'Mouse'));
+  $('#check-device').replaceChildren(...deviceOptions(list).map(o => h('option', { value: o.value }, o.text)));
   $('#check-device').value = device;
   buildBars();
 }
+// The device list in words: each stick by its name (Flight.stickName), a name that comes twice told apart by a number, and the
+// mouse last. Windows' hex id for the one picked goes in the small print under the list (idText).
+function deviceOptions(list) {
+  const seen = {};
+  return list.map(s => {
+    const name = Flight.stickName(s) + (isVjoy(s.device) ? ' (vJoy, the virtual stick)' : '');
+    seen[name] = (seen[name] || 0) + 1;
+    return { value: s.device, text: seen[name] > 1 ? name + ' (' + seen[name] + ')' : name };
+  }).concat({ value: MOUSE, text: 'Mouse' });
+}
+const idText = id => !id || id === MOUSE ? '' : 'Its id in Windows: ' + id.split('#')[0];
 
 // The axes of the chosen device, by Windows' letters.
 function axesNow() {
@@ -145,6 +154,7 @@ function controlNow(letter, axes) {
 const OTHER = { Z: 'throttle or slider', U: 'slider', V: 'slider' };
 const bars = {};
 function buildBars() {
+  $('#check-id').textContent = idText(device);
   const box = $('#check-bars');
   box.replaceChildren();
   for (const k of Object.keys(bars)) delete bars[k];
@@ -476,7 +486,7 @@ function finish() {
     h('div', { class: 'row' }, h('button', { class: 'btn', onclick: start }, 'Run the check again'))));
   if (!usable) return;
   const stick = sticks().find(s => s.device === checked);
-  const record = { at: Date.now(), device: (stick && stick.name) || checked, found, notes: facts.concat(problems), state: 'not set' };
+  const record = { at: Date.now(), device: stick ? Flight.stickName(stick) : 'stick', found, notes: facts.concat(problems), state: 'not set' };
   remember(record);
   setDeadZones(suggest, status, record);
 }
@@ -493,7 +503,7 @@ function table(found) {
       h('td', { class: 'r' }, (f.reach[0] != null ? pct(-f.reach[0]) : '?') + ' / ' + (f.reach[1] != null ? pct(f.reach[1]) : '?')),
       h('td', { class: 'r' }, f.before[0] + '% / ' + f.before[1] + '%'),
       h('td', { class: 'r ' + (f.need ? 'warn' : 'good') }, f.set[0] + '% / ' + f.set[1] + '%'
-        + (f.need ? ' (needs ' + f.need[0] + '% / ' + f.need[1] + '%)' : '') + (f.satX ? ' · travel ' + f.satX + '%' : '')))))));
+        + (f.need ? ' (needs ' + f.need[0] + '% / ' + f.need[1] + '%)' : '') + (f.satX ? ' · ' + travelText(f.satX) : '')))))));
 }
 
 // ---- setting the dead zones, and putting back the ones before
@@ -506,7 +516,8 @@ async function change(values) {
   await env.call('POST', '/api/flight/settings', { faOff: changed });
 }
 
-const zonesText = values => Object.entries(values).map(([c, s]) => `${NAMES[c]} ${s.deadLow}% / ${s.deadHigh}%` + (s.satX ? ` (travel ${s.satX}%)` : '')).join(', ');
+const travelText = satX => 'how far the stick travels ' + satX + '%';
+const zonesText = values => Object.entries(values).map(([c, s]) => `${NAMES[c]} ${s.deadLow}% / ${s.deadHigh}%` + (s.satX ? ` (${travelText(s.satX)})` : '')).join(', ');
 // What the check says once it has set the dead zones, and how they reach Elite today.
 const setText = (suggest, before) => 'Set: your Flight Assist off dead zones are now ' + zonesText(suggest) + ' (they were ' + zonesText(before) + '). '
   + 'Next, fly the trainer\'s exercises: they are for tuning the curves. '
@@ -577,10 +588,27 @@ function show(content) {
 
 // ---- the self-test (FlightCheck.selftest(), from Stick setup's console or a script): [{ name, ok, got, want }]
 function selftest() {
-  const said = setText({ pitch: { deadLow: 3, deadHigh: 4 } }, { pitch: { deadLow: 2, deadHigh: 2 } });
-  const got = { newZones: /Your new dead zones reach Elite through Joystick Gremlin/.test(said), they: /\bThey\b/.test(said), save: /Save the FA Off profile for Gremlin/.test(said) };
-  const want = { newZones: true, they: false, save: true };
-  return [{ name: 'the "Set" message says it is the new dead zones that reach Elite through Gremlin (never an unclear "They")', ok: JSON.stringify(got) === JSON.stringify(want), got, want }];
+  const checks = [];
+  const check = (name, got, want) => {
+    let value;
+    try { value = got(); } catch (e) { value = 'failed: ' + e.message; }
+    checks.push({ name, ok: JSON.stringify(value) === JSON.stringify(want), got: value, want });
+  };
+  check('the "Set" message says it is the new dead zones that reach Elite through Gremlin (never an unclear "They")', () => {
+    const said = setText({ pitch: { deadLow: 3, deadHigh: 4 } }, { pitch: { deadLow: 2, deadHigh: 2 } });
+    return { newZones: /Your new dead zones reach Elite through Joystick Gremlin/.test(said), they: /\bThey\b/.test(said), save: /Save the FA Off profile for Gremlin/.test(said) };
+  }, { newZones: true, they: false, save: true });
+  // Q2: plain names, and Windows' hex ids only in small print.
+  check('the "Set" message says how far the stick travels in plain words', () => {
+    const said = setText({ pitch: { deadLow: 3, deadHigh: 4, satX: 90 } }, { pitch: { deadLow: 2, deadHigh: 2, satX: 100 } });
+    return [/how far the stick travels 90%/.test(said), /\btravel \d/.test(said)];
+  }, [true, false]);
+  check('the device list: plain names, no hex id, no two the same; the id is for the small print under it', () => {
+    const list = deviceOptions([{ device: '046D:C215', name: 'Logitech Extreme 3D' }, { device: '1234:BEAD', name: 'vJoy Device' },
+      { device: '231D:0200', name: 'controller 231D:0200' }, { device: '044F:B10A', name: 'controller 044F:B10A' }]);
+    return [list.map(o => o.text), idText('046D:C215#2'), idText(MOUSE)];
+  }, [['Logitech Extreme 3D', 'vJoy Device (vJoy, the virtual stick)', 'Unnamed controller', 'Unnamed controller (2)', 'Mouse'], 'Its id in Windows: 046D:C215', '']);
+  return checks;
 }
 
 return { init, tick, selftest };

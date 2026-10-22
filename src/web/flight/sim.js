@@ -582,21 +582,23 @@ function draw(g, w, h, a, view, accent, paused) {
 // A tip that changes a curve says which (axis, field) and by how much (step, kept within min..max), not to what: the set's
 // tips are worked out once, and change() gives the change from the curves as they are when it is shown or taken. Each has
 // an id that stays the same for that piece of advice. feel: the +/- buttons are worth a word (only when they change what
-// the trainer feels, which the page knows).
-const LABELS = { satY: 'Saturation Y', bend: 'Bend' };
+// the trainer feels, which the page knows). A tip's button names its axis and the curve part by its plain name (the curve
+// box's), so two buttons never read the same; taken(tip) is its button once taken, naming the part too.
+const LABELS = { satY: 'Most it gives', bend: 'Softer middle' };
+const names = { pitch: 'Pitch', yaw: 'Yaw', roll: 'Roll' };
 function change(tip, curves) {
   const c = tip.field && curves && curves[tip.axis];
   if (!c) return null;
   const from = c[tip.field], to = clamp(from + tip.step, tip.min, tip.max);
   // Only the way the tip says: "less" never raises a value already under its floor (set lower by hand), "more" never lowers.
   if (tip.step > 0 ? to <= from : to >= from) return null;
-  return { change: { [tip.field]: to }, button: LABELS[tip.field] + ' ' + from + ' → ' + to };
+  return { change: { [tip.field]: to }, button: names[tip.axis] + ': ' + LABELS[tip.field] + ' ' + from + ' → ' + to };
 }
+const taken = tip => names[tip.axis] + ': ' + LABELS[tip.field] + ' changed';   // two tips for one axis still read differently
 function advise(ex, attempts, curves, spec) {
   const tips = [];
   const n = attempts.length || 1;
   const failed = attempts.filter(t => !t.ok).length;
-  const names = { pitch: 'Pitch', yaw: 'Yaw', roll: 'Roll' };
   if (ex.kind === 'chase' && failed) {
     // Never got onto it: a stick not pushed far, or one pushed far whose curve gives too little at the end.
     const missed = attempts.filter(t => t.firstOn == null);
@@ -606,7 +608,7 @@ function advise(ex, attempts, curves, spec) {
         tips.push({ id: 'push', text: 'You never pushed the stick far. Full stick swings the nose round fastest: push hard to start the swing; when the ring at the end of the dashed line reaches the target (with Nose in the middle: reaches the middle), stop pushing and push the other way as the nose closes in. Letting go does not stop the turn.' });
       } else if (curves.pitch && curves.pitch.satY < 100) {
         raised = 'pitch';
-        tips.push({ id: 'reach:pitch', text: 'You pushed hard but never caught it. More at full stick turns the ship faster.', axis: 'pitch', field: 'satY', step: 10, min: 20, max: 100 });
+        tips.push({ id: 'reach:pitch', text: 'You pushed hard but never caught it. Raise "Most it gives" to turn the ship faster at full stick.', axis: 'pitch', field: 'satY', step: 10, min: 20, max: 100 });
       } else {
         tips.push({ id: 'slow', text: 'This ship turns slowly at full stick. Roll so the target is above the nose, then pitch to it: pitch is the fastest turn.' });
       }
@@ -620,7 +622,7 @@ function advise(ex, attempts, curves, spec) {
       if (!caught.length || overshoots < 3 || !c) continue;
       const id = 'over:' + axis;
       if (c.bend < 70) tips.push({ id, text: `${names[axis]} overshoots ${overshoots.toFixed(1)} times an attempt: each correction goes too far and needs one the other way. A softer middle makes the small ones easier.`, axis, field: 'bend', step: 10, min: 0, max: 100 });
-      else if (c.satY > 40 && axis !== raised) tips.push({ id, text: `${names[axis]} still overshoots with a soft middle. Less at full stick makes it gentler.`, axis, field: 'satY', step: -10, min: 40, max: 100 });
+      else if (c.satY > 40 && axis !== raised) tips.push({ id, text: `${names[axis]} still overshoots with a soft middle. Lower "Most it gives" to make it gentler.`, axis, field: 'satY', step: -10, min: 40, max: 100 });
       else tips.push({ id, text: `${names[axis]} still overshoots with a soft middle${c.satY <= 40 ? ' and little at full stick' : ''}: make the corrections smaller and slower, and stop each one with a touch the other way.` });
     }
     // Half or more caught (a set of four can split two and two): what to do once on it.
@@ -639,5 +641,39 @@ function advise(ex, attempts, curves, spec) {
   return tips;
 }
 
-return { EXERCISES, FREE, RANKS, start, update, draw, advise, change, D, len };
+// ---- the self-test (Sim.selftest(), from the trainer's console or a script): the tips' buttons, [{ name, ok, got, want }]
+function selftest() {
+  const checks = [];
+  const check = (name, got, want) => {
+    let value;
+    try { value = got(); } catch (e) { value = 'failed: ' + e.message; }
+    checks.push({ name, ok: JSON.stringify(value) === JSON.stringify(want), got: value, want });
+  };
+  const ex = EXERCISES.find(e => e.kind === 'chase'), curve = o => ({ deadLow: 4, deadHigh: 4, satX: 92, satY: 80, bend: 35, ...o });
+  const tries = o => [1, 2, 3, 4, 5].map(() => ({ ok: false, firstOn: 1, crossings: { pitch: 4, yaw: 4, roll: 0 }, peak: { pitch: 1, yaw: 1, roll: 0 }, ...o }));
+  const buttons = (list, curves) => advise(ex, list, curves).filter(t => t.field).map(t => change(t, curves).button);
+  const same = curve(), soft = curve({ bend: 70 });
+  check('overshoots on pitch and yaw, the same curve on both: each button names its axis in plain words, so the two never read the same',
+    () => buttons(tries(), { pitch: same, roll: same, yaw: same }), ['Pitch: Softer middle 35 → 45', 'Yaw: Softer middle 35 → 45']);
+  check('taken, they still name their axis and the part changed', () => advise(ex, tries(), { pitch: same, roll: same, yaw: same }).filter(t => t.field).map(taken),
+    ['Pitch: Softer middle changed', 'Yaw: Softer middle changed']);
+  check('two tips for pitch on one report (more "Most it gives", a softer middle): taken or not, no two labels on it the same', () => {
+    const curves = { pitch: same, roll: same, yaw: same };
+    const list = [1, 2, 3].map(() => ({ ok: false, firstOn: null, crossings: {}, peak: { pitch: 1, yaw: 1, roll: 0 } })).concat(tries().slice(0, 2));
+    const tips = advise(ex, list, curves).filter(t => t.field), labels = tips.map(t => change(t, curves).button).concat(tips.map(taken));
+    return [tips.map(taken), new Set(labels).size === labels.length];
+  }, [['Pitch: Most it gives changed', 'Pitch: Softer middle changed', 'Yaw: Softer middle changed'], true]);
+  check('never caught though pushed hard: more "Most it gives" for pitch', () => buttons(tries({ firstOn: null }), { pitch: same, roll: same, yaw: same }), ['Pitch: Most it gives 80 → 90']);
+  check('overshooting with a soft middle already: less "Most it gives"', () => buttons(tries(), { pitch: soft, roll: soft, yaw: soft }), ['Pitch: Most it gives 80 → 70', 'Yaw: Most it gives 80 → 70']);
+  check('the tips say which way to move "Most it gives": raise it, lower it', () => [tries({ firstOn: null }), tries()].map((list, i) => {
+    const curves = i ? { pitch: soft, roll: soft, yaw: soft } : { pitch: same, roll: same, yaw: same };
+    return advise(ex, list, curves).filter(t => t.field === 'satY').map(t => {
+      const way = /\b(Raise|Lower) "Most it gives"/.exec(t.text);
+      return way && !/\b(More|Less) "/.test(t.text) ? way[1] : t.text;
+    })[0];
+  }), ['Raise', 'Lower']);
+  return checks;
+}
+
+return { EXERCISES, FREE, RANKS, start, update, draw, advise, change, taken, D, len, selftest };
 })();
