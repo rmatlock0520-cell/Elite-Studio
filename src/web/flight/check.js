@@ -523,7 +523,8 @@ async function setDeadZones(suggest, status, record) {
   record.state = 'set';
   remember(record);
   say('good', 'Set: your Flight Assist off dead zones are now ' + zonesText(suggest) + ' (they were ' + zonesText(before) + '). '
-    + 'Next, fly the trainer\'s exercises: they are for tuning the curves.',
+    + 'Next, fly the trainer\'s exercises: they are for tuning the curves. '
+    + 'They reach Elite through Joystick Gremlin: press "Save the FA Off profile for Gremlin" on this page, then open that profile in Gremlin.',
     h('button', { class: 'btn', onclick: async e => {
       e.target.disabled = true;
       try {

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Xml.Linq;
 using EliteStudio.App;
 using EliteStudio.Core;
@@ -549,5 +550,102 @@ public sealed class FlightTests : IDisposable
         Assert.Equal(Path.Combine(temp, "gremlin-fa-off.xml"), json.GetProperty("path").GetString());
         Assert.Equal(ProfileText(), File.ReadAllText(profile));
         Assert.Equal(6, Gremlin.Axes(XDocument.Load(Path.Combine(temp, "gremlin-fa-off.xml"))).Count);
+    }
+
+    /// <summary>A control as the pages get it: the "flight-input" event carries it as JSON.</summary>
+    static JsonElement AsSent(ControlValue value) => JsonSerializer.SerializeToElement(value, Settings.Json);
+
+    [Fact]
+    public void A_control_whose_real_stick_is_not_found_says_so_and_is_never_curved_twice()
+    {
+        FlightBinds binds = OwnersBinds();   // pitch, roll and yaw on vJoy, as Gremlin feeds it
+        IReadOnlyList<GremlinAxis> routed = Gremlin.Axes(XDocument.Parse(ProfileText()));
+        StickState vjoy = Stick("1234:BEAD", "vJoy Device", 0, ("X", 0.1), ("Y", -0.2), ("Z", 0), ("R", 0.3));
+        StickState logitech = Stick("046D:C215", "Logitech Extreme 3D", 0, ("X", 0.15), ("Y", -0.3), ("Z", -1), ("R", 0.45));
+        bool Unknown(ControlsFrame now, string control) => AsSent(now.Controls[control]).GetProperty("realUnknown").GetBoolean();
+
+        // Elite reads vJoy and nothing says which stick feeds it (no Gremlin route for it): vJoy's value is already curved, so it
+        // must never pass for the real stick, or the trainer curves it a second time. Studio says it does not know the stick.
+        ControlsFrame unrouted = new FlightControls(binds, [], new FlightSettings()).Take(new FlightFrame(1, [vjoy, logitech], []));
+        Assert.Equal(-0.2, unrouted.Controls["pitch"].Game);
+        Assert.Null(unrouted.Controls["pitch"].Real);
+        Assert.All((string[])["pitch", "roll", "yaw"], control => Assert.True(Unknown(unrouted, control)));
+        Assert.False(Unknown(unrouted, "throttle"));   // only the turning controls have a real stick behind them
+
+        // Gremlin routes it, but the stick it names is not plugged in: the same
+        ControlsFrame gone = new FlightControls(binds, routed, new FlightSettings()).Take(new FlightFrame(2, [vjoy], []));
+        Assert.Equal((-0.2, (double?)null), (gone.Controls["pitch"].Game!.Value, gone.Controls["pitch"].Real));
+        Assert.True(Unknown(gone, "pitch"));
+
+        // Found through Gremlin, or as the player picked it with Detect: nothing to say
+        ControlsFrame found = new FlightControls(binds, routed, new FlightSettings()).Take(new FlightFrame(3, [vjoy, logitech], []));
+        Assert.Equal(-0.3, found.Controls["pitch"].Real);
+        Assert.False(Unknown(found, "pitch"));
+        ControlsFrame picked = new FlightControls(binds, [], new FlightSettings { Sources = new() { ["pitch"] = "046D:C215 Y" } }).Take(new FlightFrame(4, [vjoy, logitech], []));
+        Assert.Equal(-0.3, picked.Controls["pitch"].Real);
+        Assert.False(Unknown(picked, "pitch"));
+        Assert.True(Unknown(picked, "yaw"));
+        // Elite reads the stick itself: that is the real stick
+        var direct = binds with { Axes = new Dictionary<string, FlightAxis>(binds.Axes) { ["pitch"] = new FlightAxis("LogitechExtreme3DPro", "Y", false, 0) } };
+        ControlsFrame itself = new FlightControls(direct, [], new FlightSettings()).Take(new FlightFrame(5, [vjoy, logitech], []));
+        Assert.Equal((-0.3, -0.3), (itself.Controls["pitch"].Game!.Value, itself.Controls["pitch"].Real!.Value));
+        Assert.False(Unknown(itself, "pitch"));
+        // No reading at all (no stick plugged in): nothing to say here; the trainer says it found no stick
+        Assert.False(Unknown(new FlightControls(binds, routed, new FlightSettings()).Take(new FlightFrame(6, [], [])), "pitch"));
+    }
+
+    [Fact]
+    public async Task Stick_setup_is_told_when_the_curves_it_tunes_do_not_reach_Elite()
+    {
+        using var game = new PracticeGame();
+        game.Copy("Custom.4.2.binds", game.BindingsDir);
+        game.Copy("StartPreset.4.start", game.BindingsDir);
+        using GameWatcher watcher = game.Watch();
+        watcher.Poll();
+        string own = Path.Combine(temp, "gremlin.xml");
+        File.WriteAllText(own, ProfileText());
+        string running = own;   // the profile Gremlin opens
+        using var web = new WebServer(temp);
+        using var flight = new FlightApi(web, new Settings(Path.Combine(temp, "settings.json")), watcher.State, null, game.BindingsDir, null,
+            gremlinProfile: () => running, sticks: _ => [], held: _ => false);
+        async Task<(bool HasFaOff, bool OutOfDate)> Told()
+        {
+            JsonElement gremlin = (await Ask(web, "GET", "")).Json.GetProperty("gremlin");
+            return (gremlin.GetProperty("hasFaOff").GetBoolean(), gremlin.GetProperty("outOfDate").GetBoolean());
+        }
+        async Task Change(string set, string control, string field, double by)
+        {
+            JsonNode curves = JsonNode.Parse((await Ask(web, "GET", "")).Json.GetProperty("settings").GetProperty(set).GetRawText())!;
+            curves[control]![field] = curves[control]![field]!.GetValue<double>() + by;
+            Assert.Equal(200, (await Ask(web, "POST", "/settings", new JsonObject { [set] = curves }.ToJsonString())).Status);
+        }
+
+        // The player's own profile has no FA Off mode, so the curves tuned here do not reach Elite; nothing saved yet to be old.
+        Assert.Equal((false, false), await Told());
+        // Saved: Studio's curves read back from its 21 points are the curves in use (within their rounding)
+        (int status, JsonElement saved) = await Ask(web, "POST", "/gremlin");
+        Assert.Equal(200, status);
+        Assert.Equal((false, false), await Told());
+        // Gremlin opens the saved one: its FA Off mode is there
+        running = saved.GetProperty("path").GetString()!;
+        Assert.Equal((true, false), await Told());
+        // A dead zone moved half a step after saving: the saved profile is older than the curves...
+        await Change("faOff", "pitch", "deadLow", 0.5);
+        Assert.Equal((true, true), await Told());
+        // ...and moved back, the same curves again: the curves are compared, not the times things were saved
+        await Change("faOff", "pitch", "deadLow", -0.5);
+        Assert.Equal((true, false), await Told());
+        Assert.Equal(200, (await Ask(web, "POST", "/settings", "{\"ship\":\"eagle\"}")).Status);   // a setting that is no curve
+        Assert.Equal((true, false), await Told());
+        // A softer middle for roll: older, until it is saved again
+        await Change("faOff", "roll", "bend", 5);
+        Assert.Equal((true, true), await Told());
+        Assert.Equal(200, (await Ask(web, "POST", "/gremlin")).Status);
+        Assert.Equal((true, false), await Told());
+        // Flight Assist on curves saved here go into its Default mode: they count too
+        await Change("faOn", "yaw", "satY", -10);
+        Assert.Equal((true, true), await Told());
+        Assert.Equal(200, (await Ask(web, "POST", "/gremlin")).Status);
+        Assert.Equal((true, false), await Told());
     }
 }

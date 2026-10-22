@@ -3,7 +3,9 @@
 //   Flight.stream(onFrame)         the app's readings of the sticks and keys, about sixty a second, while this page is shown
 //   Flight.reader(info)            turns those readings into the ship's commands, with the player's bindings and curves
 //   Flight.drawInputs(...)         the throttle hand and the stick hand drawn on a canvas, as the in-game flight overlay draws them
+//   Flight.stickLost(frame)        the line to show when Studio cannot find the real stick behind pitch, roll or yaw
 //   Flight.keyText / buttonText / axisText / deviceText    a binding in words
+//   Flight.selftest()              checks the pictures and that line, [{ name, ok, got, want }]
 // Loaded after ../studio.js.
 var Flight = (() => {
 'use strict';
@@ -39,7 +41,8 @@ function stream(onFrame) {
 // Builds a reader that turns one reading into what the ship is told, each from -1 to 1:
 //   pitch (nose up), roll (right wing down), yaw (nose right), lateral (right), vertical (up), ahead (forward thrust),
 //   plus the throttle as set (kept between readings, from its axis or the speed buttons), boost (pressed just now),
-//   pressed (the flight actions held) and real (the stick before any curve, for the pictures).
+//   pressed (the flight actions held), and for pitch, roll and yaw: ship (the stick as the ship gets it, before the game's
+//   invert: the real stick through the FA Off curves, or what the game gets), real (the stick before any curve) and game.
 // info is GET /api/flight; useStick: the real stick with Studio's FA Off curves (else what the game gets, through vJoy).
 // read.reset() puts the throttle back to zero, for a new attempt.
 function reader() {
@@ -47,7 +50,7 @@ function reader() {
   read.reset = () => { throttle = 0; };
   return read;
   function read(frame, info, useStick) {
-    const out = { pitch: 0, roll: 0, yaw: 0, lateral: 0, vertical: 0, ahead: 0, throttle: 0, boost: false, pressed: new Set(), real: {}, game: {}, source: {} };
+    const out = { pitch: 0, roll: 0, yaw: 0, lateral: 0, vertical: 0, ahead: 0, throttle: 0, boost: false, pressed: new Set(), ship: {}, real: {}, game: {}, source: {} };
     if (!frame) return out;
     const pressed = new Set(frame.pressed || []);
     out.pressed = pressed;
@@ -65,6 +68,7 @@ function reader() {
       let value = null;
       if (useStick && v.real != null && off) { value = curve(v.real, off[name]); out.source[name] = 'stick'; }
       else if (v.game != null) { value = v.game; out.source[name] = 'game'; }
+      out.ship[name] = value;
       const sign = nativeSign * (v.invert ? -1 : 1);
       const fromKeys = keys(plusKey, minusKey);
       if (fromKeys) out.source[name] = 'keys';
@@ -177,15 +181,17 @@ function drawInputs(g, w, h, cmd, faOff, accent) {
   frame(306, 128, 150, 22, 'YAW', false);
   frame(470, 30, 118, 118, 'PITCH · ROLL', false, true);
   if (cmd) {
-    // The stick's position as the game gets it (the ring: the real stick, before Gremlin's curve).
-    const yawGame = cmd.game.yaw != null ? cmd.game.yaw : cmd.yaw, yawReal = cmd.real.yaw;
-    if (yawReal != null && Math.abs(yawReal - yawGame) > 0.02) dot(at(yawReal, 306, 150), 139, true);
-    dot(at(yawGame, 306, 150), 139);
+    // The stick as the ship gets it (cmd.ship: through the FA Off curves when the reader read the real stick, else as the game
+    // gets it); the ring: the real stick, before any curve.
+    const shipGets = name => cmd.ship[name] != null ? cmd.ship[name] : cmd[name];
+    const yaw = shipGets('yaw'), yawReal = cmd.real.yaw;
+    if (yawReal != null && Math.abs(yawReal - yaw) > 0.02) dot(at(yawReal, 306, 150), 139, true);
+    dot(at(yaw, 306, 150), 139);
     // A stick pulled back is drawn low; with no stick, "nose up" from the keys is drawn as a stick pulled back.
-    const rollGame = cmd.game.roll != null ? cmd.game.roll : cmd.roll, pitchGame = cmd.game.pitch != null ? cmd.game.pitch : cmd.pitch;
-    if (cmd.real.roll != null && cmd.real.pitch != null && Math.abs(cmd.real.roll - rollGame) + Math.abs(cmd.real.pitch - pitchGame) > 0.02)
+    const roll = shipGets('roll'), pitch = shipGets('pitch');
+    if (cmd.real.roll != null && cmd.real.pitch != null && Math.abs(cmd.real.roll - roll) + Math.abs(cmd.real.pitch - pitch) > 0.02)
       dot(at(cmd.real.roll, 470, 118), at(cmd.real.pitch, 30, 118), true);
-    dot(at(rollGame, 470, 118), at(pitchGame, 30, 118));
+    dot(at(roll, 470, 118), at(pitch, 30, 118));
   } else { dot(381, 139); dot(529, 89); }
   g.restore();
 }
@@ -221,5 +227,65 @@ function pressText(k) {
 const buttonText = b => b.hold.map(pressText).concat(pressText(b.press)).join(' + ');
 const axisText = a => deviceText(a.device) + ' ' + a.axis + ' axis' + (a.inverted ? ', inverted' : '') + (a.deadzone > 0.005 ? ', dead zone ' + Math.round(a.deadzone * 100) + '%' : '');
 
-return { curve, stream, reader, drawInputs, keyText, buttonText, axisText, deviceText, clamp, look };
+// ---- a real stick Studio cannot find
+// The app says when it cannot read the real stick behind pitch, roll or yaw although the game gets a reading (the stick Gremlin
+// names is not plugged in, or Elite reads vJoy and nothing tells Studio which stick feeds it): a page reading the real stick
+// then flies that control as the game gets it, so the FA Off curves change nothing there. The one plain line to show, or null.
+function stickLost(frame) {
+  const lost = ['pitch', 'roll', 'yaw'].filter(n => frame && frame.controls && frame.controls[n] && frame.controls[n].realUnknown);
+  if (!lost.length) return null;
+  const one = lost.length === 1, names = one ? lost[0] : lost.slice(0, -1).join(', ') + ' and ' + lost[lost.length - 1];
+  return `Studio cannot find your real stick behind ${names}, so ${one ? 'it is' : 'they are'} flown as the game gets ${one ? 'it' : 'them'}`
+    + ` and your Flight Assist off curves change nothing there. On Stick setup, click Detect beside ${one ? 'it' : 'each'} and move that control.`;
+}
+
+// ---- the self-test (Flight.selftest(), from a page's console or a script): the hands picture puts the red dot where the
+// ship's stick is (the trainer with the FA Off curves: the real stick through them; Stick setup: what the game gets), and
+// the trainer says when it cannot find the real stick. Answers [{ name, ok, got, want }], as the Nav studio's self-tests do.
+function selftest() {
+  const checks = [];
+  const check = (name, got, want) => {
+    let value;
+    try { value = got(); } catch (e) { value = 'failed: ' + e.message; }
+    checks.push({ name, ok: JSON.stringify(value) === JSON.stringify(want), got: value, want });
+  };
+  const round = v => Math.round(v * 100) / 100;
+  const at = (v, start, size) => round(start + 6 + (size - 12) / 2 * (1 + v));   // where the picture puts a value
+  // A canvas that keeps the circles drawn, filled (dots) and outlined (rings), at the picture's own 600 x 168.
+  const drawn = cmd => {
+    const dots = [], rings = [];
+    let path = [];
+    const g = new Proxy({}, {
+      get: (_, k) => k === 'beginPath' ? () => { path = []; } : k === 'arc' ? (x, y) => path.push([round(x), round(y)])
+        : k === 'fill' ? () => dots.push(...path) : k === 'stroke' ? () => rings.push(...path) : () => {},
+      set: () => true });
+    drawInputs(g, 600, 168, cmd, true, '#ff7100');
+    return { dots, rings };
+  };
+  const straight = { deadLow: 0, deadHigh: 0, satX: 100, satY: 60, bend: 0 };   // gives 0.6 of the stick: 0.5 → 0.3
+  const info = { settings: { faOff: { pitch: straight, roll: straight, yaw: straight } }, binds: { values: {} } };
+  const frame = { time: 1, pressed: [], controls: { pitch: { game: 0.2, real: 0.5, invert: true }, roll: { game: -0.1, real: -0.25, invert: false }, yaw: { game: 0.3, real: 0.75, invert: false } } };
+  const stickDot = pic => pic.dots.find(([x]) => x >= 470);
+  const yawDot = pic => pic.dots.find(([x, y]) => y === 139 && x >= 306 && x <= 456);
+
+  const trainer = () => drawn(reader()(frame, info, true));      // "With my FA Off curves"
+  const setup = () => drawn(reader()(frame, info, false));       // Stick setup, and the trainer's "As the game gets it"
+  check('trainer, with my FA Off curves: the stick dot is the real stick through the curve', () => stickDot(trainer()), [at(-0.15, 470, 118), at(0.3, 30, 118)]);
+  check('trainer, with my FA Off curves: the twist dot is the real twist through the curve', () => yawDot(trainer()), [at(0.45, 306, 150), 139]);
+  check('trainer: the white ring is the real stick', () => trainer().rings.some(([x, y]) => x === at(-0.25, 470, 118) && y === at(0.5, 30, 118)), true);
+  check('Stick setup: the stick dot is what the game gets', () => stickDot(setup()), [at(-0.1, 470, 118), at(0.2, 30, 118)]);
+  check('Stick setup: the twist dot is what the game gets', () => yawDot(setup()), [at(0.3, 306, 150), 139]);
+  // The app says when it cannot find the real stick behind a control (realUnknown): then it is read as the game gets it.
+  const lost = { time: 2, pressed: [], controls: { pitch: { game: 0.2, real: null, invert: true, realUnknown: true }, roll: { game: 0, real: 0, invert: false }, yaw: { game: 0.1, real: null, invert: false, realUnknown: true } } };
+  check('a control whose real stick is not found is flown as the game gets it, not curved again', () => { const cmd = reader()(lost, info, true); return [cmd.source.pitch, cmd.pitch]; }, ['game', 0.2]);
+  check('the trainer names the controls whose real stick is not found, and where to fix it', () => {
+    const line = stickLost(lost);
+    return [/pitch and yaw/.test(line), /Detect/.test(line), /Stick setup/.test(line)];
+  }, [true, true, true]);
+  check('one control: the line names it alone', () => /behind roll[, ]/.test(stickLost({ controls: { roll: { game: 0.1, real: null, realUnknown: true } } })), true);
+  check('nothing to say when every real stick is found', () => stickLost(frame), null);
+  return checks;
+}
+
+return { curve, stream, reader, drawInputs, stickLost, keyText, buttonText, axisText, deviceText, clamp, look, selftest };
 })();

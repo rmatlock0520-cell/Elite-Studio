@@ -9,7 +9,12 @@ public sealed record AxisRef(IReadOnlyList<string> Devices, string? Name, string
 
 /// <summary>One control this moment: what the game gets, and for pitch, roll and yaw what the real stick behind it does (before Gremlin's curve). Null where it cannot be read.</summary>
 /// <param name="Invert">The game's "invert" for the axis.</param>
-public sealed record ControlValue(double? Game, double? Real, bool Invert);
+/// <param name="RealUnknown">
+/// Pitch, roll or yaw: the game gets a reading but Studio cannot read the real stick behind it (Gremlin's stick is not
+/// plugged in, or the game reads vJoy and nothing tells Studio which stick feeds it), so Real is null and a page that wants
+/// the real stick has only what the game gets. Detect on Stick setup tells Studio which stick it is.
+/// </param>
+public sealed record ControlValue(double? Game, double? Real, bool Invert, bool RealUnknown = false);
 
 /// <summary>What the hands do this moment, in flight terms: the axes, and the flight actions whose key or button is held.</summary>
 public sealed record ControlsFrame(long Time, IReadOnlyDictionary<string, ControlValue> Controls, IReadOnlyList<string> Pressed, IReadOnlyList<StickState> Sticks, IReadOnlyList<string> Keys);
@@ -50,10 +55,11 @@ public sealed class FlightControls
             if (Turning.Contains(name))
             {
                 if (settings.Sources.GetValueOrDefault(name) is { } chosen && chosen.Split(' ') is [var device, var letter]) real = new AxisRef([device], null, letter);
-                else if (bound is not null && bound.Device.Equals("vJoy", StringComparison.OrdinalIgnoreCase)
-                    && Gremlin.Through(gremlin, bound.Axis) is { } through)
-                    real = new AxisRef([], through.DeviceName, through.Axis);
-                else real = game;
+                // The game reads vJoy: the real stick is the one Gremlin passes on to it. With no route there Studio does not know
+                // the stick, and vJoy's value must never stand in for it: it is already curved, and the trainer would curve it again.
+                else if (bound is not null && bound.Device.Equals("vJoy", StringComparison.OrdinalIgnoreCase))
+                    real = Gremlin.Through(gremlin, bound.Axis) is { } through ? new AxisRef([], through.DeviceName, through.Axis) : null;
+                else real = game;   // the game reads the stick itself
             }
             axes[name] = (game, real, bound?.Inverted ?? false);
         }
@@ -79,7 +85,10 @@ public sealed class FlightControls
     {
         var controls = new Dictionary<string, ControlValue>();
         foreach ((string name, (AxisRef? game, AxisRef? real, bool invert)) in axes)
-            controls[name] = new ControlValue(Value(frame, game), Value(frame, real), invert);
+        {
+            double? gets = Value(frame, game), stick = Value(frame, real);
+            controls[name] = new ControlValue(gets, stick, invert, Turning.Contains(name) && gets is not null && stick is null);
+        }
         var held = new HashSet<string>(frame.Keys, StringComparer.OrdinalIgnoreCase);
         List<string> pressed = [.. buttons.Where(b => b.Value.Any(way => Down(frame, held, way.Press) && way.Hold.All(h => Down(frame, held, h))))
             .Select(b => b.Key.StartsWith("trainer:", StringComparison.Ordinal) ? b.Key["trainer:".Length..] : b.Key).Distinct()];

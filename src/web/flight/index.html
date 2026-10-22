@@ -98,6 +98,7 @@
     <div class="seg" id="view"><button data-view="dot">Dot in the middle</button><button data-view="nose">Nose in the middle</button></div>
     <h2>Stick</h2>
     <div class="seg" id="input"><button data-input="stick" title="Your stick before Gremlin, with the Flight Assist off curves you tune on the Stick setup page.">With my FA Off curves</button><button data-input="game" title="Exactly what Elite gets: through vJoy, with the curves of whatever feeds it (Joystick Gremlin today).">As the game gets it</button></div>
+    <p class="small warn" id="stick-lost" hidden></p>
     <h2>Controls</h2>
     <div class="keys" id="keys"></div>
   </aside>
@@ -146,7 +147,7 @@ let tuneBeforeOwn = true; // ...and whether they were the player's own then, or 
 let tunePending = null;   // curves changed by hand and not sent yet (sent a moment after the last press)
 let tuneTimer = 0;
 let view = 'dot';
-try { view = localStorage.getItem('flight.view') || 'dot'; } catch (e) {}
+try { view = localStorage.getItem('flight.view') === 'nose' ? 'nose' : 'dot'; } catch (e) {}
 const read = Flight.reader();
 const STEP = 1 / 120;
 
@@ -530,7 +531,7 @@ function fit(canvas) {
   return { g, w: r.width, h: r.height };
 }
 
-let last = performance.now(), keysShown = false;
+let last = performance.now(), keysShown = false, lostShown = null;
 function tick(now) {
   try { frameOnce(now); }
   finally { requestAnimationFrame(tick); }   // one bad frame must not stop the trainer for good
@@ -540,6 +541,9 @@ function frameOnce(now) {
   last = now;
   const cmd = read(frame, info, !info || info.settings.input !== 'game');
   if (frame && !keysShown && info) { keysShown = true; drawKeys(); }
+  // Reading the real stick, a control whose stick Studio cannot find is flown as the game gets it: one line says so.
+  const lost = info && info.settings.input !== 'game' ? Flight.stickLost(frame) : null;
+  if (lost !== lostShown) { lostShown = lost; $('#stick-lost').textContent = lost || ''; $('#stick-lost').hidden = !lost; }
   // While paused the countdown and the result line wait too, so an attempt never starts unseen.
   if (paused && run && (run.phase === 'count' || run.phase === 'after')) run.phaseAt += now - (run.pausedAt || now);
   if (run) run.pausedAt = paused ? now : 0;

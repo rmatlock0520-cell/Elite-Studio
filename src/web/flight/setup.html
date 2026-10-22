@@ -131,7 +131,8 @@ table.binds td:first-child{color:var(--muted);white-space:nowrap;width:150px}
       <div class="sl"><span>Saturation Y<small>most it gives at full stick</small></span><input type="range" id="satY" min="20" max="100" step="1"><output></output></div>
       <div class="sl"><span>Bend<small>a softer middle</small></span><input type="range" id="bend" min="0" max="100" step="1"><output></output></div>
       <label class="check"><input type="checkbox" id="link">Both dead zones together</label>
-      <div class="row"><button class="btn small" id="copy-all" title="Copies this curve's shape (Saturation Y and bend) to pitch, roll and yaw; each keeps its own dead zones and travel">Copy to all three</button><button class="btn small" id="reset">Back to the suggestion</button><span class="small muted" id="saved"></span></div>
+      <div class="row"><button class="btn small" id="copy-all" title="Copies this curve's shape (Saturation Y and bend) to pitch, roll and yaw; each keeps its own dead zones and travel">Copy to all three</button><button class="btn small" id="reset" title="Puts pitch, roll and yaw of these curves back to Studio's suggestion; a Put back button follows">Back to the suggestion</button><span class="small muted" id="saved"></span></div>
+      <p class="small" id="reset-note" hidden></p>
       <p class="small muted" id="mode-note"></p>
     </section>
   </div>
@@ -219,6 +220,7 @@ for (const f of FIELDS) {
   const el = $('#' + f);
   el.addEventListener('input', () => {
     editing = true;
+    resetNote([]);   // after a reset, a change of the player's own: "Put back" would undo it, so it goes
     const c = info.settings[mode][axis];
     c[f] = +el.value;
     if ($('#link').checked && (f === 'deadLow' || f === 'deadHigh')) { c.deadLow = c.deadHigh = +el.value; }
@@ -245,6 +247,7 @@ for (const b of document.querySelectorAll('#mode button')) b.addEventListener('c
 for (const b of document.querySelectorAll('#axis button')) b.addEventListener('click', () => { axis = b.dataset.axis; draw(); });
 // The shape only: each axis keeps its own dead zones and travel (Saturation X), which the stick check measured for that axis.
 $('#copy-all').addEventListener('click', () => {
+  resetNote([]);
   const c = current();
   for (const a of ['pitch', 'roll', 'yaw']) {
     const own = info.settings[mode][a];
@@ -253,12 +256,28 @@ $('#copy-all').addEventListener('click', () => {
   pending = { mode, curves: JSON.parse(JSON.stringify(info.settings[mode])) };
   flush();
 });
-$('#reset').addEventListener('click', () => {
+// Back to the suggestion: all three curves of the set on screen (pitch, roll and yaw), and a line that says so, with "Put back"
+// for the curves as they were (a line on the page, never a pop-up).
+const SET_NAMES = { faOff: 'Flight Assist off', faOn: 'Flight Assist on' };
+function resetNote(parts) { $('#reset-note').replaceChildren(...parts); $('#reset-note').hidden = !parts.length; }
+$('#reset').addEventListener('click', async () => {
   clearTimeout(saveTimer);   // a change still waiting would undo the reset
+  const set = mode, before = JSON.parse(JSON.stringify(info.settings[set])), own = !!(info.saved[set] || pending);
   pending = null;
   editing = false;
-  call('POST', '/api/flight/settings', { [mode]: null }).catch(e => toast(e.message, true));
+  try {
+    await call('POST', '/api/flight/settings', { [set]: null });
+    resetNote(own ? [`Your ${SET_NAMES[set]} curves for pitch, roll and yaw are back to Studio's suggestion. `,
+      h('button', { class: 'btn small', onclick: () => putBack(set, before) }, 'Put back')]
+      : [`Your ${SET_NAMES[set]} curves for pitch, roll and yaw were Studio's suggestion already.`]);
+  } catch (e) { toast(e.message, true); }
 });
+async function putBack(set, before) {
+  try {
+    await call('POST', '/api/flight/settings', { [set]: before });
+    resetNote([`Put back: your ${SET_NAMES[set]} curves for pitch, roll and yaw are as they were.`]);
+  } catch (e) { toast(e.message, true); }
+}
 
 // ---- the bindings, and what in them matters for Flight Assist off
 function drawBinds() {
@@ -302,6 +321,11 @@ function drawGremlin() {
   else {
     parts.push(h('p', null, 'Your profile: ', h('span', { class: 'path' }, g.profile)));
     if (g.problem) parts.push(h('p', { class: 'bad' }, 'Studio could not read it: ' + g.problem));
+    // What really reaches Elite: the Flight Assist off curves tuned here go to the game only through Gremlin's FA Off mode.
+    else if (!g.hasFaOff) parts.push(h('p', { class: 'warn' }, 'The Gremlin profile in use has no Flight Assist off curves, so the curves you tune here do not reach Elite. '
+      + (g.faOffFile ? 'Open the profile Studio saved (named below) in Joystick Gremlin.' : 'Press "Save the FA Off profile for Gremlin" below, then open that profile in Joystick Gremlin.')));
+    if (g.outOfDate) parts.push(h('p', { class: 'warn' }, 'Your saved Flight Assist off profile is older than your curves: press "Save the FA Off profile for Gremlin" again'
+      + (g.hasFaOff ? ', then open it again in Joystick Gremlin.' : '.')));
     const modes = [...new Set(g.modes)];
     parts.push(h('p', { class: 'small muted' }, (g.axes.length ? g.axes.length + ' axes go to vJoy' : 'No axes go to vJoy') + ' · modes: ' + (modes.join(', ') || 'Default')));
     parts.push(h('p', { class: 'small muted' }, 'Saving writes a new copy of your profile, ending "-fa-off", with a second mode "FA Off" that has your Flight Assist off curves. '
@@ -479,7 +503,7 @@ function tick() {
   if (failure && !tick.failed) { tick.failed = true; throw failure; }
 }
 function drawHands() {
-  const cmd = read(frame, info, true);
+  const cmd = read(frame, info, false);   // the picture here is what the game gets (the trainer's is what its ship gets)
   const a = fit(hands);
   Flight.drawInputs(a.g, a.w, a.h, cmd, !!(info && info.faOff), accent());
 }

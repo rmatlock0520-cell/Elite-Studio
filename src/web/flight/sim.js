@@ -445,7 +445,7 @@ function drawScope(g, w, h, a, view, accent, paused) {
 }
 
 function rateBars(g, x, y, a) {
-  const s = a.s, settle = a.ex.settle;
+  const s = a.s;
   g.font = '11px "Segoe UI",sans-serif';
   [['PITCH', 'pitch'], ['YAW', 'yaw'], ['ROLL', 'roll']].forEach(([label, axis], i) => {
     const top = s.rates[axis] / D, w = s.w[axis] / D, by = y + i * 34;
@@ -453,12 +453,7 @@ function rateBars(g, x, y, a) {
     g.fillText(label + '  ' + w.toFixed(1) + '°/s', x, by + 10);
     g.fillStyle = 'rgba(255,255,255,.08)';
     g.fillRect(x, by + 15, 130, 8);
-    if (settle) {
-      const band = Math.min(1, (axis === 'roll' ? 2 * settle : settle) / top) * 65;
-      g.fillStyle = 'rgba(61,220,132,.3)';
-      g.fillRect(x + 65 - band, by + 15, band * 2, 8);
-    }
-    g.fillStyle = Math.abs(w) <= (settle ? (axis === 'roll' ? 2 * settle : settle) : 0) ? '#3ddc84' : '#ffb020';
+    g.fillStyle = w ? '#ffb020' : '#3ddc84';   // amber while it turns, green when still
     const share = clamp(w / top, -1, 1) * 65;
     g.fillRect(x + 65 + Math.min(0, share), by + 15, Math.abs(share) || 1.5, 8);
   });
@@ -577,7 +572,7 @@ function cover(g, w, h, text) {
 
 function draw(g, w, h, a, view, accent, paused) {
   if (a.ex.kind === 'tunnel') drawTunnel(g, w, h, a, accent, paused);
-  else drawScope(g, w, h, a, a.ex.kind === 'track' && view === 'auto' ? 'nose' : view === 'nose' ? 'nose' : 'dot', accent, paused);
+  else drawScope(g, w, h, a, view === 'nose' ? 'nose' : 'dot', accent, paused);
 }
 
 // ---- what to change, after a set
