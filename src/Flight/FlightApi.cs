@@ -20,7 +20,8 @@ public sealed record TrainerShip(string Id, string Name, double Speed, double Bo
 /// Routes: GET /api/flight (everything the pages show: settings, the game's flight bindings,
 /// Gremlin's profile, the ships, Flight Assist now); POST /api/flight/settings (the named settings
 /// changed); POST /api/flight/progress ({"exercise":"chase-1","successes":3,"attempts":5}, one set of
-/// the trainer flown); POST /api/flight/stream (the stick readings as "flight-input" events for the
+/// the trainer flown); POST /api/flight/score ({"game":"dot2-medium-faOff","pct":62.5}, a round of Chase the dot
+/// played, its best kept); POST /api/flight/stream (the stick readings as "flight-input" events for the
 /// next few seconds); POST /api/flight/gremlin (writes the FA Off profile for Joystick Gremlin);
 /// GET /api/flight/vjoy (looks for vJoy and says what state it is in, see <see cref="VJoyState"/>),
 /// POST /api/flight/vjoy/folder (the player points to vJoy's folder by hand, the only way to set it),
@@ -85,6 +86,7 @@ public sealed class FlightApi : IDisposable
         });
         web.Map("POST", "/api/flight/settings", Change);
         web.Map("POST", "/api/flight/progress", Progress);
+        web.Map("POST", "/api/flight/score", Score);
         web.Map("POST", "/api/flight/stream", _ =>
         {
             reader.Stream();
@@ -313,6 +315,13 @@ public sealed class FlightApi : IDisposable
 
     // ------------------------------------------------------------ routes
 
+    /// <summary>
+    /// What POST /api/flight/settings never changes: the progress and the scores have their own routes (which keep the best), the
+    /// marker is Studio's, and vJoy's folder is set only through Windows' folder picker (POST /api/flight/vjoy/folder), which checks
+    /// it is vJoy's and on this PC. By any spelling of the name, as the settings are read whatever the case of their names.
+    /// </summary>
+    static readonly HashSet<string> NotThroughSettings = new(["progress", "scores", "shownForFaOff", "vJoyFolder"], StringComparer.OrdinalIgnoreCase);
+
     WebResponse Change(WebRequest request)
     {
         FlightSettings changed;
@@ -321,9 +330,7 @@ public sealed class FlightApi : IDisposable
             if (JsonNode.Parse(request.Body) is not JsonObject given) throw new JsonException("Send the settings to change as one JSON object.");
             JsonObject all = JsonSerializer.SerializeToNode(Current, StudioSettings.Json)!.AsObject();
             foreach ((string name, JsonNode? value) in given)
-                // Not these: the progress has its own route, the marker is Studio's, and vJoy's folder is set only through
-                // Windows' folder picker (POST /api/flight/vjoy/folder), which checks it is vJoy's and on this PC.
-                if (all.ContainsKey(name) && name is not "progress" and not "shownForFaOff" and not "vJoyFolder") all[name] = value?.DeepClone();
+                if (all.ContainsKey(name) && !NotThroughSettings.Contains(name)) all[name] = value?.DeepClone();
             changed = all.Deserialize<FlightSettings>(StudioSettings.Json)!.Cleaned();
         }
         catch (JsonException problem)
@@ -426,6 +433,31 @@ public sealed class FlightApi : IDisposable
             PassedOn = was.PassedOn ?? (passed ? DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : null),
         };
         Save(Current with { Progress = new Dictionary<string, ExerciseRecord>(Current.Progress) { [set.Exercise!] = now } });
+        return WebResponse.Json(Answer());
+    }
+
+    sealed class RoundBody
+    {
+        public string Game { get; set; } = "";
+        public double? Pct { get; set; }
+    }
+
+    /// <summary>A round of Chase the dot played: its score (the share of the round on the dot, in percent) kept when it is the best of that game.</summary>
+    WebResponse Score(WebRequest request)
+    {
+        RoundBody round;
+        try
+        {
+            round = request.Read<RoundBody>();
+        }
+        catch (JsonException)
+        {
+            round = new RoundBody();
+        }
+        if (!FlightSettings.IsDotGame(round.Game) || round.Pct is not { } pct || !double.IsFinite(pct) || pct is < 0 or > 100)
+            return WebResponse.Error("That is not a round of Chase the dot.", 400);
+        double best = Math.Max(Current.Scores.GetValueOrDefault(round.Game) ?? 0, pct);
+        Save(Current with { Scores = new Dictionary<string, double?>(Current.Scores) { [round.Game] = best } });
         return WebResponse.Json(Answer());
     }
 

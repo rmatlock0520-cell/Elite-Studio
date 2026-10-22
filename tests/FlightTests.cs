@@ -648,4 +648,102 @@ public sealed class FlightTests : IDisposable
         Assert.Equal(200, (await Ask(web, "POST", "/gremlin")).Status);
         Assert.Equal((true, false), await Told());
     }
+
+    // ------------------------------------------------------------ Chase the dot's best scores
+
+    /// <summary>The best scores as GET /api/flight answers them, by game ("dot2-medium-faOff" → 62.5).</summary>
+    static async Task<Dictionary<string, double>> Scores(WebServer web) =>
+        (await Ask(web, "GET", "")).Json.GetProperty("settings").GetProperty("scores").EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetDouble());
+
+    [Fact]
+    public async Task Chase_the_dot_keeps_the_best_score_of_each_level_and_curve_set()
+    {
+        using var game = new PracticeGame();
+        using GameWatcher watcher = game.Watch();
+        string file = Path.Combine(temp, "settings.json");
+        using var web = new WebServer(temp);
+        using var flight = new FlightApi(web, new Settings(file), watcher.State, null, game.BindingsDir, null, gremlinProfile: () => null, sticks: _ => [], held: _ => false);
+
+        (int status, JsonElement json) = await Ask(web, "POST", "/score", "{\"game\":\"dot2-medium-faOff\",\"pct\":62.5}");
+        Assert.Equal(200, status);
+        // the answer is the page's picture, the score in it
+        Assert.Equal(62.5, json.GetProperty("settings").GetProperty("scores").GetProperty("dot2-medium-faOff").GetDouble());
+        // A worse round leaves the best as it was, and each level and curve set has its own
+        Assert.Equal(200, (await Ask(web, "POST", "/score", "{\"game\":\"dot2-medium-faOff\",\"pct\":40}")).Status);
+        Assert.Equal(200, (await Ask(web, "POST", "/score", "{\"game\":\"dot2-medium-faOn\",\"pct\":30}")).Status);
+        Assert.Equal(200, (await Ask(web, "POST", "/score", "{\"game\":\"dot2-hard-faOff\",\"pct\":12.5}")).Status);
+        Assert.Equal(new Dictionary<string, double> { ["dot2-medium-faOff"] = 62.5, ["dot2-medium-faOn"] = 30, ["dot2-hard-faOff"] = 12.5 }, await Scores(web));
+        // A better round takes its place
+        Assert.Equal(200, (await Ask(web, "POST", "/score", "{\"game\":\"dot2-medium-faOff\",\"pct\":71.2}")).Status);
+        Assert.Equal(71.2, (await Scores(web))["dot2-medium-faOff"]);
+        // kept in settings.json, so a restart keeps them
+        JsonElement kept = JsonDocument.Parse(File.ReadAllText(file)).RootElement.GetProperty("flight").GetProperty("scores");
+        Assert.Equal((71.2, 30.0, 12.5), (kept.GetProperty("dot2-medium-faOff").GetDouble(), kept.GetProperty("dot2-medium-faOn").GetDouble(), kept.GetProperty("dot2-hard-faOff").GetDouble()));
+    }
+
+    [Theory]
+    [InlineData("{\"game\":\"chase-1\",\"pct\":50}")]               // a trainer exercise, not a dot game
+    [InlineData("{\"game\":\"dot2-medium-roll\",\"pct\":50}")]      // no such curve set
+    [InlineData("{\"game\":\"dot2-extreme-faOff\",\"pct\":50}")]    // no such level
+    [InlineData("{\"game\":\"dot5-medium-faOff\",\"pct\":50}")]     // no five-axis dot game: the tunnel is that
+    [InlineData("{\"game\":\"dot2-medium-faOff\",\"pct\":140}")]    // more than the whole round
+    [InlineData("{\"game\":\"dot2-medium-faOff\",\"pct\":-1}")]
+    [InlineData("{\"game\":\"dot2-medium-faOff\"}")]                // no score
+    [InlineData("{\"game\":\"dot2-medium-faOff\",\"pct\":\"lots\"}")]
+    [InlineData("[1]")]
+    public async Task A_score_for_a_game_Studio_does_not_have_is_turned_away(string body)
+    {
+        using var game = new PracticeGame();
+        using GameWatcher watcher = game.Watch();
+        string file = Path.Combine(temp, "settings.json");
+        using var web = new WebServer(temp);
+        using var flight = new FlightApi(web, new Settings(file), watcher.State, null, game.BindingsDir, null, gremlinProfile: () => null, sticks: _ => [], held: _ => false);
+
+        (int status, JsonElement json) = await Ask(web, "POST", "/score", body);
+        Assert.Equal(400, status);
+        Assert.False(json.GetProperty("ok").GetBoolean());
+        Assert.Empty(await Scores(web));
+    }
+
+    [Fact]
+    public async Task The_settings_route_cannot_write_or_wipe_the_scores()
+    {
+        string file = Path.Combine(temp, "settings.json");
+        File.WriteAllText(file, "{\"flight\":{\"scores\":{\"dot2-medium-faOff\":62.5}}}");
+        using var game = new PracticeGame();
+        using GameWatcher watcher = game.Watch();
+        using var web = new WebServer(temp);
+        using var flight = new FlightApi(web, new Settings(file), watcher.State, null, game.BindingsDir, null, gremlinProfile: () => null, sticks: _ => [], held: _ => false);
+        var only = new Dictionary<string, double> { ["dot2-medium-faOff"] = 62.5 };
+        Assert.Equal(only, await Scores(web));
+
+        // The scores have their own route, which keeps only the best: a page sending them with the other settings changes nothing of
+        // them, however the name is written, while the other settings it sends still change.
+        foreach (string body in new[] { "{\"scores\":{\"dot2-medium-faOff\":100,\"dot2-hard-faOn\":99}}", "{\"Scores\":{\"dot2-medium-faOff\":100}}",
+            "{\"scores\":{}}", "{\"scores\":null}", "{\"ship\":\"eagle\",\"SCORES\":{}}" })
+        {
+            Assert.Equal(200, (await Ask(web, "POST", "/settings", body)).Status);
+            Assert.Equal(only, await Scores(web));
+        }
+        Assert.Equal("eagle", (await Ask(web, "GET", "")).Json.GetProperty("settings").GetProperty("ship").GetString());
+        JsonElement kept = JsonDocument.Parse(File.ReadAllText(file)).RootElement.GetProperty("flight").GetProperty("scores");
+        Assert.Equal(only, kept.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetDouble()));
+    }
+
+    [Fact]
+    public async Task Scores_edited_by_hand_keep_only_the_dot_games_Studio_has()
+    {
+        // Typed into settings.json by hand: games that do not exist, a score over the whole round and one under nothing, and a null.
+        string file = Path.Combine(temp, "settings.json");
+        File.WriteAllText(file, "{\"flight\":{\"ship\":\"eagle\",\"scores\":{\"dot2-easy-faOff\":55,\"dot2-hard-faOn\":150,\"dot2-medium-faOn\":-3,"
+            + "\"chase-1\":90,\"dot2-Easy-faOff\":20,\"dot3-easy-faOff\":20,\"dot2-easy-faOn\":null,\"dot2-hard-faOff-x\":40}}}");
+        using var game = new PracticeGame();
+        using GameWatcher watcher = game.Watch();
+        using var web = new WebServer(temp);
+        using var flight = new FlightApi(web, new Settings(file), watcher.State, null, game.BindingsDir, null, gremlinProfile: () => null, sticks: _ => [], held: _ => false);
+
+        Assert.Equal(new Dictionary<string, double> { ["dot2-easy-faOff"] = 55, ["dot2-hard-faOn"] = 100, ["dot2-medium-faOn"] = 0 }, await Scores(web));
+        // the null is left out, and the rest of the section is still the player's
+        Assert.Equal("eagle", (await Ask(web, "GET", "")).Json.GetProperty("settings").GetProperty("ship").GetString());
+    }
 }

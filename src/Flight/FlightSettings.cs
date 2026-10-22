@@ -16,8 +16,8 @@ public sealed record FlightCurves(StickCurve Pitch, StickCurve Roll, StickCurve 
 public sealed record ExerciseRecord(int Sets = 0, int Best = 0, bool Passed = false, string? PassedOn = null);
 
 /// <summary>
-/// The "flight" section of settings.json: Studio Flight's curves, the trainer's progress and the
-/// flight overlay's own switch. The overlay box itself (key, place, size) is the overlay's (see
+/// The "flight" section of settings.json: Studio Flight's curves, the trainer's progress, Chase the dot's
+/// best scores and the flight overlay's own switch. The overlay box itself (key, place, size) is the overlay's (see
 /// <see cref="Overlay.OverlaySettings"/>, box "flight").
 /// </summary>
 public sealed record FlightSettings
@@ -44,6 +44,12 @@ public sealed record FlightSettings
     /// <summary>The trainer's progress by exercise ("chase-1", "tunnel-2", "track-3"); the "spin-N" of the exercise chase replaced are dropped.</summary>
     public Dictionary<string, ExerciseRecord> Progress { get; init; } = [];
     /// <summary>
+    /// Chase the dot's best scores, the share of a round on the dot in percent, by game: "dot2-medium-faOff" is the two-axis
+    /// game at Medium with the Flight Assist off curves (see <see cref="IsDotGame"/>). Kept by POST /api/flight/score only. A
+    /// score is never null once cleaned: null is allowed only so one typed into the file by hand is left out, not the section.
+    /// </summary>
+    public Dictionary<string, double?> Scores { get; init; } = [];
+    /// <summary>
     /// Not a setting, a marker kept with them: the flight overlay is up because Flight Assist went off, not because the
     /// player showed it, so it goes again when Flight Assist comes back on, also after Studio was restarted in between.
     /// </summary>
@@ -59,6 +65,10 @@ public sealed record FlightSettings
 
     static readonly Regex DeviceAxis = new(@"^[0-9A-F]{4}:[0-9A-F]{4}(#\d{1,2})? (X|Y|Z|RX|RY|RZ|U|V)$");
     static readonly Regex Exercise = new(@"^(chase|tunnel|track)-[1-3]$");
+    static readonly Regex DotGame = new(@"^dot2-(easy|medium|hard)-(faOff|faOn)$");
+
+    /// <summary>A game of Chase the dot: "dot2-", its level, and the curve set it was played with ("dot2-hard-faOn").</summary>
+    internal static bool IsDotGame(string? id) => DotGame.IsMatch(id ?? "");
 
     /// <summary>Every value made usable: the file can be edited by hand, and a page may send anything.</summary>
     internal FlightSettings Cleaned() => this with
@@ -73,6 +83,7 @@ public sealed record FlightSettings
         TrainerKeys = (TrainerKeys ?? []).Where(p => p.Value is not null && DefaultTrainerKeys.ContainsKey(p.Key) && KeyNames.ScanCode(p.Value) is not null).ToDictionary(),
         Progress = (Progress ?? []).Where(p => Exercise.IsMatch(p.Key) && p.Value is not null)
             .ToDictionary(p => p.Key, p => p.Value with { Sets = Math.Max(0, p.Value.Sets), Best = Math.Clamp(p.Value.Best, 0, 5) }),
+        Scores = (Scores ?? []).Where(p => IsDotGame(p.Key) && p.Value is { } v && double.IsFinite(v)).ToDictionary(p => p.Key, p => (double?)Math.Clamp(p.Value!.Value, 0, 100)),
         VJoyFolder = FullFolder(VJoyFolder) ? VJoyFolder!.TrimEnd('\\') : "",
     };
 

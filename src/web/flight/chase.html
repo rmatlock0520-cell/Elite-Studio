@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="studio-token" content="__STUDIO_TOKEN__">
+<title>Chase the dot - Studio Flight - Elite Studio</title>
+<link rel="icon" href="../studio.svg">
+<link rel="stylesheet" href="../studio.css">
+<!--
+  STUDIO FLIGHT, CHASE THE DOT: a curve tried out by aiming. A dot wanders across a square field and the mark goes where the
+  stick points (up and down is pitch, left and right is yaw, the stick's twist on most sticks), through the curve this game
+  uses; letting go puts it back in the middle at once, and the keys do not aim. Thirty seconds a round, scored by the share of
+  the round the mark sat on the dot. The rules are chase.js's.
+  Left: the level, which curve this game uses (Flight Assist off, on, or as the game's Flight Assist is while Elite runs: a
+  choice for this page only, never the switch in the game; kept for the length of a round), the best scores and the controls.
+  Right: the game with, beside it, the +/- curve buttons for that curve (Flight.tuneBox, locked while a round is flown); under
+  it the hands as the in-game flight overlay draws them, and after a round the score and tips, some with a one-click change.
+  The level and the curve choice are kept in the page's own storage; the curves, the stick readings and the best scores are the
+  app's: GET /api/flight and the "flight" event, "flight-input" events, POST /api/flight/settings (the curves) and
+  POST /api/flight/score ({ game: 'dot2-medium-faOff', pct }, the best kept per level and curve set).
+  chase.html?selftest checks the game's rules, the shared flight parts and this page's own (ChasePage, below).
+-->
+<style>
+.layout{--side:330px}
+.side{border-right:1px solid var(--line);padding:16px;overflow:auto}
+.side h2:not(:first-child){margin-top:20px}
+.side .seg{display:grid;width:100%;margin-bottom:6px}
+.side .seg button{padding:0 8px;font-size:13px}
+.side .seg button:disabled{opacity:.5;cursor:not-allowed}
+.using{border:1px solid var(--accent-line);background:var(--accent-soft);border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px}
+.best{display:grid;grid-template-columns:auto 1fr auto;gap:2px 12px;font-size:13px}
+.best output{font-family:var(--mono);color:var(--accent);text-align:right}
+:root[style*="--accent-hi:"] .best output{color:var(--accent-hi)}
+.keys{font-size:12.5px;color:var(--muted);line-height:1.6}
+.keys b{color:var(--text);font-weight:500}
+.stage{display:flex;flex-direction:column;min-width:0;min-height:0;padding:14px 16px;gap:10px}
+.top{display:flex;align-items:center;gap:14px;flex:none}
+.top .what{flex:1;min-width:0}
+.top h1{font-size:21px}
+.top p{margin:2px 0 0;color:var(--muted)}
+/* the game, and beside it the curve buttons (Flight.tuneBox, which brings its own look), locked while a round is flown */
+.middle{flex:1;min-height:240px;display:grid;grid-template-columns:minmax(0,1fr) 280px;grid-template-rows:minmax(0,1fr);gap:12px}
+.middle .tune-box.locked{opacity:.55;pointer-events:none}
+.sky{min-height:0;position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#05070b}
+:root[style*="--bg:"] .sky{background:var(--bg)}
+.sky canvas{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
+.bottom{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;flex:none;height:190px}
+.hands{position:relative;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.hands canvas{position:absolute;inset:0;width:100%;height:100%}
+.report{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px 14px;overflow:auto;font-size:13px}
+.report ul{margin:0;padding-left:18px}
+.report li{margin:2px 0}
+.report .tip{display:flex;gap:10px;align-items:flex-start;margin:8px 0 0}
+.report .tip p{flex:1;margin:0}
+.verdict{font-family:var(--hud);font-size:17px;letter-spacing:.04em;margin:0 0 6px}
+.overlay .side,.overlay .tune-box{display:none}
+.overlay .layout,.overlay .middle{grid-template-columns:minmax(0,1fr)}
+/* ?selftest */
+.selftest{position:fixed;inset:0;z-index:75;background:rgba(2,4,8,.82);display:grid;place-items:center;padding:16px}
+.selftest .box{width:min(980px,100%);max-height:100%;overflow:auto;background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:18px}
+.selftest .head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.selftest h3{margin:16px 0 6px;font-size:13px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.selftest table{width:100%;border-collapse:collapse;font-size:12.5px}
+.selftest td{padding:3px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.selftest td:first-child{width:46px;font-weight:600}
+.selftest td:last-child{color:var(--muted);font-family:var(--mono);font-size:11.5px;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<nav class="subtabs"><a href="./"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-flight"/></svg>Trainer</a><a class="active" href="chase.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-scan"/></svg>Chase the dot</a><a href="setup.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-pad"/></svg>Stick setup</a></nav>
+<div class="layout">
+  <aside class="side">
+    <h2>Level</h2>
+    <div class="seg" id="level"></div>
+    <h2>Curve for this game</h2>
+    <div class="seg" id="curve"><button data-curve="faOff" title="Your Flight Assist off curves, the ones the trainer flies">Flight Assist off</button><button data-curve="faOn" title="Your Flight Assist on curves">Flight Assist on</button><button data-curve="follow" title="While Elite runs: your off curve when the game has Flight Assist off, your on curve when it is on. With Elite closed: your off curve.">As in the game</button></div>
+    <div class="using" id="using"></div>
+    <p class="small muted">This only picks which of your curves this game reads. It switches nothing in Elite.</p>
+    <p class="small warn" id="stick-lost" hidden></p>
+    <h2>Best scores</h2>
+    <div class="best" id="best"></div>
+    <h2>Controls</h2>
+    <div class="keys" id="keys"></div>
+  </aside>
+  <main class="stage">
+    <div class="top">
+      <div class="what"><h1>Chase the dot</h1><p id="what"></p></div>
+      <button class="btn primary" id="go">Start</button>
+    </div>
+    <div class="middle">
+      <div class="sky"><canvas id="sky"></canvas></div>
+      <section class="tune-box" aria-label="Curves"></section>
+    </div>
+    <div class="bottom">
+      <div class="hands"><canvas id="hands"></canvas></div>
+      <div class="report" id="report"><p class="muted">Pick a level and press Start (or Enter). Keep the mark on the dot for the whole round. Esc pauses.</p></div>
+    </div>
+  </main>
+</div>
+
+<script src="../studio.js"></script>
+<script src="flight.js"></script>
+<script src="chase.js"></script>
+<script>
+// ============================================================ this page's own rules, with no page needed (ChasePage.selftest())
+//   ChasePage.setFor(choice, info)        the curve set a round would use now, 'faOff' or 'faOn', for the choice on the left
+//                                         ('faOff', 'faOn' or 'follow') and GET /api/flight's answer
+//   ChasePage.gameId(level, set)          the name a best score is kept under ('dot2-medium-faOff')
+//   ChasePage.begin(level, choice, info, frame, seed)   a round: { level, set, id, s }, with the curves and the game's invert
+//                                         as they are now, kept for the whole round
+//   ChasePage.stickOf(frame)              the real stick for the rules ({ pitch, yaw }; null for one Studio cannot read)
+//   ChasePage.lostLine(frame)             the one line when there is no stick, or Studio cannot find it behind pitch or yaw
+//   ChasePage.advise(result, curves)      the tips after a round; ChasePage.tipChange(tip, curves): a tip's one-click change
+var ChasePage = (() => {
+'use strict';
+const CHOICES = ['faOff', 'faOn', 'follow'];
+// What a relaxed hand scores at each level (chase.js tunes its levels to it): at or above it is a strong round.
+const GOOD = { easy: 90, medium: 70, hard: 45 };
+const NEXT = { easy: 'Try Medium next.', medium: 'Try Hard next.', hard: 'Try a small curve change and see if the score holds.' };
+const AXES = { pitch: 'up and down', yaw: 'left and right' };
+// The tune box's rows by their plain names. "Most it gives" is never offered: in this game the mark's reach is the field.
+const LABELS = { bend: 'Softer middle', satX: 'How far the stick travels' };
+
+// "As in the game": the game's Flight Assist picks while Elite runs; with Elite closed, the Flight Assist off curve.
+function setFor(choice, info) {
+  if (choice === 'faOn') return 'faOn';
+  if (choice === 'follow' && info && info.gameRunning && !info.faOff) return 'faOn';
+  return 'faOff';
+}
+const gameId = (level, set) => 'dot2-' + level + '-' + set;
+
+function begin(level, choice, info, frame, seed) {
+  const set = setFor(choice, info), all = info.settings[set];
+  // The game's invert, as the readings carry it (else as Elite's bindings say), turns the mark the way the ship would turn.
+  const invert = name => {
+    const now = frame && frame.controls && frame.controls[name], bound = info.binds && info.binds.axes && info.binds.axes[name];
+    return !!(now && now.invert != null ? now.invert : bound && bound.inverted);
+  };
+  return { level, set, id: gameId(level, set),
+    s: Chase.start(level, { pitch: all.pitch, yaw: all.yaw }, { seed, set, invert: { pitch: invert('pitch'), yaw: invert('yaw') } }) };
+}
+
+// The real stick only, before any curve: what the game gets through Gremlin is curved already, and curving it again would
+// lie about the curve being tried. A control whose real stick Studio cannot read is let go (null), and lostLine says so.
+function stickOf(frame) {
+  if (!frame) return null;
+  const real = name => { const c = frame.controls && frame.controls[name]; return c && c.real != null && isFinite(c.real) ? c.real : null; };
+  return { pitch: real('pitch'), yaw: real('yaw') };
+}
+function lostLine(frame) {
+  if (!frame) return null;
+  if (!(frame.sticks || []).length) return 'Studio sees no stick. Plug it in: in this game only the stick aims, never the keys.';
+  const lost = ['pitch', 'yaw'].filter(n => frame.controls && frame.controls[n] && frame.controls[n].realUnknown);
+  if (!lost.length) return null;
+  const one = lost.length === 1;
+  return `Studio cannot find your real stick behind ${lost.join(' and ')}, so the mark cannot follow ${one ? 'it' : 'them'}.`
+    + ` On Stick setup, click Detect beside ${one ? 'it' : 'each'} and move that control.`;
+}
+
+// After a round: overshoots on an axis ask for finer aiming there (a softer middle, then more stick travel for the same
+// distance); a mark that never went far, for following the dot all the way; being behind it, for aiming where it goes. A tip
+// that changes a curve says which (axis, field) and by how much (step, kept within min..max), not to what: tipChange gives the
+// change from the curves as they are when it is shown or taken. Each tip has an id that stays the same for that advice.
+function advise(r, curves) {
+  const tips = [];
+  let passes = 0;
+  for (const axis of ['yaw', 'pitch']) {
+    const n = r.overshoots[axis], c = curves && curves[axis];
+    passes += n;
+    if (n < 3 || !c) continue;
+    const id = 'over:' + axis, said = `Your mark went past the dot ${n} times ${AXES[axis]}: each correction went too far.`;
+    if (c.bend < 70) tips.push({ id, text: said + ' A softer middle makes the small corrections finer.', axis, field: 'bend', step: 10, min: 0, max: 100 });
+    else if (c.satX < 100) tips.push({ id, text: said + ' More stick travel for the same distance makes every move finer.', axis, field: 'satX', step: 5, min: 50, max: 100 });
+    else tips.push({ id, text: said + ' Your curve is as fine as it gets: make each correction smaller, and stop it with a touch the other way.' });
+  }
+  const reach = Math.max(Math.abs(Chase.markOf(r.peak.pitch, curves && curves.pitch)), Math.abs(Chase.markOf(r.peak.yaw, curves && curves.yaw)));
+  if (!r.peak.pitch && !r.peak.yaw) tips.push({ id: 'still', text: 'Studio saw no movement of your stick this round, so the mark stayed in the middle. If you did move it, Studio could not read it: see the line under "Curve for this game", or Stick setup.' });
+  else if (reach < 0.5) tips.push({ id: 'reach', text: 'Your mark never went more than half way to the edge, but the dot goes right to it. The mark goes where the stick points: push further to follow it.' });
+  else if (r.pct < GOOD[r.level] - 10 && passes < 3) tips.push({ id: 'late', text: 'You were mostly behind the dot. Point the stick where it is heading, not where it is now.' });
+  if (r.pct >= GOOD[r.level]) tips.push({ id: 'good', text: 'A strong round. ' + NEXT[r.level] });
+  return tips;
+}
+function tipChange(tip, curves) {
+  const c = tip.field && curves && curves[tip.axis];
+  if (!c) return null;
+  const from = c[tip.field], to = Math.min(tip.max, Math.max(tip.min, from + tip.step));
+  if (tip.step > 0 ? to <= from : to >= from) return null;   // already at the end the tip moves it towards
+  return { change: { [tip.field]: to }, button: LABELS[tip.field] + ' ' + from + ' → ' + to };
+}
+
+// ---- the self-test: [{ name, ok, got, want }], as Flight.selftest() answers
+function selftest() {
+  const checks = [];
+  const check = (name, got, want) => {
+    let value;
+    try { value = got(); } catch (e) { value = 'failed: ' + e.message; }
+    checks.push({ name, ok: JSON.stringify(value) === JSON.stringify(want), got: value, want });
+  };
+  const curve = o => ({ deadLow: 4, deadHigh: 4, satX: 92, satY: 68, bend: 20, ...o });
+  const info = o => ({ gameRunning: false, faOff: false, binds: { axes: { pitch: { inverted: true }, yaw: { inverted: false } } },
+    settings: { faOff: { pitch: curve({ satY: 100, bend: 35 }), roll: curve(), yaw: curve({ satY: 100, bend: 40 }) }, faOn: { pitch: curve(), roll: curve(), yaw: curve() } }, ...o });
+
+  check('"As in the game" while Elite runs: the game\'s Flight Assist picks the curve', () =>
+    [setFor('follow', info({ gameRunning: true, faOff: true })), setFor('follow', info({ gameRunning: true, faOff: false }))], ['faOff', 'faOn']);
+  check('"As in the game" with Elite closed: the Flight Assist off curve', () => setFor('follow', info({ faOff: false })), 'faOff');
+  check('a curve picked by hand is that one, whatever the game does', () =>
+    [setFor('faOn', info({ gameRunning: true, faOff: true })), setFor('faOff', info({ gameRunning: true, faOff: false }))], ['faOn', 'faOff']);
+  check('a best score is kept by level and curve set, under a name the app takes', () => [gameId('medium', 'faOff'), gameId('hard', 'faOn')], ['dot2-medium-faOff', 'dot2-hard-faOn']);
+  check('a round keeps the curve set, its curves and the game\'s invert as they were at its start', () => {
+    const now = info({ gameRunning: true, faOff: false });
+    const round = begin('hard', 'follow', now, { controls: { pitch: { invert: false }, yaw: { invert: true } } }, 7);
+    now.faOff = true;                    // the game switches Flight Assist...
+    now.settings.faOn.yaw.bend = 90;     // ...and a curve is changed: not this round's
+    return [round.set, round.id, round.s.level.id, round.s.set, round.s.curves.yaw.bend, round.s.sign];
+  }, ['faOn', 'dot2-hard-faOn', 'hard', 'faOn', 20, { pitch: -1, yaw: -1 }]);
+  check('with no reading yet, the game\'s invert comes from its bindings', () => begin('easy', 'faOff', info(), null, 1).s.sign, { pitch: 1, yaw: 1 });
+  check('the rules get the real stick only: a control Studio cannot read is let go, never the game\'s curved value', () =>
+    stickOf({ sticks: [{}], controls: { pitch: { real: 0.4, game: 0.2 }, yaw: { real: null, game: 0.3, realUnknown: true } } }), { pitch: 0.4, yaw: null });
+  check('the real stick not found behind yaw: one line names it and where to fix it (roll is not used here)', () => {
+    const line = lostLine({ sticks: [{}], controls: { pitch: { real: 0.1 }, roll: { realUnknown: true }, yaw: { realUnknown: true } } });
+    return [/behind yaw,/.test(line), /roll/.test(line), /Detect/.test(line), /Stick setup/.test(line)];
+  }, [true, false, true, true]);
+  check('no stick at all: one line says so', () => /no stick/.test(lostLine({ sticks: [], controls: {} })), true);
+  check('nothing to say when the real stick is found', () => lostLine({ sticks: [{}], controls: { pitch: { real: 0 }, yaw: { real: 0 } } }), null);
+
+  const result = o => ({ level: 'medium', set: 'faOff', pct: 50, streak: 3, miss: 1.5, overshoots: { pitch: 0, yaw: 0 }, peak: { pitch: 0.8, yaw: 0.8 }, ...o });
+  const off = info().settings.faOff, fine = { pitch: curve({ bend: 80, satX: 100 }), yaw: curve({ bend: 80 }) };
+  check('overshooting left and right: a softer middle for yaw, one click from 40 to 50', () => {
+    const tip = advise(result({ overshoots: { pitch: 1, yaw: 5 } }), off).find(t => t.field);
+    return [tip.axis, tipChange(tip, off)];
+  }, ['yaw', { change: { bend: 50 }, button: 'Softer middle 40 → 50' }]);
+  check('overshooting with a soft middle already: more stick travel for the same distance', () => {
+    const tip = advise(result({ overshoots: { pitch: 0, yaw: 4 } }), fine).find(t => t.field);
+    return [tip.axis, tipChange(tip, fine)];
+  }, ['yaw', { change: { satX: 97 }, button: 'How far the stick travels 92 → 97' }]);
+  check('overshooting with the finest curve: advice, and no button', () => {
+    const tips = advise(result({ overshoots: { pitch: 4, yaw: 0 } }), fine);
+    return [tips.map(t => t.id), tips.some(t => t.field)];
+  }, [['over:pitch'], false]);
+  check('a few passes are not overshooting: no tip for them', () => advise(result({ overshoots: { pitch: 2, yaw: 2 } }), off).map(t => t.id), []);
+  check('never "Most it gives", which changes nothing in this game', () => [0, 3, 6, 9].flatMap(n => [off, fine].flatMap(c =>
+    advise(result({ overshoots: { pitch: n, yaw: n }, pct: 10 * n }), c))).filter(t => t.field === 'satY').length, 0);
+  check('the mark never far from the middle: follow the dot all the way', () => advise(result({ peak: { pitch: 0.3, yaw: 0.2 }, pct: 20 }), off).map(t => t.id), ['reach']);
+  check('no stick movement read at all: says so, and gives no advice on flying', () => advise(result({ peak: { pitch: 0, yaw: 0 }, pct: 0 }), off).map(t => t.id), ['still']);
+  check('behind the dot, and no overshoots: aim where it is going', () => advise(result({ pct: 40 }), off).map(t => t.id), ['late']);
+  check('a strong round: the next level', () => advise(result({ pct: 75 }), off).map(t => [t.id, t.text]), [['good', 'A strong round. Try Hard next.']]);
+  check('a tip whose curve is at its end gives no button', () => tipChange({ axis: 'yaw', field: 'bend', step: 10, min: 0, max: 100 }, { yaw: curve({ bend: 100 }) }), null);
+  return checks;
+}
+
+return { CHOICES, GOOD, setFor, gameId, begin, stickOf, lostLine, advise, tipChange, selftest };
+})();
+
+(() => {
+'use strict';
+const { $, h, toast } = Studio;
+if (new URLSearchParams(location.search).has('selftest')) setTimeout(runSelftest, 50);   // after studio.js's own start-up
+if (!Studio.served) return;
+
+let info = null;          // GET /api/flight
+let frame = null;         // the newest reading of the sticks
+let run = null;           // the round on screen: ChasePage.begin's, with { phase, phaseAt, left, pausedAt, result, best, fresh, tips, applied }
+let preview = null;       // the field shown before Start
+let paused = '';
+const read = Flight.reader();
+const STEP = 1 / 120;
+const SET_NAMES = { faOff: 'Flight Assist off', faOn: 'Flight Assist on' };
+
+// What this page remembers itself (the page's own storage; it works without it).
+const keep = (name, fallback) => { try { const v = localStorage.getItem('chase.' + name); return v == null ? fallback : v; } catch (e) { return fallback; } };
+const store = (name, value) => { try { localStorage.setItem('chase.' + name, value); } catch (e) {} };
+let level = keep('level', 'medium');
+if (!Chase.LEVELS.some(l => l.id === level)) level = 'medium';
+let choice = keep('curve', 'faOff');
+if (!ChasePage.CHOICES.includes(choice)) choice = 'faOff';
+
+// A round is under way (the 3-2-1, or flying): the level, the curve and its buttons are locked.
+const busy = () => !!run && (run.phase === 'count' || run.phase === 'fly');
+const setNow = () => ChasePage.setFor(choice, info);
+// The curve set the box and the hands use: a round's own while it is flown, else the one the choice on the left gives now.
+const set = () => busy() ? run.set : setNow();
+const accent = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff7100';
+
+// ============================================================ what the app says
+function showInfo(answer) {
+  tune.hold(answer);   // a change not sent yet stays the player's
+  const was = info && run && JSON.stringify(info.settings[run.set]);
+  info = answer;
+  drawSide();
+  // After a round its tips' buttons are worked out from the curves: when those changed (here or on Stick setup), they follow.
+  // Not on every event, which would make the buttons afresh under the pointer.
+  if (was && was !== JSON.stringify(info.settings[run.set])) redrawTips();
+}
+const call = Studio.follow('flight', '/api/flight', showInfo);
+Flight.stream(f => { frame = f; });
+// Beside the game, +/- for the curve this game uses, felt from the next round (a round keeps the curve it started with).
+const tune = Flight.tuneBox($('.tune-box'), {
+  call, info: () => info, set,
+  note: () => busy() ? 'A round keeps the curve it started with: change it after this one.' : 'A change here counts from your next round. The same curves as on Stick setup.',
+  changed: putBack => { if (putBack && run) run.applied = new Set(); redrawTips(); },
+});
+
+// ============================================================ the side column
+function drawSide() {
+  for (const b of $('#level').children) { b.classList.toggle('active', b.dataset.level === level); b.disabled = busy(); }
+  for (const b of document.querySelectorAll('#curve button')) { b.classList.toggle('active', b.dataset.curve === choice); b.disabled = busy(); }
+  $('#using').replaceChildren(h('b', null, 'Your ' + SET_NAMES[set()] + ' curve'), h('div', { class: 'small muted' }, usingWhy()));
+  const scores = (info && info.settings.scores) || {};
+  $('#best').replaceChildren(...Chase.LEVELS.flatMap(l => ['faOff', 'faOn'].flatMap(k => {
+    const v = scores[ChasePage.gameId(l.id, k)];
+    return [h('span', null, l.name), h('span', { class: 'small muted' }, SET_NAMES[k]), h('output', null, v == null ? '–' : v + '%')];
+  })));
+  $('.tune-box').classList.toggle('locked', busy());
+  tune.draw();
+  drawKeys();
+  $('#what').textContent = 'Keep the mark on the dot for ' + Chase.ROUND + ' seconds: up and down is pitch, left and right is yaw. The mark goes where the stick points.';
+  $('#go').textContent = busy() ? 'Stop' : run && run.phase === 'done' ? 'Fly again' : 'Start';
+}
+function usingWhy() {
+  if (busy()) return 'Kept as it was at the start of this round.';
+  if (choice !== 'follow') return 'Your pick, for this game only.';
+  if (!info || !info.gameRunning) return 'Elite is not running, so your Flight Assist off curve.';
+  return 'Elite has Flight Assist ' + (info.faOff ? 'off' : 'on') + ' now.';
+}
+function drawKeys() {
+  $('#keys').replaceChildren(h('div', null,   // in h(), a line with nothing to say (null) is left out
+    info && !info.binds ? h('div', { class: 'warn' }, info.bindsProblem || 'Elite\'s bindings are not known yet.') : null,
+    h('div', null, 'Aim: ', h('b', null, 'your stick'), ', its pitch and its yaw (the twist on most sticks). The keys do not aim.'),
+    h('div', null, 'Start, or fly again: ', h('b', null, 'Enter'), '. Pause: ', h('b', null, 'Esc'), '.')));
+}
+
+for (const l of Chase.LEVELS) $('#level').append(h('button', { 'data-level': l.id, onclick: () => pick(() => { level = l.id; store('level', level); }) }, l.name));
+for (const b of document.querySelectorAll('#curve button')) b.addEventListener('click', () => pick(() => { choice = b.dataset.curve; store('curve', choice); }));
+// A new level or curve choice: a round's report goes (its tips are for the round as it was flown).
+function pick(change) {
+  if (busy()) return;
+  change();
+  run = null;
+  $('#report').replaceChildren(h('p', { class: 'muted' }, 'Press Start (or Enter). Keep the mark on the dot for the whole round. Esc pauses.'));
+  newPreview();
+  drawSide();
+}
+
+// ============================================================ a round
+function newPreview() { preview = Chase.start(level, null, { seed: 1 }); }
+
+function startRound() {
+  if (busy()) { stopRound(); return; }
+  if (!info) return;
+  read.reset();
+  run = { ...ChasePage.begin(level, choice, info, frame, (Date.now() >>> 0) || 1), phase: 'count', phaseAt: performance.now(), left: 0, pausedAt: 0, applied: new Set() };
+  paused = '';
+  document.activeElement && document.activeElement.blur();
+  $('#report').replaceChildren(h('p', { class: 'muted' }, 'Get onto the dot before it moves: the mark follows your stick already.'));
+  drawSide();
+}
+function stopRound() {
+  run = null;
+  paused = '';
+  $('#report').replaceChildren(h('p', { class: 'muted' }, 'Stopped. Press Start (or Enter) to go again.'));
+  newPreview();
+  drawSide();
+}
+function finish(out) {
+  run.phase = 'done';
+  run.result = out.result;
+  const was = info.settings.scores && info.settings.scores[run.id];
+  run.best = was == null ? null : was;
+  run.fresh = was == null || out.result.pct > was;
+  run.tips = ChasePage.advise(out.result, run.s.curves);   // from the curves the round was flown with
+  // Kept the moment the round ends, so leaving the page next cannot lose it.
+  call('POST', '/api/flight/score', { game: run.id, pct: out.result.pct }).catch(e => toast(e.message, true));
+  drawSide();
+  drawReport();
+}
+
+function redrawTips() { if (run && run.phase === 'done') drawReport(); }
+const times = n => n === 1 ? 'once' : n + ' times';
+function drawReport() {
+  const r = run.result, name = Chase.LEVELS.find(l => l.id === run.level).name;
+  // A tip's button changes the curve set the round used, through the box: only while the box shows that set.
+  const same = setNow() === run.set, curves = info.settings[run.set];
+  const parts = [
+    h('p', { class: 'verdict ' + (r.pct >= ChasePage.GOOD[run.level] ? 'good' : '') }, r.pct + '% on the dot'
+      + (run.best == null ? ' · your first round here' : run.fresh ? ' · new best' : ' · best ' + run.best + '%')),
+    h('ul', null,
+      h('li', null, 'Longest time on it: ' + r.streak + ' s'),
+      h('li', null, 'On average your mark was ' + r.miss + ' times the dot\'s radius from its middle (under 1 is on the dot)'),
+      h('li', null, 'Went past the dot ' + times(r.overshoots.yaw) + ' left and right, ' + times(r.overshoots.pitch) + ' up and down'),
+      h('li', null, name + ', with your ' + SET_NAMES[run.set] + ' curve')),
+  ];
+  for (const tip of run.tips) {
+    const now = same ? ChasePage.tipChange(tip, curves) : null;
+    const button = !tip.field ? null
+      : run.applied.has(tip.id) ? h('button', { class: 'btn small', disabled: true }, 'Done')   // taken: not offered again
+      : now ? h('button', { class: 'btn small', title: 'Changes your ' + SET_NAMES[run.set] + ' curve for ' + tip.axis + '. "Put back" beside the game undoes it.', onclick: () => apply(tip) }, now.button)
+      : null;   // the curve is at the end the tip moves it towards, or the box shows the other curve now
+    parts.push(h('div', { class: 'tip' }, h('p', null, tip.text), button));
+  }
+  $('#report').replaceChildren(...parts);
+}
+async function apply(tip) {
+  const round = run;   // the round whose advice this is
+  const now = ChasePage.tipChange(tip, info.settings[round.set]);
+  if (!now || setNow() !== round.set) return;
+  try {
+    await tune.change(tip.axis, now.change);   // a +/- change still waiting goes first; "Put back" undoes this too
+    round.applied.add(tip.id);
+    redrawTips();
+    toast('Your ' + SET_NAMES[round.set] + ' curve for ' + tip.axis + ' changed. Press Enter to feel it in a new round.');
+  } catch (e) { toast(e.message, true); }
+}
+
+$('#go').addEventListener('click', startRound);
+$('#sky').addEventListener('click', () => { if (paused) paused = ''; });
+// While a round is under way every key is the game's: none may press a button of the page (Space, Enter on a focused button).
+document.addEventListener('keydown', e => {
+  const flying = busy();
+  if (e.key === 'Escape' && flying) { paused = paused ? '' : 'Paused\nPress Esc or click to go on'; e.preventDefault(); return; }
+  if (e.key === 'Enter' && !flying && !e.repeat && !(e.target instanceof HTMLButtonElement) && !(e.target instanceof HTMLInputElement)) { startRound(); e.preventDefault(); return; }
+  if (flying) e.preventDefault();
+});
+window.addEventListener('blur', () => { if (busy()) paused = 'Paused\nClick here to go on'; });
+
+// ============================================================ every frame
+const sky = $('#sky'), hands = $('#hands');
+// What Flight.reader is given: the bindings, and the curve this game uses standing in for the Flight Assist off ones it reads the
+// real stick through (a round's own, kept from its start), so the hands' red dot is what that curve makes of the stick.
+const readerInfo = () => info && { binds: info.binds,
+  settings: { faOff: busy() ? { ...info.settings[run.set], pitch: run.s.curves.pitch, yaw: run.s.curves.yaw } : info.settings[set()] } };
+
+let last = performance.now(), lostShown = null, setShown = '';
+function tick(now) {
+  try { frameOnce(now); }
+  finally { requestAnimationFrame(tick); }   // one bad frame must not stop the page for good
+}
+function frameOnce(now) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  // The game switching its Flight Assist moves the curve "As in the game" picks: the side, the box and the tips follow.
+  if (setNow() !== setShown) { setShown = setNow(); drawSide(); redrawTips(); }
+  const lost = ChasePage.lostLine(frame);
+  if (lost !== lostShown) { lostShown = lost; $('#stick-lost').textContent = lost || ''; $('#stick-lost').hidden = !lost; }
+  // While paused the 3-2-1 waits too, so a round never starts unseen.
+  if (paused && run && run.phase === 'count') run.phaseAt += now - (run.pausedAt || now);
+  if (run) run.pausedAt = paused ? now : 0;
+  const stick = ChasePage.stickOf(frame);
+  let shown = preview, text = 'Press Start or Enter';
+  if (run) {
+    shown = run.s;
+    text = '';
+    if (run.phase === 'count') {
+      // Through the 3-2-1 the dot waits and the mark already goes where the stick points, so a round can start on the dot.
+      const s = run.s;
+      shown = { ...s, mark: { x: s.sign.yaw * Chase.markOf(stick && stick.yaw, s.curves.yaw), y: s.sign.pitch * Chase.markOf(stick && stick.pitch, s.curves.pitch) } };
+      const left = 3 - (now - run.phaseAt) / 1000;
+      text = left > 0 ? Chase.LEVELS.find(l => l.id === run.level).name + '\nStarting in ' + Math.ceil(left) : '';
+      if (left <= 0 && !paused) { run.phase = 'fly'; run.left = 0; }
+    } else if (run.phase === 'fly' && !paused) {
+      run.left += dt;
+      while (run.left >= STEP) {
+        run.left -= STEP;
+        const out = Chase.step(run.s, stick, STEP);
+        if (out.done) { finish(out); break; }
+      }
+    }
+    if (run.phase === 'done') text = 'Round over\nPress Enter to fly it again';
+  }
+  const s = Flight.fit(sky);
+  if (shown && s.w >= 60 && s.h >= 60) Chase.draw(s.g, s.w, s.h, shown, accent(), Flight.look, paused || text);   // a window squeezed to nothing draws nothing
+  const cmd = read(frame, readerInfo(), true);
+  const hs = Flight.fit(hands);
+  hs.g.clearRect(0, 0, hs.w, hs.h);
+  if (hs.w >= 60 && hs.h >= 30) Flight.drawInputs(hs.g, hs.w, hs.h, cmd, set() === 'faOff', accent());
+  tune.graph(frame);
+}
+newPreview();
+drawSide();
+requestAnimationFrame(tick);
+
+// ============================================================ ?selftest: the game's rules, the shared flight parts and this page's
+function runSelftest() {
+  const shown = v => { const s = typeof v === 'string' ? v : JSON.stringify(v); return s == null ? '' : s.length > 160 ? s.slice(0, 157) + '…' : s; };
+  let pass = 0, all = 0;
+  const sections = [
+    ['The game\'s rules (chase.js)', () => Chase.selftest().checks],
+    ['The shared flight parts (flight.js)', () => Flight.selftest()],
+    ['This page', () => ChasePage.selftest()],
+  ].map(([title, run]) => {
+    let checks;
+    try { checks = run(); } catch (e) { checks = [{ name: 'runs at all', ok: false, got: e.message }]; }
+    all += checks.length;
+    pass += checks.filter(c => c.ok).length;
+    return [h('h3', null, title + ': ' + checks.filter(c => c.ok).length + ' of ' + checks.length + ' pass'),
+      h('table', null, h('tbody', null, checks.map(c => h('tr', null, h('td', { class: c.ok ? 'good' : 'bad' }, c.ok ? 'pass' : 'FAIL'),
+        h('td', null, c.name), h('td', null, c.ok ? '' : 'got ' + shown(c.got) + ', want ' + shown(c.want))))))];
+  });
+  const ok = pass === all && all > 0;
+  const summary = ok ? 'Self-test: all ' + all + ' checks pass.' : 'Self-test: ' + (all - pass) + ' of ' + all + ' checks FAIL.';
+  const panel = h('div', { class: 'selftest', id: 'selftest', role: 'dialog', 'aria-label': 'Self-test' }, h('div', { class: 'box' },
+    h('div', { class: 'head' }, h('h2', { class: ok ? 'good' : 'bad' }, summary), h('button', { type: 'button', class: 'btn small', onclick: () => panel.remove() }, 'Close')),
+    sections));
+  document.body.append(panel);
+  document.title = (ok ? 'PASS ' : 'FAIL ') + document.title;
+  if (Studio.served) Studio.api('POST', '/api/app/log', { message: 'Page ' + location.pathname + ': ' + summary }).catch(() => {});
+}
+})();
+</script>
+</body>
+</html>
