@@ -10,12 +10,15 @@
 //   Chase.start(level, curves, o)    a new round: level (one of LEVELS, or its id), curves { pitch, yaw } as settings.json
 //                                    keeps them (kept as they are now for the whole round), o = { seed, invert: { pitch, yaw }
 //                                    as the game's bindings set them, set: 'faOff' | 'faOn' (carried to the summary) }
-//   Chase.step(s, stick, dt)         one small step; stick { pitch, yaw } is the real stick from -1 to 1 before any curve
-//                                    (frame.controls[axis].real; null is let go); answers { done, result: the summary when done }
+//   Chase.step(s, stick, dt)         one small step (dt seconds, a tenth at most, so a page hidden or paused for long cannot jump
+//                                    the round); stick { pitch, yaw } is the real stick from -1 to 1 before any curve
+//                                    (frame.controls[axis].real; null is let go, or no reading); answers { done, result: the
+//                                    summary when done }
 //   Chase.score(s)                   the share of the time so far on the dot, in whole percent
 //   Chase.summary(s)                 { level, set, pct, streak, miss, overshoots: { pitch, yaw }, peak: { pitch, yaw } }
-//   s.frames                         every step: { t, raw, curved, mark, dot } (the stick, what the curve made of it, and
-//                                    where the mark and the dot were), for the round's record
+//   s.frames                         every step: { t, raw, curved, mark, dot } (the stick, what the curve made of it, each null
+//                                    for no reading, and where the mark and the dot were), for the round's record
+//   s.blind                          seconds on each axis in which a pass would be the dot's doing, not counted (watchPasses)
 //   Chase.markOf(x, c)               where the mark sits on one axis (-1 to 1) for a stick position, through curve c
 //   Chase.draw(g, w, h, s, accent, look, text)    the picture, on a canvas's 2D context
 //   Chase.selftest(rules)            the checks (chase.html?selftest); { ok, checks: [{ name, ok, got, want }] }
@@ -53,6 +56,10 @@ const LEVELS = [
 // Which way a stick position turns the ship before the game's invert, as Flight.reader has them: Elite's pitch axis is
 // "nose down" for a stick pulled back unless inverted. Up the field is nose up, right is nose right.
 const NATIVE = { pitch: -1, yaw: 1 };
+const LONGEST_STEP = 0.1;   // seconds: the most one step moves the round on
+// How long after the dot turns back on an axis a pass can still be its doing (watchPasses): a hand that follows it late meets
+// it coming back within about half its lateness. Short, so that the rule misses few real overshoots: selftest (h).
+const TURN_BACK = 0.3;      // seconds
 
 // Where the mark sits on one axis, from -1 to 1, for a stick position x through curve c: the curve's output over the most
 // that curve gives that way. So "Most it gives" never shortens the reach; the dead zone, the travel and the softer middle are
@@ -79,7 +86,7 @@ function start(level, curves, o) {
     dot: { x, y, vx: 0, vy: 0, h: x < 0 ? within(-0.5, 0.5) : Math.PI + within(-0.5, 0.5), w: 0, wTo: 0, next: 1, phase: within(0, 6) },
     onTime: 0, streak: 0, bestStreak: 0, missSum: 0, steps: 0,
     peak: { pitch: 0, yaw: 0 }, overshoots: { pitch: 0, yaw: 0 },
-    passes: { pitch: 0, yaw: 0 }, dotWay: { pitch: 0, yaw: 0 }, turnedAt: { pitch: -Infinity, yaw: -Infinity },
+    passes: { pitch: 0, yaw: 0 }, dotWay: { pitch: 0, yaw: 0 }, turnedAt: { pitch: -Infinity, yaw: -Infinity }, blind: { pitch: 0, yaw: 0 },
     frames: [],
   };
 }
@@ -87,10 +94,13 @@ function start(level, curves, o) {
 function step(s, stick, dt) {
   if (s.t + 1e-9 >= s.len) return { done: true, result: summary(s) };
   if (!(dt > 0)) return { done: false };
+  dt = Math.min(dt, LONGEST_STEP);
   const L = s.level, m = s.mark, d = s.dot, c = s.curves;
-  const raw = { pitch: stick && isFinite(stick.pitch) ? +stick.pitch : 0, yaw: stick && isFinite(stick.yaw) ? +stick.yaw : 0 };
-  s.peak.pitch = Math.max(s.peak.pitch, Math.abs(raw.pitch));
-  s.peak.yaw = Math.max(s.peak.yaw, Math.abs(raw.yaw));
+  // No reading (a stick let go, lost or not found) is kept as null: the mark sits in the middle, and the record says so.
+  const reading = v => (v != null && isFinite(v) ? +v : null);
+  const raw = { pitch: stick ? reading(stick.pitch) : null, yaw: stick ? reading(stick.yaw) : null };
+  s.peak.pitch = Math.max(s.peak.pitch, Math.abs(raw.pitch || 0));
+  s.peak.yaw = Math.max(s.peak.yaw, Math.abs(raw.yaw || 0));
 
   // The mark: where the stick points, at once. (vx, vy say how fast it moved, smoothed over 50 ms as the stick's readings
   // come about sixty a second, only for the overshoot count.)
@@ -120,25 +130,29 @@ function step(s, stick, dt) {
   const off = Math.hypot(d.x - m.x, d.y - m.y);
   s.missSum += off;
   if (off <= L.r) { s.onTime += dt; s.streak += dt; s.bestStreak = Math.max(s.bestStreak, s.streak); } else s.streak = 0;
-  watchPasses(s, off);
-  s.frames.push({ t: s.t, raw, curved: { pitch: Flight.curve(raw.pitch, c.pitch), yaw: Flight.curve(raw.yaw, c.yaw) },
+  watchPasses(s, off, dt);
+  const curved = (x, curve) => (x == null ? null : Flight.curve(x, curve));
+  s.frames.push({ t: s.t, raw, curved: { pitch: curved(raw.pitch, c.pitch), yaw: curved(raw.yaw, c.yaw) },
     mark: { x: m.x, y: m.y }, dot: { x: d.x, y: d.y } });
   return s.t + 1e-9 >= s.len ? { done: true, result: summary(s) } : { done: false };
 }
 
 // Overshoots, counted as the trainer counts the chase's (sim.js, watchPasses): on each axis, one when the dot changes side
 // of the mark close to it while the mark's own motion carries it that way (moving toward the side the dot was on). A change
-// of side in the second after the dot itself turned back on that axis is the dot's doing, as the trainer's second after a
-// jink is: the dot came back through a mark still on its way, which is being late, not overshooting. passes keeps the side
-// the dot was last clearly on; dotWay the way the dot last went on that axis, turnedAt when it last turned back.
-function watchPasses(s, off) {
+// of side just after the dot itself turned back on that axis (TURN_BACK), with the dot coming back toward the mark, is the
+// dot's doing: the dot came back through a mark still on its way, which is being late, not overshooting. A mark that runs
+// past a dot going away from it is always counted. passes keeps the side the dot was last clearly on; dotWay the way the dot
+// last went on that axis, turnedAt when it last turned back; blind adds up the time a pass would be the dot's doing.
+function watchPasses(s, off, dt) {
   const L = s.level, m = s.mark, d = s.dot, near = Math.max(0.15, 3 * L.r), band = L.r / 4;
   for (const [axis, miss, v, dv] of [['yaw', d.x - m.x, m.vx, d.vx], ['pitch', d.y - m.y, m.vy, d.vy]]) {
     const way = Math.sign(dv);
     if (way && s.dotWay[axis] && way !== s.dotWay[axis]) s.turnedAt[axis] = s.t;
     if (way) s.dotWay[axis] = way;
+    const forced = s.t - s.turnedAt[axis] < TURN_BACK && !!s.passes[axis] && way === -s.passes[axis];
+    if (forced) s.blind[axis] += dt;
     if (Math.abs(miss) < band) continue;
-    const side = Math.sign(miss), forced = s.t - s.turnedAt[axis] < 1;
+    const side = Math.sign(miss);
     const carried = Math.abs(v) >= L.r && Math.sign(v) === s.passes[axis];
     if (s.passes[axis] && side !== s.passes[axis] && off <= near && !forced && carried) s.overshoots[axis]++;
     s.passes[axis] = side;
@@ -394,6 +408,39 @@ function selftest(rules) {
       steps === 3600 && r.level === 'easy' && r.set === 'faOn' && ['pct', 'streak', 'miss'].every(k => typeof r[k] === 'number')
       && typeof r.overshoots.pitch === 'number' && typeof r.overshoots.yaw === 'number' && r.peak.pitch === 0.2 && r.peak.yaw === 0.3];
   });
+  // (h) The checkers' findings on these rules.
+  check('(h) the rule leaves a pass uncounted as the dot\'s doing (it turned back and came into the mark) under 10% of each axis\'s time, at every level', () => {
+    const got = {};
+    for (const L of R.LEVELS) {
+      const blind = { pitch: 0, yaw: 0 };
+      let time = 0;
+      for (const seed of SEEDS) {
+        const s = R.start(L.id, both(STRAIGHT), { seed }), h = hand({ lag: 0.2, smooth: 0.08, noise: 0.01 }, seed)(s);
+        let out;
+        do out = R.step(s, h(), STEP); while (!out.done);
+        blind.pitch += s.blind.pitch; blind.yaw += s.blind.yaw; time += s.t;
+      }
+      got[L.id] = { pitch: round(100 * blind.pitch / time, 1), yaw: round(100 * blind.yaw / time, 1) };
+    }
+    return [got, 'under 10 (percent of the time) on each axis, at each level', Object.values(got).every(a => a.pitch < 10 && a.yaw < 10)];
+  });
+  check('(h) a stick lost or let go is kept as no reading (null) in the round\'s record, never as the middle (0)', () => {
+    const s = R.start('medium', both(usual), { seed: 1 });
+    R.step(s, null, STEP);
+    R.step(s, { pitch: null, yaw: 0.4 }, STEP);
+    R.step(s, { pitch: NaN, yaw: 0 }, STEP);
+    const got = s.frames.map(f => ({ raw: f.raw, curved: f.curved }));
+    const want = [{ raw: { pitch: null, yaw: null }, curved: { pitch: null, yaw: null } },
+      { raw: { pitch: null, yaw: 0.4 }, curved: { pitch: null, yaw: Flight.curve(0.4, usual) } },
+      { raw: { pitch: null, yaw: 0 }, curved: { pitch: null, yaw: 0 } }];
+    return [got, want, JSON.stringify(got) === JSON.stringify(want) && s.mark.y === 0];
+  });
+  check('(h) one step moves the round on a tenth of a second at most, however long the page was hidden or paused', () => {
+    const s = R.start('medium', both(usual), { seed: 1 });
+    const out = R.step(s, { pitch: 0, yaw: 0 }, 5);
+    return [{ t: round(s.t, 9), done: out.done }, { t: 0.1, done: false }, round(s.t, 9) === 0.1 && !out.done];
+  });
+
   check('the picture puts the dot and the mark where the rules have them', () => {
     const s = R.start('medium', both(usual), { seed: 2 });
     for (let i = 0; i < 30; i++) R.step(s, { pitch: 0.4, yaw: 0.6 }, STEP);

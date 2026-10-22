@@ -242,6 +242,7 @@ public sealed class FlightApi : IDisposable
             && bound.Device.Equals("vJoy", StringComparison.OrdinalIgnoreCase) && Gremlin.Through(gremlin.Axes, bound.Axis) is { CurveUnread: true })];
         // What Studio saved for Gremlin, read back (the profile Gremlin opens may be that very file).
         IReadOnlyList<GremlinAxis>? saved = faOffFile is null ? null : faOffFile == gremlin.Path ? gremlin.Axes : SavedAxes(faOffFile);
+        (bool Off, bool On) older = saved is not null && binds is not null ? Older(saved, binds, Current.FaOn, off, gremlin.Axes) : default;
         GameSnapshot now = game.Snapshot();
         return new
         {
@@ -260,8 +261,10 @@ public sealed class FlightApi : IDisposable
                 unread,
                 // The profile Gremlin opens has the FA Off mode: without it the Flight Assist off curves tuned here never reach Elite.
                 hasFaOff = gremlin.Axes.Any(a => a.Mode == Gremlin.FaOffMode),
-                // The FA Off profile saved before no longer has the curves in use: saving it again brings it up to date.
-                outOfDate = saved is not null && binds is not null && OutOfDate(saved, binds, Current.FaOn, off),
+                // The FA Off profile saved before no longer has the curves in use: saving it again brings it up to date. And which
+                // curves changed since: the Flight Assist off ones (its FA Off mode), the on ones (its Default mode), or both.
+                outOfDate = older.Off || older.On,
+                older = new { faOff = older.Off, faOn = older.On },
             },
             ships = Ships(),
             flying = game.Ship is { Length: > 0 } code && ShipOf(code) is { } ship ? ship.Id : null,
@@ -286,24 +289,33 @@ public sealed class FlightApi : IDisposable
     }
 
     /// <summary>
-    /// Whether the FA Off profile Studio saved for Gremlin no longer has the curves in use, so saving again would change it: for each
-    /// of pitch, roll and yaw that Elite reads from vJoy and the profile feeds, its FA Off curves against the Flight Assist off
-    /// curves, and its Default curve against the Flight Assist on curves when the player saved some here (a curve of the
-    /// player's own that Studio cannot read stays as it is, so it is never counted). The comparison is of the curves, not of the
-    /// files' times.
+    /// Whether the FA Off profile Studio saved for Gremlin no longer has the curves in use, so saving again would change it, for the
+    /// Flight Assist off curves (Off) and the on ones (On): for each of pitch, roll and yaw that Elite reads from vJoy and the
+    /// profile feeds, its FA Off curves against the Flight Assist off curves, and its Default curve against what saving again
+    /// would put there: the Flight Assist on curves when the player saved some here (a curve of the player's own that Studio
+    /// cannot read stays as it is, so it is never counted), else the Default curve of the profile Gremlin opens, kept as it is
+    /// (<paramref name="running"/>; so after "Back to the suggestion" a Default still holding the curves saved before is older).
+    /// The comparison is of the curves, not of the files' times.
     /// </summary>
-    internal static bool OutOfDate(IReadOnlyList<GremlinAxis> saved, FlightBinds binds, FlightCurves? on, FlightCurves off)
+    internal static (bool Off, bool On) Older(IReadOnlyList<GremlinAxis> saved, FlightBinds binds, FlightCurves? on, FlightCurves off, IReadOnlyList<GremlinAxis> running)
     {
+        bool offOlder = false, onOlder = false;
         foreach (string control in (string[])["pitch", "roll", "yaw"])
         {
             if (binds.Axes.GetValueOrDefault(control) is not { } bound || !bound.Device.Equals("vJoy", StringComparison.OrdinalIgnoreCase)) continue;
             if (Gremlin.Through(saved, bound.Axis) is not { } main) continue;   // nothing feeds that axis: saving again cannot change it
             GremlinAxis[] faOff = [.. saved.Where(a => a.Mode == Gremlin.FaOffMode && a.VjoyAxis == bound.Axis)];
-            if (faOff.Length == 0 || faOff.Any(a => a.Curve is not { } curve || !Same(curve, off.Of(control)))) return true;
-            if (on is not null && !main.CurveUnread && (main.Curve is not { } mine || !Same(mine, on.Of(control)))) return true;
+            offOlder |= faOff.Length == 0 || faOff.Any(a => a.Curve is not { } curve || !Same(curve, off.Of(control)));
+            if (on is not null) onOlder |= !main.CurveUnread && (main.Curve is not { } mine || !Same(mine, on.Of(control)));
+            else if (Gremlin.Through(running, bound.Axis) is { } own) onOlder |= !SameAs(main, own);
         }
-        return false;
+        return (offOlder, onOlder);
     }
+
+    /// <summary>Two Gremlin axes with the same curve as far as Studio can tell: both without one, both the same, or both unreadable (never counted).</summary>
+    static bool SameAs(GremlinAxis a, GremlinAxis b) =>
+        a.CurveUnread || b.CurveUnread ? a.CurveUnread == b.CurveUnread
+            : a.Curve is { } x && b.Curve is { } y ? Same(x, y) : a.Curve is null && b.Curve is null;
 
     /// <summary>
     /// Two curves the same as far as a player can tell them apart: each number within a quarter. Read back from Gremlin's 21 points

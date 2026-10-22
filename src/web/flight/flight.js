@@ -3,7 +3,8 @@
 //   Flight.stream(onFrame)         the app's readings of the sticks and keys, about sixty a second, while this page is shown
 //   Flight.reader(info)            turns those readings into the ship's commands, with the player's bindings and curves
 //   Flight.drawInputs(...)         the throttle hand and the stick hand drawn on a canvas, as the in-game flight overlay draws them
-//   Flight.stickLost(frame)        the line to show when Studio cannot find the real stick behind pitch, roll or yaw
+//   Flight.stickLost(frame, info)  the line to show when Studio cannot find the real stick behind pitch, roll or yaw, and why
+//   Flight.olderLine(gremlin)      Stick setup's line when the FA Off profile saved for Gremlin is older than the curves
 //   Flight.tuneBox(section, ...)   the +/- curve buttons beside a game, for the Flight Assist off or on curves
 //   Flight.fit(canvas)             a canvas sized to its box for the screen's pixels
 //   Flight.keyText / buttonText / axisText / deviceText    a binding in words
@@ -230,15 +231,55 @@ const buttonText = b => b.hold.map(pressText).concat(pressText(b.press)).join(' 
 const axisText = a => deviceText(a.device) + ' ' + a.axis + ' axis' + (a.inverted ? ', inverted' : '') + (a.deadzone > 0.005 ? ', dead zone ' + Math.round(a.deadzone * 100) + '%' : '');
 
 // ---- a real stick Studio cannot find
-// The app says when it cannot read the real stick behind pitch, roll or yaw although the game gets a reading (the stick Gremlin
-// names is not plugged in, or Elite reads vJoy and nothing tells Studio which stick feeds it): a page reading the real stick
-// then flies that control as the game gets it, so the FA Off curves change nothing there. The one plain line to show, or null.
-function stickLost(frame) {
-  const lost = ['pitch', 'roll', 'yaw'].filter(n => frame && frame.controls && frame.controls[n] && frame.controls[n].realUnknown);
+// The app says when it cannot read the real stick behind pitch, roll or yaw although the game gets a reading (realUnknown). Two
+// reasons, told apart from GET /api/flight's answer (info) and the sticks in the reading: the stick Joystick Gremlin reads for
+// that control (or the one picked with Detect) is not among those Windows shows, so it is to be plugged in; or nothing tells
+// Studio which stick feeds it (Elite reads vJoy and Gremlin's profile has no route there), or that stick is there but not the
+// axis, which Detect on Stick setup fixes. A page reading the real stick then flies that control as the game gets it, so the
+// FA Off curves change nothing there. The plain line to show, or null. o: { controls (pitch, roll and yaw), effect(one): what
+// it means on that page }.
+const listed = names => names.length === 1 ? names[0] : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+const plain = text => String(text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const flownAsTheGame = one => `${one ? 'it is' : 'they are'} flown as the game gets ${one ? 'it' : 'them'} and your Flight Assist off curves change nothing there`;
+function stickLost(frame, info, o = {}) {
+  const controls = o.controls || ['pitch', 'roll', 'yaw'], effect = o.effect || flownAsTheGame;
+  const lost = controls.filter(n => frame && frame.controls && frame.controls[n] && frame.controls[n].realUnknown);
   if (!lost.length) return null;
-  const one = lost.length === 1, names = one ? lost[0] : lost.slice(0, -1).join(', ') + ' and ' + lost[lost.length - 1];
-  return `Studio cannot find your real stick behind ${names}, so ${one ? 'it is' : 'they are'} flown as the game gets ${one ? 'it' : 'them'}`
-    + ` and your Flight Assist off curves change nothing there. On Stick setup, click Detect beside ${one ? 'it' : 'each'} and move that control.`;
+  const sticks = (frame && frame.sticks) || [], unseen = new Map(), unknown = [];
+  for (const n of lost) {
+    const named = stickNamed(info, n);
+    const seen = named && sticks.some(s => named.device ? String(s.device).split('#')[0].toLowerCase() === named.device.split('#')[0].toLowerCase()
+      : plain(s.name) && (plain(s.name).startsWith(plain(named.name)) || plain(named.name).startsWith(plain(s.name))));
+    if (named && !seen) { const key = named.name || named.device; unseen.set(key, { named, controls: [...((unseen.get(key) || {}).controls || []), n] }); }
+    else unknown.push(n);
+  }
+  const lines = [...unseen.values()].map(({ named, controls: on }) => (named.name
+    ? `Studio can't see your ${named.name}, the stick Joystick Gremlin reads for ${listed(on)}`
+    : `Studio can't see the stick you picked for ${listed(on)} with Detect`) + `, so ${effect(on.length === 1)}. Check it is plugged in.`);
+  if (unknown.length) lines.push(`Studio cannot find your real stick behind ${listed(unknown)}, so ${effect(unknown.length === 1)}.`
+    + ` On Stick setup, click Detect beside ${unknown.length === 1 ? 'it' : 'each'} and move that control.`);
+  return lines.join(' ');
+}
+// The stick Studio was told to read for a control: the one picked with Detect ({ device }), else the one Gremlin passes on to the
+// vJoy axis the game reads ({ name }, as Gremlin keeps it, on vJoy device 1 when the profile feeds several); null for none.
+function stickNamed(info, control) {
+  if (!info) return null;
+  const picked = info.settings && info.settings.sources && info.settings.sources[control];
+  if (picked) return { device: String(picked).split(' ')[0] };
+  const bound = info.binds && info.binds.axes && info.binds.axes[control];
+  if (!bound || String(bound.device).toLowerCase() !== 'vjoy') return null;
+  const all = ((info.gremlin && info.gremlin.axes) || []).filter(a => a.mode === 'Default' && a.vjoyAxis === bound.axis);
+  const through = all.find(a => a.vjoyDevice === 1) || all[0];
+  return through && through.deviceName ? { name: through.deviceName } : null;
+}
+
+// ---- Stick setup's line when the FA Off profile saved for Gremlin is older than the curves: which curves changed since
+// (GET /api/flight's gremlin.older: the Flight Assist off ones, the on ones, or both). Null when it is up to date.
+function olderLine(g) {
+  if (!g || !g.outOfDate) return null;
+  const o = g.older || {}, which = o.faOff && o.faOn ? 'Flight Assist on and off curves' : o.faOn ? 'Flight Assist on curves' : o.faOff ? 'Flight Assist off curves' : 'curves';
+  return 'Your saved Flight Assist off profile is older than your ' + which + ': press "Save the FA Off profile for Gremlin" again'
+    + (g.hasFaOff ? ', then open it again in Joystick Gremlin.' : '.');
 }
 
 // ---- a canvas fitted to its box: sized for the screen's pixels, drawn in CSS pixels; answers { g, w, h }
@@ -261,6 +302,8 @@ function fit(canvas) {
 //   call     the page's Studio.follow call for /api/flight (a POST answers with the picture the page shows)
 //   info     the page's newest GET /api/flight answer; set: the curve set the box edits now, 'faOff' or 'faOn'
 //   note     the line under the box; changed(putBack): after each press, and after "Put back" (putBack true)
+//   axes, rows  which axes and which rows it shows (all of them unless told: the dot game shows pitch and yaw, and no
+//            "Most it gives", which changes nothing there); it never changes one it does not show
 //   tune.hold(answer)     first thing with each new answer: a change not sent yet stays the player's
 //   tune.draw()           the numbers, "Put back" and the line again;  tune.show(axis): that axis's curve
 //   tune.graph(frame)     the live graph, once an animation frame, with the newest reading
@@ -286,8 +329,9 @@ const TUNE_LOOK = `.tune-box{border:1px solid var(--line);border-radius:10px;bac
 .tune-row output{text-align:center;font-family:var(--mono);color:var(--accent)}
 :root[style*="--accent-hi:"] .tune-row output{color:var(--accent-hi)}
 .tune-foot{display:flex;align-items:center;gap:10px;margin-top:8px}`;
-function tuneBox(section, { call, info, set = () => 'faOff', note = () => '', changed = () => {} }) {
-  let axis = 'pitch', pending = null, timer = 0;   // pending: { key, curves } changed by hand and not sent yet
+function tuneBox(section, { call, info, set = () => 'faOff', note = () => '', changed = () => {}, axes = ['pitch', 'roll', 'yaw'], rows = TUNE.map(t => t.key) }) {
+  const shownRows = TUNE.filter(t => rows.includes(t.key));
+  let axis = axes[0], pending = null, timer = 0;   // pending: { key, curves } changed by hand and not sent yet
   const before = {};   // per curve set: { curves, own } as they were before the first change on this page, and whether they were the player's
   const clone = v => JSON.parse(JSON.stringify(v));
   const setName = () => set() === 'faOn' ? 'Flight Assist on' : 'Flight Assist off';
@@ -298,12 +342,13 @@ function tuneBox(section, { call, info, set = () => 'faOff', note = () => '', ch
     if (!document.getElementById('tune-look')) document.head.append(h('style', { id: 'tune-look' }, TUNE_LOOK));
     // The rows are made once and only their numbers change after: a row made afresh under the pointer (each save brings the
     // curves back) would lose a click pressed on the old one. The buttons are live once the curves are known.
-    const rows = TUNE.map(t => ({ t, less: h('button', { class: 'btn small', title: 'Less', disabled: true, onclick: () => nudge(t.key, -1) }, '−'),
-      more: h('button', { class: 'btn small', title: 'More', disabled: true, onclick: () => nudge(t.key, 1) }, '+'), shown: h('output') }));
+    // (Each + and − says which row it is to a screen reader, so no two buttons on a page answer to the same name.)
+    const made = shownRows.map(t => ({ t, less: h('button', { class: 'btn small', title: 'Less', 'aria-label': 'Less: ' + t.label, disabled: true, onclick: () => nudge(t.key, -1) }, '−'),
+      more: h('button', { class: 'btn small', title: 'More', 'aria-label': 'More: ' + t.label, disabled: true, onclick: () => nudge(t.key, 1) }, '+'), shown: h('output') }));
     const parts = {
-      rows,
+      rows: made,
       which: h('span', { class: 'small muted' }, setName()),
-      axes: h('div', { class: 'seg', id: 'tune-axis' }, ['pitch', 'roll', 'yaw'].map(a => h('button', { 'data-axis': a, onclick: () => show(a) }, a[0].toUpperCase() + a.slice(1)))),
+      axes: h('div', { class: 'seg', id: 'tune-axis' }, axes.map(a => h('button', { 'data-axis': a, onclick: () => show(a) }, a[0].toUpperCase() + a.slice(1)))),
       canvas: h('canvas', { id: 'tune-graph' }),
       back: h('button', { class: 'btn small', id: 'tune-back', disabled: true, title: 'The curves as they were before your first change on this page', onclick: putBack }, 'Put back'),
       saved: h('span', { class: 'small muted', id: 'tune-saved' }),
@@ -311,7 +356,7 @@ function tuneBox(section, { call, info, set = () => 'faOff', note = () => '', ch
     };
     section.replaceChildren(h('h2', null, 'Curves ', parts.which), parts.axes,
       h('div', { class: 'tune-graph', title: 'Your stick across, what the ship gets up; the shaded band is the dead zone, the dot your stick now' }, parts.canvas),
-      h('div', { class: 'tune', id: 'tune' }, rows.map(({ t, less, more, shown }) => h('div', { class: 'tune-row' }, h('span', null, t.label), less, shown, more))),
+      h('div', { class: 'tune', id: 'tune' }, made.map(({ t, less, more, shown }) => h('div', { class: 'tune-row' }, h('span', null, t.label), less, shown, more))),
       h('div', { class: 'tune-foot' }, parts.back, parts.saved), parts.note);
     // Leaving the page (another tab, closing Studio) within the moment before a change is sent: it is sent now.
     window.addEventListener('pagehide', () => {
@@ -338,7 +383,7 @@ function tuneBox(section, { call, info, set = () => 'faOff', note = () => '', ch
     el.back.disabled = !before[key];
     el.note.textContent = note();
   }
-  function show(name) { axis = name; draw(); }
+  function show(name) { if (axes.includes(name)) axis = name; draw(); }
   // The first change on this page keeps the curves as they were, for "Put back".
   function keep() {
     const now = info(), key = set();
@@ -347,7 +392,8 @@ function tuneBox(section, { call, info, set = () => 'faOff', note = () => '', ch
   function nudge(name, dir) {
     const now = info();
     if (!now) return;
-    const key = set(), all = now.settings[key], t = TUNE.find(x => x.key === name);
+    const key = set(), all = now.settings[key], t = shownRows.find(x => x.key === name);
+    if (!t) return;   // a row the box does not show
     keep();
     const c = { ...all[axis] };
     // From a value outside the range (set before the ranges matched Stick setup's), the first press brings it inside.
@@ -525,6 +571,57 @@ function selftest() {
     p.box.putBack();
     return p.sent.map(s => s[2]);
   }, [{ faOff: curvesWith('roll', { satY: 80 }) }, { faOff: null }]);
+  // Q1 (b): a box told which axes and rows it shows (the dot game: pitch and yaw, no "Most it gives") never changes another.
+  const twoAxes = () => {
+    const sent = [], data = { settings: { faOff: curves(), faOn: curves() }, saved: { faOff: false, faOn: false } };
+    const box = tuneBox(null, { call: (method, path, body) => { sent.push(JSON.parse(JSON.stringify(body))); return new Promise(() => {}); }, info: () => data,
+      axes: ['pitch', 'yaw'], rows: ['deadLow', 'deadHigh', 'satX', 'bend'] });
+    return { sent, data, box };
+  };
+  check('a box showing pitch and yaw only never turns to roll: + still changes the axis it shows', () => {
+    const p = twoAxes();
+    p.box.show('yaw');
+    p.box.show('roll');
+    p.box.nudge('bend', 1);
+    p.box.save();
+    return p.sent.map(s => [s.faOff.roll.bend, s.faOff.yaw.bend, s.faOff.pitch.bend]);
+  }, [[20, 25, 20]]);
+  check('a box without the "Most it gives" row never changes it', () => {
+    const p = twoAxes();
+    p.box.nudge('satY', -1);
+    p.box.save();
+    return [p.sent.length, p.data.settings.faOff.pitch.satY];
+  }, [0, 100]);
+  // Q1 (g3): why the real stick is not found. Gremlin names a stick Windows does not show: plug it in. Nothing names one: Detect.
+  const vjoyRead = { binds: { axes: { pitch: { device: 'vJoy', axis: 'Y' }, roll: { device: 'vJoy', axis: 'X' }, yaw: { device: 'vJoy', axis: 'RZ' } } },
+    gremlin: { axes: [{ mode: 'Default', deviceName: 'Logitech Extreme 3D', axis: 'Y', vjoyDevice: 1, vjoyAxis: 'Y' }] }, settings: { sources: {} } };
+  const unknown = (...names) => ({ time: 3, pressed: [], controls: Object.fromEntries(names.map(n => [n, { game: 0.1, real: null, realUnknown: true }])) });
+  check('the stick Gremlin reads is not plugged in: the line names that stick, says to plug it in, and does not point to Detect', () => {
+    const line = stickLost({ ...unknown('pitch'), sticks: [{ device: '1234:BEAD', name: 'vJoy Device' }] }, vjoyRead);
+    return [/can't see your Logitech Extreme 3D/.test(line), /plugged in/.test(line), /behind pitch|for pitch/.test(line), /Detect/.test(line)];
+  }, [true, true, true, false]);
+  check('nothing tells Studio which stick feeds a control: the line points to Detect, not to plugging in', () => {
+    const line = stickLost({ ...unknown('yaw'), sticks: [{ device: '1234:BEAD', name: 'vJoy Device' }] }, vjoyRead);
+    return [/behind yaw/.test(line), /Detect/.test(line), /plugged in/.test(line)];
+  }, [true, true, false]);
+  check('the stick Gremlin names is there but Studio cannot read that axis on it: Detect', () => {
+    const line = stickLost({ ...unknown('pitch'), sticks: [{ device: '046D:C215', name: 'Logitech Extreme 3D' }] }, vjoyRead);
+    return [/Detect/.test(line), /plugged in/.test(line)];
+  }, [true, false]);
+  check('both at once: one sentence for the stick to plug in, one for Detect', () => {
+    const line = stickLost({ ...unknown('pitch', 'yaw'), sticks: [{ device: '1234:BEAD', name: 'vJoy Device' }] }, vjoyRead);
+    return [/Logitech Extreme 3D, the stick Joystick Gremlin reads for pitch/.test(line), /behind yaw/.test(line), /Detect/.test(line)];
+  }, [true, true, true]);
+  // Q1 (g2): the "older" line on Stick setup names the curves that changed since the FA Off profile was saved.
+  check('the saved FA Off profile is older: the line names the curves that changed (Flight Assist on, off, or both)', () => [
+    olderLine({ outOfDate: true, older: { faOff: true, faOn: false }, hasFaOff: true }),
+    olderLine({ outOfDate: true, older: { faOff: false, faOn: true }, hasFaOff: false }),
+    olderLine({ outOfDate: true, older: { faOff: true, faOn: true }, hasFaOff: true }),
+    olderLine({ outOfDate: false, older: { faOff: false, faOn: false }, hasFaOff: true })].map(l => l && l.replace(/:.*$/, '')), [
+    'Your saved Flight Assist off profile is older than your Flight Assist off curves',
+    'Your saved Flight Assist off profile is older than your Flight Assist on curves',
+    'Your saved Flight Assist off profile is older than your Flight Assist on and off curves',
+    null]);
   check('a press stays inside Stick setup\'s ranges', () => {
     const p = page(false);
     p.data.settings.faOff.pitch.bend = 100;
@@ -537,5 +634,5 @@ function selftest() {
   return checks;
 }
 
-return { curve, stream, reader, drawInputs, stickLost, tuneBox, fit, keyText, buttonText, axisText, deviceText, clamp, look, selftest };
+return { curve, stream, reader, drawInputs, stickLost, olderLine, tuneBox, fit, keyText, buttonText, axisText, deviceText, clamp, look, selftest };
 })();

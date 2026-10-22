@@ -14,8 +14,9 @@
   the round the mark sat on the dot. The rules are chase.js's.
   Left: the level, which curve this game uses (Flight Assist off, on, or as the game's Flight Assist is while Elite runs: a
   choice for this page only, never the switch in the game; kept for the length of a round), the best scores and the controls.
-  Right: the game with, beside it, the +/- curve buttons for that curve (Flight.tuneBox, locked while a round is flown); under
-  it the hands as the in-game flight overlay draws them, and after a round the score and tips, some with a one-click change.
+  Right: the game with, beside it, the +/- curve buttons for that curve (Flight.tuneBox, pitch and yaw only and no "Most it
+  gives", locked while a round is flown); under it the hands as the in-game flight overlay draws them, and after a round the
+  score and tips, some with a one-click change naming its way. A narrow window shows it all in one column.
   The level and the curve choice are kept in the page's own storage; the curves, the stick readings and the best scores are the
   app's: GET /api/flight and the "flight" event, "flight-input" events, POST /api/flight/settings (the curves) and
   POST /api/flight/score ({ game: 'dot2-medium-faOff', pct }, the best kept per level and curve set).
@@ -45,17 +46,28 @@
 .sky{min-height:0;position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#05070b}
 :root[style*="--bg:"] .sky{background:var(--bg)}
 .sky canvas{position:absolute;inset:0;width:100%;height:100%;cursor:pointer}
-.bottom{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;flex:none;height:190px}
+/* the hands and the report: as tall as the report needs after a round (the game above gives way, down to its least), so the
+   score and its tips show whole without scrolling in an ordinary window; a report taller still scrolls inside */
+.bottom{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;flex:none;min-height:190px}
 .hands{position:relative;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 .hands canvas{position:absolute;inset:0;width:100%;height:100%}
-.report{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px 14px;overflow:auto;font-size:13px}
+.report{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px 14px;overflow:auto;font-size:13px;max-height:max(190px,calc(100vh - 380px))}
 .report ul{margin:0;padding-left:18px}
 .report li{margin:2px 0}
-.report .tip{display:flex;gap:10px;align-items:flex-start;margin:8px 0 0}
-.report .tip p{flex:1;margin:0}
+.report .tip{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin:8px 0 0}
+.report .tip p{flex:1 1 240px;margin:0}
 .verdict{font-family:var(--hud);font-size:17px;letter-spacing:.04em;margin:0 0 6px}
-.overlay .side,.overlay .tune-box{display:none}
-.overlay .layout,.overlay .middle{grid-template-columns:minmax(0,1fr)}
+/* A narrow window (under 960 px, where the game beside the side column and the curve box would be under 300 px wide): one
+   column that scrolls, the game first and at least 300 px square, the curve box and the hands under it, the side column last. */
+@media (max-width:959px){
+  .layout{grid-template-columns:minmax(0,1fr);grid-auto-rows:max-content;overflow:auto;align-content:start}
+  .side{order:2;border-right:0;border-top:1px solid var(--line);overflow:visible}
+  .middle{flex:none;grid-template-columns:minmax(0,1fr);grid-template-rows:none}
+  .sky{height:clamp(300px,70vw,560px)}
+  .bottom{grid-template-columns:minmax(0,1fr)}
+  .hands{height:170px}
+  .report{max-height:none}
+}
 /* ?selftest */
 .selftest{position:fixed;inset:0;z-index:75;background:rgba(2,4,8,.82);display:grid;place-items:center;padding:16px}
 .selftest .box{width:min(980px,100%);max-height:100%;overflow:auto;background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:18px}
@@ -119,8 +131,11 @@ const CHOICES = ['faOff', 'faOn', 'follow'];
 const GOOD = { easy: 90, medium: 70, hard: 45 };
 const NEXT = { easy: 'Try Medium next.', medium: 'Try Hard next.', hard: 'Try a small curve change and see if the score holds.' };
 const AXES = { pitch: 'up and down', yaw: 'left and right' };
+// A tip's button starts with its way, so two tips' buttons never read the same.
+const WAY = { pitch: 'Up and down', yaw: 'Left and right' };
 // The tune box's rows by their plain names. "Most it gives" is never offered: in this game the mark's reach is the field.
 const LABELS = { bend: 'Softer middle', satX: 'How far the stick travels' };
+const FAR = 3;   // a round whose mark was on average this many dot radii from the dot's middle, or more, was seldom near it
 
 // "As in the game": the game's Flight Assist picks while Elite runs; with Elite closed, the Flight Assist off curve.
 function setFor(choice, info) {
@@ -148,26 +163,23 @@ function stickOf(frame) {
   const real = name => { const c = frame.controls && frame.controls[name]; return c && c.real != null && isFinite(c.real) ? c.real : null; };
   return { pitch: real('pitch'), yaw: real('yaw') };
 }
-function lostLine(frame) {
+// Why, from the reading and GET /api/flight's answer (info): the stick Gremlin reads is not plugged in, or Detect is needed.
+function lostLine(frame, info) {
   if (!frame) return null;
   if (!(frame.sticks || []).length) return 'Studio sees no stick. Plug it in: in this game only the stick aims, never the keys.';
-  const lost = ['pitch', 'yaw'].filter(n => frame.controls && frame.controls[n] && frame.controls[n].realUnknown);
-  if (!lost.length) return null;
-  const one = lost.length === 1;
-  return `Studio cannot find your real stick behind ${lost.join(' and ')}, so the mark cannot follow ${one ? 'it' : 'them'}.`
-    + ` On Stick setup, click Detect beside ${one ? 'it' : 'each'} and move that control.`;
+  return Flight.stickLost(frame, info, { controls: ['pitch', 'yaw'], effect: one => 'the mark cannot follow ' + (one ? 'it' : 'them') });
 }
 
 // After a round: overshoots on an axis ask for finer aiming there (a softer middle, then more stick travel for the same
-// distance); a mark that never went far, for following the dot all the way; being behind it, for aiming where it goes. A tip
-// that changes a curve says which (axis, field) and by how much (step, kept within min..max), not to what: tipChange gives the
-// change from the curves as they are when it is shown or taken. Each tip has an id that stays the same for that advice.
+// distance); a mark that never went far, for following the dot all the way. A round below its level's band always gets a tip
+// from its numbers: when it had no overshoot tip, a mark seldom near the dot (FAR) is to get onto it first, one close but
+// behind it is to aim where it goes. A tip that changes a curve says which (axis, field) and by how much (step, kept within
+// min..max), not to what: tipChange gives the change from the curves as they are when it is shown or taken. Each tip has an id
+// that stays the same for that advice.
 function advise(r, curves) {
   const tips = [];
-  let passes = 0;
   for (const axis of ['yaw', 'pitch']) {
     const n = r.overshoots[axis], c = curves && curves[axis];
-    passes += n;
     if (n < 3 || !c) continue;
     const id = 'over:' + axis, said = `Your mark went past the dot ${n} times ${AXES[axis]}: each correction went too far.`;
     if (c.bend < 70) tips.push({ id, text: said + ' A softer middle makes the small corrections finer.', axis, field: 'bend', step: 10, min: 0, max: 100 });
@@ -175,9 +187,11 @@ function advise(r, curves) {
     else tips.push({ id, text: said + ' Your curve is as fine as it gets: make each correction smaller, and stop it with a touch the other way.' });
   }
   const reach = Math.max(Math.abs(Chase.markOf(r.peak.pitch, curves && curves.pitch)), Math.abs(Chase.markOf(r.peak.yaw, curves && curves.yaw)));
+  const poor = r.pct < GOOD[r.level] - 10, overshot = tips.length > 0;
   if (!r.peak.pitch && !r.peak.yaw) tips.push({ id: 'still', text: 'Studio saw no movement of your stick this round, so the mark stayed in the middle. If you did move it, Studio could not read it: see the line under "Curve for this game", or Stick setup.' });
   else if (reach < 0.5) tips.push({ id: 'reach', text: 'Your mark never went more than half way to the edge, but the dot goes right to it. The mark goes where the stick points: push further to follow it.' });
-  else if (r.pct < GOOD[r.level] - 10 && passes < 3) tips.push({ id: 'late', text: 'You were mostly behind the dot. Point the stick where it is heading, not where it is now.' });
+  else if (poor && !overshot && r.miss >= FAR) tips.push({ id: 'far', text: 'On average your mark was ' + r.miss + ' times the dot\'s radius from its middle, so it was seldom near the dot. Get onto the dot first, then follow it with small moves.' });
+  else if (poor && !overshot) tips.push({ id: 'late', text: 'You were mostly behind the dot. Point the stick where it is heading, not where it is now.' });
   if (r.pct >= GOOD[r.level]) tips.push({ id: 'good', text: 'A strong round. ' + NEXT[r.level] });
   return tips;
 }
@@ -186,8 +200,10 @@ function tipChange(tip, curves) {
   if (!c) return null;
   const from = c[tip.field], to = Math.min(tip.max, Math.max(tip.min, from + tip.step));
   if (tip.step > 0 ? to <= from : to >= from) return null;   // already at the end the tip moves it towards
-  return { change: { [tip.field]: to }, button: LABELS[tip.field] + ' ' + from + ' → ' + to };
+  return { change: { [tip.field]: to }, button: WAY[tip.axis] + ': ' + LABELS[tip.field] + ' ' + from + ' → ' + to };
 }
+// A tip's button once it is taken (not offered again): it still names its way.
+const taken = tip => WAY[tip.axis] + ': done';
 
 // ---- the self-test: [{ name, ok, got, want }], as Flight.selftest() answers
 function selftest() {
@@ -223,22 +239,55 @@ function selftest() {
   }, [true, false, true, true]);
   check('no stick at all: one line says so', () => /no stick/.test(lostLine({ sticks: [], controls: {} })), true);
   check('nothing to say when the real stick is found', () => lostLine({ sticks: [{}], controls: { pitch: { real: 0 }, yaw: { real: 0 } } }), null);
+  // Q1 (g3): Gremlin names a stick Windows does not show: that stick is named and to be plugged in; Detect only with no route.
+  const routed = info({ binds: { axes: { pitch: { device: 'vJoy', axis: 'Y' }, yaw: { device: 'vJoy', axis: 'RZ' } } },
+    gremlin: { axes: [{ mode: 'Default', deviceName: 'Logitech Extreme 3D', axis: 'RZ', vjoyDevice: 1, vjoyAxis: 'RZ' }] } });
+  const vjoyOnly = { sticks: [{ device: '1234:BEAD', name: 'vJoy Device' }], controls: { pitch: { real: 0.1 }, yaw: { real: null, game: 0.2, realUnknown: true } } };
+  check('the stick Gremlin reads for yaw is not plugged in: the line names it, says to plug it in, and never points to Detect', () => {
+    const line = lostLine(vjoyOnly, routed);
+    return [/Logitech Extreme 3D/.test(line), /plugged in/.test(line), /Detect/.test(line), /mark cannot follow/.test(line)];
+  }, [true, true, false, true]);
+  check('nothing tells Studio which stick feeds yaw: the line points to Detect', () => {
+    const line = lostLine(vjoyOnly, info({ binds: routed.binds, gremlin: { axes: [] } }));
+    return [/Detect/.test(line), /plugged in/.test(line)];
+  }, [true, false]);
 
   const result = o => ({ level: 'medium', set: 'faOff', pct: 50, streak: 3, miss: 1.5, overshoots: { pitch: 0, yaw: 0 }, peak: { pitch: 0.8, yaw: 0.8 }, ...o });
   const off = info().settings.faOff, fine = { pitch: curve({ bend: 80, satX: 100 }), yaw: curve({ bend: 80 }) };
-  check('overshooting left and right: a softer middle for yaw, one click from 40 to 50', () => {
+  check('overshooting left and right: a softer middle for yaw, one click from 40 to 50, the button naming the way', () => {
     const tip = advise(result({ overshoots: { pitch: 1, yaw: 5 } }), off).find(t => t.field);
     return [tip.axis, tipChange(tip, off)];
-  }, ['yaw', { change: { bend: 50 }, button: 'Softer middle 40 → 50' }]);
+  }, ['yaw', { change: { bend: 50 }, button: 'Left and right: Softer middle 40 → 50' }]);
   check('overshooting with a soft middle already: more stick travel for the same distance', () => {
     const tip = advise(result({ overshoots: { pitch: 0, yaw: 4 } }), fine).find(t => t.field);
     return [tip.axis, tipChange(tip, fine)];
-  }, ['yaw', { change: { satX: 97 }, button: 'How far the stick travels 92 → 97' }]);
+  }, ['yaw', { change: { satX: 97 }, button: 'Left and right: How far the stick travels 92 → 97' }]);
   check('overshooting with the finest curve: advice, and no button', () => {
     const tips = advise(result({ overshoots: { pitch: 4, yaw: 0 } }), fine);
     return [tips.map(t => t.id), tips.some(t => t.field)];
   }, [['over:pitch'], false]);
-  check('a few passes are not overshooting: no tip for them', () => advise(result({ overshoots: { pitch: 2, yaw: 2 } }), off).map(t => t.id), []);
+  check('a few passes are not overshooting: no tip for them in a round within its level\'s band', () => advise(result({ overshoots: { pitch: 2, yaw: 2 }, pct: 65 }), off).map(t => t.id), []);
+  // Q1 (a): a poor round never ends with no tips. Seen live: Easy, 0.2%, past the dot twice left and right and once up and down.
+  check('the round seen live (Easy, 0.2%, past the dot twice left and right, once up and down, far from it): a tip from its numbers', () =>
+    advise(result({ level: 'easy', pct: 0.2, miss: 6.3, overshoots: { pitch: 1, yaw: 2 } }), off).map(t => t.id), ['far']);
+  check('a few passes in a poor round, close to the dot: not overshooting, so being behind it', () =>
+    advise(result({ overshoots: { pitch: 2, yaw: 1 }, pct: 50 }), off).map(t => t.id), ['late']);
+  check('every round below its level\'s band gets at least one tip, whatever its numbers', () => {
+    const finest = { pitch: curve({ bend: 100, satX: 100 }), yaw: curve({ bend: 100, satX: 100 }) }, none = [];
+    for (const level of ['easy', 'medium', 'hard']) for (const pct of [0, 0.2, GOOD[level] - 10.1]) for (let p = 0; p <= 6; p++) for (let y = 0; y <= 6; y++)
+      for (const peak of [{ pitch: 0, yaw: 0 }, { pitch: 0.3, yaw: 0.2 }, { pitch: 0.9, yaw: 0.9 }]) for (const miss of [0.8, 1.5, 6]) for (const c of [off, fine, finest]) {
+        const r = result({ level, pct, miss, peak, overshoots: { pitch: p, yaw: y } });
+        if (!advise(r, c).length) none.push([level, pct, p, y, peak.pitch, miss]);
+      }
+    return { withNoTip: none.length, first: none.slice(0, 3) };
+  }, { withNoTip: 0, first: [] });
+  // Q1 (d): a tip's button names its way; no two buttons share a label, taken ones neither.
+  check('two tips, one each way: their buttons, and the buttons once taken, never read the same', () => {
+    const both = { pitch: curve({ bend: 35 }), yaw: curve({ bend: 35 }) };
+    const tips = advise(result({ overshoots: { pitch: 4, yaw: 5 }, pct: 20 }), both).filter(t => t.field);
+    const labels = tips.map(t => tipChange(t, both).button), done = tips.map(taken);
+    return [labels, done, new Set([...labels, ...done]).size === 4];
+  }, [['Left and right: Softer middle 35 → 45', 'Up and down: Softer middle 35 → 45'], ['Left and right: done', 'Up and down: done'], true]);
   check('never "Most it gives", which changes nothing in this game', () => [0, 3, 6, 9].flatMap(n => [off, fine].flatMap(c =>
     advise(result({ overshoots: { pitch: n, yaw: n }, pct: 10 * n }), c))).filter(t => t.field === 'satY').length, 0);
   check('the mark never far from the middle: follow the dot all the way', () => advise(result({ peak: { pitch: 0.3, yaw: 0.2 }, pct: 20 }), off).map(t => t.id), ['reach']);
@@ -249,7 +298,7 @@ function selftest() {
   return checks;
 }
 
-return { CHOICES, GOOD, setFor, gameId, begin, stickOf, lostLine, advise, tipChange, selftest };
+return { CHOICES, GOOD, setFor, gameId, begin, stickOf, lostLine, advise, tipChange, taken, selftest };
 })();
 
 (() => {
@@ -295,8 +344,9 @@ function showInfo(answer) {
 const call = Studio.follow('flight', '/api/flight', showInfo);
 Flight.stream(f => { frame = f; });
 // Beside the game, +/- for the curve this game uses, felt from the next round (a round keeps the curve it started with).
+// Only pitch and yaw, and not "Most it gives": in this game the mark's reach is the field whatever it is.
 const tune = Flight.tuneBox($('.tune-box'), {
-  call, info: () => info, set,
+  call, info: () => info, set, axes: ['pitch', 'yaw'], rows: ['deadLow', 'deadHigh', 'satX', 'bend'],
   note: () => busy() ? 'A round keeps the curve it started with: change it after this one.' : 'A change here counts from your next round. The same curves as on Stick setup.',
   changed: putBack => { if (putBack && run) run.applied = new Set(); redrawTips(); },
 });
@@ -393,7 +443,7 @@ function drawReport() {
   for (const tip of run.tips) {
     const now = same ? ChasePage.tipChange(tip, curves) : null;
     const button = !tip.field ? null
-      : run.applied.has(tip.id) ? h('button', { class: 'btn small', disabled: true }, 'Done')   // taken: not offered again
+      : run.applied.has(tip.id) ? h('button', { class: 'btn small', disabled: true }, ChasePage.taken(tip))   // taken: not offered again
       : now ? h('button', { class: 'btn small', title: 'Changes your ' + SET_NAMES[run.set] + ' curve for ' + tip.axis + '. "Put back" beside the game undoes it.', onclick: () => apply(tip) }, now.button)
       : null;   // the curve is at the end the tip moves it towards, or the box shows the other curve now
     parts.push(h('div', { class: 'tip' }, h('p', null, tip.text), button));
@@ -440,7 +490,7 @@ function frameOnce(now) {
   last = now;
   // The game switching its Flight Assist moves the curve "As in the game" picks: the side, the box and the tips follow.
   if (setNow() !== setShown) { setShown = setNow(); drawSide(); redrawTips(); }
-  const lost = ChasePage.lostLine(frame);
+  const lost = ChasePage.lostLine(frame, info);
   if (lost !== lostShown) { lostShown = lost; $('#stick-lost').textContent = lost || ''; $('#stick-lost').hidden = !lost; }
   // While paused the 3-2-1 waits too, so a round never starts unseen.
   if (paused && run && run.phase === 'count') run.phaseAt += now - (run.pausedAt || now);

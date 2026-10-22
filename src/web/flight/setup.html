@@ -324,8 +324,7 @@ function drawGremlin() {
     // What really reaches Elite: the Flight Assist off curves tuned here go to the game only through Gremlin's FA Off mode.
     else if (!g.hasFaOff) parts.push(h('p', { class: 'warn' }, 'The Gremlin profile in use has no Flight Assist off curves, so the curves you tune here do not reach Elite. '
       + (g.faOffFile ? 'Open the profile Studio saved (named below) in Joystick Gremlin.' : 'Press "Save the FA Off profile for Gremlin" below, then open that profile in Joystick Gremlin.')));
-    if (g.outOfDate) parts.push(h('p', { class: 'warn' }, 'Your saved Flight Assist off profile is older than your curves: press "Save the FA Off profile for Gremlin" again'
-      + (g.hasFaOff ? ', then open it again in Joystick Gremlin.' : '.')));
+    if (g.outOfDate) parts.push(h('p', { class: 'warn' }, Flight.olderLine(g)));   // names the curves that changed since: on, off or both
     const modes = [...new Set(g.modes)];
     parts.push(h('p', { class: 'small muted' }, (g.axes.length ? g.axes.length + ' axes go to vJoy' : 'No axes go to vJoy') + ' · modes: ' + (modes.join(', ') || 'Default')));
     parts.push(h('p', { class: 'small muted' }, 'Saving writes a new copy of your profile, ending "-fa-off", with a second mode "FA Off" that has your Flight Assist off curves. '

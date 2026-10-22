@@ -507,6 +507,10 @@ async function change(values) {
 }
 
 const zonesText = values => Object.entries(values).map(([c, s]) => `${NAMES[c]} ${s.deadLow}% / ${s.deadHigh}%` + (s.satX ? ` (travel ${s.satX}%)` : '')).join(', ');
+// What the check says once it has set the dead zones, and how they reach Elite today.
+const setText = (suggest, before) => 'Set: your Flight Assist off dead zones are now ' + zonesText(suggest) + ' (they were ' + zonesText(before) + '). '
+  + 'Next, fly the trainer\'s exercises: they are for tuning the curves. '
+  + 'Your new dead zones reach Elite through Joystick Gremlin: press "Save the FA Off profile for Gremlin" on this page, then open that profile in Gremlin.';
 
 async function setDeadZones(suggest, status, record) {
   const say = (cls, text, ...buttons) => status.replaceChildren(h('p', { class: cls }, text), ...buttons);
@@ -522,9 +526,7 @@ async function setDeadZones(suggest, status, record) {
   }
   record.state = 'set';
   remember(record);
-  say('good', 'Set: your Flight Assist off dead zones are now ' + zonesText(suggest) + ' (they were ' + zonesText(before) + '). '
-    + 'Next, fly the trainer\'s exercises: they are for tuning the curves. '
-    + 'They reach Elite through Joystick Gremlin: press "Save the FA Off profile for Gremlin" on this page, then open that profile in Gremlin.',
+  say('good', setText(suggest, before),
     h('button', { class: 'btn', onclick: async e => {
       e.target.disabled = true;
       try {
@@ -573,5 +575,13 @@ function show(content) {
   box.replaceChildren(...(content ? [content] : []));
 }
 
-return { init, tick };
+// ---- the self-test (FlightCheck.selftest(), from Stick setup's console or a script): [{ name, ok, got, want }]
+function selftest() {
+  const said = setText({ pitch: { deadLow: 3, deadHigh: 4 } }, { pitch: { deadLow: 2, deadHigh: 2 } });
+  const got = { newZones: /Your new dead zones reach Elite through Joystick Gremlin/.test(said), they: /\bThey\b/.test(said), save: /Save the FA Off profile for Gremlin/.test(said) };
+  const want = { newZones: true, they: false, save: true };
+  return [{ name: 'the "Set" message says it is the new dead zones that reach Elite through Gremlin (never an unclear "They")', ok: JSON.stringify(got) === JSON.stringify(want), got, want }];
+}
+
+return { init, tick, selftest };
 })();

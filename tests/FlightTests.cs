@@ -649,6 +649,106 @@ public sealed class FlightTests : IDisposable
         Assert.Equal((true, false), await Told());
     }
 
+    /// <summary>Stick setup's Gremlin card with the player's own profile running and a copy saved for Gremlin: the routes, and what the card is told.</summary>
+    sealed class SavedForGremlin : IDisposable
+    {
+        readonly PracticeGame game = new();
+        readonly GameWatcher watcher;
+        public readonly WebServer Web;
+        readonly FlightApi flight;
+        public string Running;   // the profile Gremlin opens
+
+        public SavedForGremlin(string temp)
+        {
+            game.Copy("Custom.4.2.binds", game.BindingsDir);
+            game.Copy("StartPreset.4.start", game.BindingsDir);
+            watcher = game.Watch();
+            watcher.Poll();
+            Running = Path.Combine(temp, "gremlin.xml");
+            File.WriteAllText(Running, ProfileText());
+            Web = new WebServer(temp);
+            flight = new FlightApi(Web, new Settings(Path.Combine(temp, "settings.json")), watcher.State, null, game.BindingsDir, null,
+                gremlinProfile: () => Running, sticks: _ => [], held: _ => false);
+        }
+
+        /// <summary>The card's word: the saved profile is older than the curves, and which of them (Flight Assist off, on).</summary>
+        public async Task<(bool OutOfDate, bool FaOff, bool FaOn)> Told()
+        {
+            JsonElement gremlin = (await Ask(Web, "GET", "")).Json.GetProperty("gremlin");
+            JsonElement older = gremlin.GetProperty("older");
+            return (gremlin.GetProperty("outOfDate").GetBoolean(), older.GetProperty("faOff").GetBoolean(), older.GetProperty("faOn").GetBoolean());
+        }
+
+        public async Task<bool> OutOfDate() => (await Ask(Web, "GET", "")).Json.GetProperty("gremlin").GetProperty("outOfDate").GetBoolean();
+
+        public async Task Change(string set, string control, string field, double by)
+        {
+            JsonNode curves = JsonNode.Parse((await Ask(Web, "GET", "")).Json.GetProperty("settings").GetProperty(set).GetRawText())!;
+            curves[control]![field] = curves[control]![field]!.GetValue<double>() + by;
+            Assert.Equal(200, (await Ask(Web, "POST", "/settings", new JsonObject { [set] = curves }.ToJsonString())).Status);
+        }
+
+        public async Task<string> Save()
+        {
+            (int status, JsonElement saved) = await Ask(Web, "POST", "/gremlin");
+            Assert.Equal(200, status);
+            return saved.GetProperty("path").GetString()!;
+        }
+
+        public void Dispose()
+        {
+            flight.Dispose();
+            Web.Dispose();
+            watcher.Dispose();
+            game.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task Putting_the_Flight_Assist_on_curves_back_after_a_save_makes_the_saved_profile_older()
+    {
+        using var card = new SavedForGremlin(temp);
+        // Flight Assist on curves of the player's own, saved into the FA Off profile's Default mode: up to date.
+        await card.Change("faOn", "yaw", "satY", -10);
+        await card.Save();
+        Assert.False(await card.OutOfDate());
+        // "Back to the suggestion" for the Flight Assist on curves: they are Gremlin's own again, but the saved profile's Default
+        // still has the ones saved before. Saving again would change it, so the card says so.
+        Assert.Equal(200, (await Ask(card.Web, "POST", "/settings", "{\"faOn\":null}")).Status);
+        Assert.True(await card.OutOfDate());
+        // Saved again: its Default is the player's own Gremlin curves, as they are in the profile Gremlin opens.
+        string saved = await card.Save();
+        Assert.False(await card.OutOfDate());
+        // Gremlin opens the saved profile itself: saving again keeps its Default as it is, so nothing is older.
+        card.Running = saved;
+        Assert.False(await card.OutOfDate());
+    }
+
+    [Fact]
+    public async Task The_older_line_is_told_which_curves_changed_since_the_save()
+    {
+        using var card = new SavedForGremlin(temp);
+        await card.Change("faOn", "yaw", "satY", -10);
+        await card.Save();
+        Assert.Equal((false, false, false), await card.Told());
+        // Only the Flight Assist off curves changed...
+        await card.Change("faOff", "pitch", "bend", 5);
+        Assert.Equal((true, true, false), await card.Told());
+        await card.Save();
+        Assert.Equal((false, false, false), await card.Told());
+        // ...only the Flight Assist on ones...
+        await card.Change("faOn", "pitch", "deadLow", 1);
+        Assert.Equal((true, false, true), await card.Told());
+        // ...and both
+        await card.Change("faOff", "roll", "bend", 5);
+        Assert.Equal((true, true, true), await card.Told());
+        await card.Save();
+        Assert.Equal((false, false, false), await card.Told());
+        // The Flight Assist on curves put back to Gremlin's own: the Flight Assist on ones are older, the off ones are not.
+        Assert.Equal(200, (await Ask(card.Web, "POST", "/settings", "{\"faOn\":null}")).Status);
+        Assert.Equal((true, false, true), await card.Told());
+    }
+
     // ------------------------------------------------------------ Chase the dot's best scores
 
     /// <summary>The best scores as GET /api/flight answers them, by game ("dot2-medium-faOff" → 62.5).</summary>

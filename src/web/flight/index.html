@@ -69,6 +69,16 @@
 .report .tip{display:flex;gap:10px;align-items:flex-start;margin:8px 0 0}
 .report .tip p{flex:1;margin:0}
 .verdict{font-family:var(--hud);font-size:17px;letter-spacing:.04em;margin:0 0 6px}
+/* A narrow window (under 960 px, where the exercise beside the side column and the curve box would be under 300 px wide): one
+   column that scrolls, the exercise first and at least 300 px square, the curve box and the hands under it, the side column last. */
+@media (max-width:959px){
+  .layout{grid-template-columns:minmax(0,1fr);grid-auto-rows:max-content;overflow:auto;align-content:start}
+  .side{order:2;border-right:0;border-top:1px solid var(--line);overflow:visible}
+  .middle{flex:none;grid-template-columns:minmax(0,1fr);grid-template-rows:none}
+  .sky{height:clamp(300px,70vw,560px)}
+  .bottom{grid-template-columns:minmax(0,1fr);height:auto}
+  .hands{height:170px}
+}
 .overlay .side,.overlay .tune-box{display:none}
 .overlay .layout,.overlay .middle{grid-template-columns:minmax(0,1fr)}
 </style>
@@ -404,7 +414,7 @@ function frameOnce(now) {
   const cmd = read(frame, info, !info || info.settings.input !== 'game');
   if (frame && !keysShown && info) { keysShown = true; drawKeys(); }
   // Reading the real stick, a control whose stick Studio cannot find is flown as the game gets it: one line says so.
-  const lost = info && info.settings.input !== 'game' ? Flight.stickLost(frame) : null;
+  const lost = info && info.settings.input !== 'game' ? Flight.stickLost(frame, info) : null;
   if (lost !== lostShown) { lostShown = lost; $('#stick-lost').textContent = lost || ''; $('#stick-lost').hidden = !lost; }
   // While paused the countdown and the result line wait too, so an attempt never starts unseen.
   if (paused && run && (run.phase === 'count' || run.phase === 'after')) run.phaseAt += now - (run.pausedAt || now);
