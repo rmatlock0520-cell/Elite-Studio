@@ -35,21 +35,11 @@
 .ladder .name{min-width:0}
 .ladder .name small{display:block;color:var(--muted);font-size:11.5px}
 .ladder .best{font-size:12px;color:var(--muted)}
-.side .seg,.tune-box .seg{display:grid;width:100%;margin-bottom:6px}
-.side .seg button,.tune-box .seg button{padding:0 8px;font-size:13px}
+.side .seg{display:grid;width:100%;margin-bottom:6px}
+.side .seg button{padding:0 8px;font-size:13px}
 .side select{width:100%}
-/* the curves by hand: +/- beside the exercise */
+/* the exercise, and beside it the curve buttons (Flight.tuneBox, which brings its own look) */
 .middle{flex:1;min-height:240px;display:grid;grid-template-columns:minmax(0,1fr) 280px;grid-template-rows:minmax(0,1fr);gap:12px}
-.tune-box{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px 12px;overflow:auto;min-height:0}
-.tune-box h2{margin:0 0 8px}
-.tune-graph{position:relative;height:96px;border:1px solid var(--line);border-radius:8px;background:var(--panel);margin:2px 0 8px}
-.tune-graph canvas{position:absolute;inset:0;width:100%;height:100%}
-.tune{display:grid;gap:4px}
-.tune-row{display:grid;grid-template-columns:minmax(0,1fr) 30px 52px 30px;align-items:center;gap:6px;font-size:12.5px}
-.tune-row .btn.small{height:26px;padding:0;font-family:var(--hud);font-size:17px;line-height:1;letter-spacing:0}
-.tune-row output{text-align:center;font-family:var(--mono);color:var(--accent)}
-:root[style*="--accent-hi:"] .tune-row output{color:var(--accent-hi)}
-.tune-foot{display:flex;align-items:center;gap:10px;margin-top:8px}
 .keys{font-size:12.5px;color:var(--muted);line-height:1.6}
 .keys b{color:var(--text);font-weight:500}
 
@@ -110,14 +100,7 @@
     </div>
     <div class="middle">
       <div class="sky" id="sky-box"><canvas id="sky"></canvas></div>
-      <section class="tune-box" aria-label="Curves">
-        <h2>Curves <span class="small muted">Flight Assist off</span></h2>
-        <div class="seg" id="tune-axis"><button data-axis="pitch">Pitch</button><button data-axis="roll">Roll</button><button data-axis="yaw">Yaw</button></div>
-        <div class="tune-graph" title="Your stick across, what the ship gets up; the shaded band is the dead zone, the dot your stick now"><canvas id="tune-graph"></canvas></div>
-        <div class="tune" id="tune"></div>
-        <div class="tune-foot"><button class="btn small" id="tune-back" disabled title="The curves as they were before your first change on this page">Put back</button><span class="small muted" id="tune-saved"></span></div>
-        <p class="small muted" id="tune-note"></p>
-      </section>
+      <section class="tune-box" aria-label="Curves"></section>
     </div>
     <div class="bottom">
       <div class="hands"><canvas id="hands"></canvas></div>
@@ -141,11 +124,6 @@ let chosen = Sim.FREE;    // the exercise on screen
 let run = null;           // the set being flown: { ex, results, a, phase, phaseAt, said }
 let preview = null;       // the attempt shown before Start
 let paused = '';
-let tuneAxis = 'pitch';   // the axis the +/- buttons change
-let tuneBefore = null;    // the curves before the first change on this page ("Put back")
-let tuneBeforeOwn = true; // ...and whether they were the player's own then, or Studio's starting point from the FA on curves
-let tunePending = null;   // curves changed by hand and not sent yet (sent a moment after the last press)
-let tuneTimer = 0;
 let view = 'dot';
 try { view = localStorage.getItem('flight.view') === 'nose' ? 'nose' : 'dot'; } catch (e) {}
 const read = Flight.reader();
@@ -153,7 +131,7 @@ const STEP = 1 / 120;
 
 // ============================================================ what the app says
 function showInfo(answer) {
-  if (tunePending) answer.settings.faOff = JSON.parse(JSON.stringify(tunePending));   // a change not sent yet stays the player's
+  tune.hold(answer);   // a change not sent yet stays the player's
   const was = info && JSON.stringify([info.settings.input, info.settings.faOff]);
   info = answer;
   drawSide();
@@ -164,6 +142,17 @@ function showInfo(answer) {
 }
 const call = Studio.follow('flight', '/api/flight', showInfo);
 Flight.stream(f => { frame = f; });
+// Beside the exercise, +/- for the Flight Assist off curves (the owner's ask: "manual + or - curve settings next to the
+// test"), felt at once: the trainer reads the stick through them. The same curves as on Stick setup.
+const tune = Flight.tuneBox($('.tune-box'), {
+  call, info: () => info,
+  note: () => info.settings.input === 'game'
+    ? 'You fly "As the game gets it" now: the trainer reads vJoy, so these change nothing here. Choose "With my FA Off curves" under Stick, on the left, to feel them.'
+    : 'Each press changes the curve at once: fly the exercise and feel it.',
+  // After a set, the tips' buttons are worked out from the curves, so they follow a change; "Put back" undoes the tips taken
+  // too, so they may be taken again.
+  changed: putBack => { if (putBack && run) run.applied = new Set(); redrawTips(); },
+});
 
 function accent() { return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff7100'; }
 const passed = id => !!(info && info.settings.progress[id] && info.settings.progress[id].passed);
@@ -213,126 +202,12 @@ function drawSide() {
   $('#ship-note').textContent = `Turns ${spec.pitch}°/s pitch, ${spec.yaw}°/s yaw, ${spec.roll}°/s roll; ${spec.speed} m/s, boost ${spec.boost}.`;
   for (const b of document.querySelectorAll('#view button')) b.classList.toggle('active', b.dataset.view === view);
   for (const b of document.querySelectorAll('#input button')) b.classList.toggle('active', b.dataset.input === info.settings.input);
-  drawTune();
+  tune.draw();
   drawKeys();
 }
 
-// ============================================================ the curves, by hand
-// Beside the exercise (the owner's ask: "manual + or - curve settings next to the test"): each part of the Flight Assist
-// off curve of one axis, felt at once (the trainer reads the stick through these curves), saved a moment after the last
-// press, and "Put back" for the curves as they were before the first change on this page. The same curves as on Stick setup.
-// The ranges are Stick setup's sliders', so a value set here shows there as it is.
-const TUNE = [
-  { key: 'deadLow', label: 'Dead zone, − side', step: 1, min: 0, max: 25, unit: '%' },
-  { key: 'deadHigh', label: 'Dead zone, + side', step: 1, min: 0, max: 25, unit: '%' },
-  { key: 'satX', label: 'Travel used', step: 1, min: 50, max: 100, unit: '%' },
-  { key: 'satY', label: 'Most it gives', step: 2, min: 20, max: 100, unit: '%' },
-  { key: 'bend', label: 'Bend (softer middle)', step: 5, min: 0, max: 100, unit: '' },
-];
-// The rows are made once and only their numbers change after: a row made afresh under the pointer (each save brings the
-// curves back) would lose a click pressed on the old one.
-const tuneRows = TUNE.map(t => {
-  const less = h('button', { class: 'btn small', title: 'Less', disabled: true, onclick: () => nudge(t.key, -1) }, '−');   // live once the curves are known
-  const more = h('button', { class: 'btn small', title: 'More', disabled: true, onclick: () => nudge(t.key, 1) }, '+');
-  const shown = h('output');
-  $('#tune').append(h('div', { class: 'tune-row' }, h('span', null, t.label), less, shown, more));
-  return { t, less, more, shown };
-});
-function drawTune() {
-  if (!info) return;
-  for (const b of document.querySelectorAll('#tune-axis button')) b.classList.toggle('active', b.dataset.axis === tuneAxis);
-  const c = info.settings.faOff[tuneAxis];
-  for (const { t, less, more, shown } of tuneRows) {
-    shown.textContent = c[t.key] + t.unit;
-    less.disabled = c[t.key] <= t.min;
-    more.disabled = c[t.key] >= t.max;
-  }
-  $('#tune-back').disabled = !tuneBefore;
-  $('#tune-note').textContent = info.settings.input === 'game'
-    ? 'You fly "As the game gets it" now: the trainer reads vJoy, so these change nothing here. Choose "With my FA Off curves" under Stick, on the left, to feel them.'
-    : 'Each press changes the curve at once: fly the exercise and feel it.';
-}
-// The first change on this page keeps the curves as they were, for "Put back".
-function keepBefore() {
-  if (tuneBefore) return;
-  tuneBefore = JSON.parse(JSON.stringify(info.settings.faOff));
-  tuneBeforeOwn = !!(info.saved && info.saved.faOff);
-}
-function nudge(key, dir) {
-  if (!info) return;
-  const off = info.settings.faOff, t = TUNE.find(x => x.key === key);
-  keepBefore();
-  const c = { ...off[tuneAxis] };
-  // From a value outside the range (set before the ranges matched Stick setup's), the first press brings it inside.
-  c[key] = Math.round(Math.min(t.max, Math.max(t.min, c[key] + dir * t.step)) * 10) / 10;
-  info.settings.faOff = { ...off, [tuneAxis]: c };
-  tunePending = info.settings.faOff;
-  drawTune();
-  redrawTips();
-  clearTimeout(tuneTimer);
-  tuneTimer = setTimeout(saveTune, 400);
-}
 // After a set, the tips' buttons are worked out from the curves: when those change by hand, the tips follow.
 function redrawTips() { if (run && run.phase === 'done') drawReport(); }
-async function saveTune() {
-  clearTimeout(tuneTimer);
-  const sending = tunePending;
-  tunePending = null;
-  if (!sending) return;
-  try {
-    await call('POST', '/api/flight/settings', { faOff: sending });
-    $('#tune-saved').textContent = 'Saved.';
-    setTimeout(() => { $('#tune-saved').textContent = ''; }, 1500);
-  } catch (e) { toast(e.message, true); }
-}
-for (const b of document.querySelectorAll('#tune-axis button')) b.addEventListener('click', () => { tuneAxis = b.dataset.axis; drawTune(); });
-$('#tune-back').addEventListener('click', () => {
-  if (!tuneBefore) return;
-  clearTimeout(tuneTimer);
-  tunePending = null;
-  const before = tuneBefore;
-  tuneBefore = null;
-  info.settings.faOff = before;
-  if (run) run.applied = new Set();   // the tips taken are undone too: they may be taken again
-  drawTune();
-  redrawTips();
-  // Curves that were Studio's starting point go back to being that (null), so they follow the FA on curves again.
-  call('POST', '/api/flight/settings', { faOff: tuneBeforeOwn ? before : null }).catch(e => toast(e.message, true));
-});
-// Leaving the page (Stick setup, closing Studio) within the moment before a change is sent: it is sent now.
-window.addEventListener('pagehide', () => {
-  if (!tunePending) return;
-  clearTimeout(tuneTimer);
-  const token = document.querySelector('meta[name="studio-token"]').content;
-  fetch('/api/flight/settings', { method: 'POST', keepalive: true, headers: { 'X-Studio-Token': token, 'Content-Type': 'application/json' }, body: JSON.stringify({ faOff: tunePending }) }).catch(() => {});
-  tunePending = null;
-});
-
-// The selected axis's curve: the stick across (−1 to 1), what the ship gets up; the dead zone shaded, the straight line
-// dashed for comparison, and a dot where the stick is now.
-function drawTuneGraph(g, w, hgt) {
-  if (!info) return;
-  const c = info.settings.faOff[tuneAxis];
-  const L = 6, R = 6, T = 6, B = 6, pw = w - L - R, ph = hgt - T - B;
-  const X = v => L + (v + 1) / 2 * pw, Y = v => T + (1 - (v + 1) / 2) * ph;
-  g.clearRect(0, 0, w, hgt);
-  g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent-soft').trim() || 'rgba(255,113,0,.12)';
-  g.fillRect(X(-c.deadLow / 100), T, X(c.deadHigh / 100) - X(-c.deadLow / 100), ph);
-  g.strokeStyle = 'rgba(255,255,255,.12)';
-  g.lineWidth = 1;
-  g.beginPath(); g.moveTo(L, Y(0)); g.lineTo(L + pw, Y(0)); g.moveTo(X(0), T); g.lineTo(X(0), T + ph); g.stroke();
-  g.setLineDash([3, 4]); g.strokeStyle = 'rgba(255,255,255,.25)';
-  g.beginPath(); g.moveTo(X(-1), Y(-1)); g.lineTo(X(1), Y(1)); g.stroke(); g.setLineDash([]);
-  g.strokeStyle = accent(); g.lineWidth = 2;
-  g.beginPath();
-  for (let i = 0; i <= 120; i++) { const x = -1 + i / 60, y = Flight.curve(x, c); if (i === 0) g.moveTo(X(x), Y(y)); else g.lineTo(X(x), Y(y)); }
-  g.stroke();
-  const real = frame && frame.controls && frame.controls[tuneAxis] ? frame.controls[tuneAxis].real : null;
-  if (real != null && isFinite(real)) {
-    g.fillStyle = Flight.look('--text', '#e2e8f0');
-    g.beginPath(); g.arc(X(Math.max(-1, Math.min(1, real))), Y(Flight.curve(real, c)), 4, 0, 7); g.fill();
-  }
-}
 
 function drawKeys() {
   const binds = info.binds;
@@ -493,17 +368,12 @@ function drawReport() {
 
 async function apply(tip) {
   const set = run;     // the set whose advice this is, even if another starts while this is sent
-  await saveTune();    // a +/- change still waiting goes first, so this one builds on it
+  await tune.save();   // a +/- change still waiting goes first, so this one builds on it
   const now = Sim.change(tip, info.settings.faOff);
   if (!now) return;
-  keepBefore();        // "Put back" undoes this too
-  const off = info.settings.faOff;
-  const changed = { ...off, [tip.axis]: { ...off[tip.axis], ...now.change } };
   try {
-    await call('POST', '/api/flight/settings', { faOff: changed });
+    await tune.change(tip.axis, now.change);   // "Put back" undoes this too
     set.applied.add(tip.id);
-    tuneAxis = tip.axis;
-    drawTune();
     redrawTips();
     toast('Your FA Off curve for ' + tip.axis + ' changed. Save it to Gremlin on the Stick setup page when it feels right.');
   } catch (e) { toast(e.message, true); }
@@ -521,15 +391,7 @@ document.addEventListener('keydown', e => {
 window.addEventListener('blur', () => { if (run && (run.phase === 'fly' || run.phase === 'count' || run.phase === 'after')) paused = 'Paused\nClick here to go on'; });
 
 // ============================================================ every frame
-const sky = $('#sky'), hands = $('#hands'), tuneGraph = $('#tune-graph');
-function fit(canvas) {
-  const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
-  const w = Math.max(1, Math.round(r.width * dpr)), hgt = Math.max(1, Math.round(r.height * dpr));
-  if (canvas.width !== w || canvas.height !== hgt) { canvas.width = w; canvas.height = hgt; }
-  const g = canvas.getContext('2d');
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  return { g, w: r.width, h: r.height };
-}
+const sky = $('#sky'), hands = $('#hands');
 
 let last = performance.now(), keysShown = false, lostShown = null;
 function tick(now) {
@@ -566,13 +428,12 @@ function frameOnce(now) {
       if (!paused && now - run.phaseAt > 2400) { if (decided()) endSet(); else nextAttempt(); }
     } else if (run.phase === 'done' || run.phase === 'stopped') text = run.phase === 'done' ? 'Set over\nPress Enter to fly it again' : 'Stopped';
   } else text = chosen === Sim.FREE ? 'Free flight\nPress Fly or Enter' : 'Press Start or Enter';
-  const s = fit(sky);
+  const s = Flight.fit(sky);
   if (shown && s.w >= 60 && s.h >= 60) Sim.draw(s.g, s.w, s.h, shown, view, accent(), paused || text);   // a window squeezed to nothing draws nothing
-  const hs = fit(hands);
+  const hs = Flight.fit(hands);
   hs.g.clearRect(0, 0, hs.w, hs.h);
   if (hs.w >= 60 && hs.h >= 30) Flight.drawInputs(hs.g, hs.w, hs.h, cmd, true, accent());
-  const ts = fit(tuneGraph);
-  if (ts.w >= 40 && ts.h >= 30) drawTuneGraph(ts.g, ts.w, ts.h);
+  tune.graph(frame);
 }
 requestAnimationFrame(tick);
 drawTries();
