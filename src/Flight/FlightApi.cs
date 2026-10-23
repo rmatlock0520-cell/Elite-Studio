@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Xml.Linq;
 using EliteStudio.App;
 using EliteStudio.Core;
+using EliteStudio.Gimbalyn;
 using EliteStudio.Overlay;
 using StudioSettings = EliteStudio.App.Settings;
 
@@ -36,7 +37,9 @@ public sealed record FlightRound(string Time, double? Pct, bool? Ok, string? Why
 /// POST /api/flight/vjoy/folder (the player points to vJoy's folder by hand, the only way to set it),
 /// POST /api/flight/vjoy/forget (forgets that folder) and POST /api/flight/vjoy/configure (opens vJoy's
 /// own settings program). The live event "flight" carries
-/// what GET /api/flight answers whenever any of it changes.
+/// what GET /api/flight answers whenever any of it changes. The "shaper" of that answer is Studio's own stick shaper
+/// (Gimbalyn, see <see cref="FlightShaper"/>), switched on and off with the setting "shaperOn" and made to follow Flight Assist
+/// with "switchCurvesWithFa".
 /// </summary>
 public sealed class FlightApi : IDisposable
 {
@@ -59,6 +62,17 @@ public sealed class FlightApi : IDisposable
     FlightControls controls;
     bool? faOff;   // Flight Assist off at the last look; null before the first, so the first look always counts
 
+    // Studio's own stick shaper (Gimbalyn) for the Flight Assist curves: looked at four times a second, with the overlay's clock.
+    readonly FlightShaper shaper;
+    readonly bool shaperPractice;   // a practice copy, or no data folder to reach Gimbalyn through: the shaper is not for it
+    readonly Func<bool, IReadOnlyList<StickState>> readShaperSticks;
+    IReadOnlyList<StickState>? shaperSticks;   // the sticks as listed lately; null before the first listing
+    long shaperSticksAt;
+    int shaperLooking;       // 1 while a look at the shaper is on its way
+    Task shaperLook = Task.CompletedTask;   // that look
+    string? shaperProblem;   // why it does not feed vJoy, as the last look found
+    string shaperSeen = "";  // what the pages were last told of it
+
     readonly Func<string?, VJoyInstall> findVJoy;
     readonly Func<string, Task<VJoyProbeResult?>> askVJoy;
     readonly string? roundsFile;   // flight-rounds.json in the data folder; null: the rounds are kept for this run only
@@ -69,12 +83,19 @@ public sealed class FlightApi : IDisposable
     /// <param name="sticks">How sticks are read; tests hand in their own (see <see cref="FlightReader"/>).</param>
     /// <param name="findVJoy">How vJoy is looked for in what Windows keeps (null: <see cref="VJoyFinder.Look"/>); tests hand in their own.</param>
     /// <param name="askVJoy">How vJoy's library is asked (null: Studio's helper, <see cref="VJoyHelper.Ask"/>); tests hand in their own.</param>
-    /// <param name="dataDir">Studio's data folder, where the last rounds are kept (flight-rounds.json); null keeps them for this run only.</param>
+    /// <param name="dataDir">Studio's data folder, where the last rounds are kept (flight-rounds.json) and Gimbalyn is found; null keeps the rounds for this run only and has no shaper.</param>
+    /// <param name="shaper">How Gimbalyn is started and spoken to (null: the real one, see <see cref="GimbalynClient"/>); tests hand in their own.</param>
     public FlightApi(WebServer web, StudioSettings settings, GameState game, OverlayHost? overlay, string bindingsDir, Func<string?>? gameDir,
         Func<string?>? gremlinProfile = null, Func<bool, IReadOnlyList<StickState>>? sticks = null, Func<int, bool>? held = null,
-        Func<string?, VJoyInstall>? findVJoy = null, Func<string, Task<VJoyProbeResult?>>? askVJoy = null, string? dataDir = null)
+        Func<string?, VJoyInstall>? findVJoy = null, Func<string, Task<VJoyProbeResult?>>? askVJoy = null, string? dataDir = null,
+        FlightShaper? shaper = null)
     {
         (this.web, file, this.game, this.overlay, this.bindingsDir, this.gameDir) = (web, settings, game, overlay, bindingsDir, gameDir);
+        string shaperDir = dataDir ?? "";
+        this.shaper = shaper ?? new FlightShaper(() => GimbalynClient.Running(shaperDir), GimbalynClient.Launch, request => GimbalynClient.Send(shaperDir, request),
+            text => Log.Info("Studio Flight: " + text), centre: () => GimbalynClient.CentreOnce());
+        shaperPractice = shaper is null && (dataDir is null || Paths.Practice);
+        readShaperSticks = sticks ?? new WindowsSticks().Read;
         this.gremlinProfile = gremlinProfile ?? (() => Gremlin.LastProfile());
         this.findVJoy = findVJoy ?? VJoyFinder.Look;
         this.askVJoy = askVJoy ?? VJoyHelper.Ask;
@@ -125,6 +146,7 @@ public sealed class FlightApi : IDisposable
             // Switching Flight Assist changes only a flag in Status.json, which is no change of the game's state to the rest
             // of Studio: so it is looked at here four times a second, with the overlay's own clock.
             overlay.Ticked += CheckFlightAssist;
+            overlay.Ticked += LookAtShaper;
         }
         reader.Start();
     }
@@ -201,12 +223,92 @@ public sealed class FlightApi : IDisposable
     /// <summary>Flight Assist switched in the game (or this is the first look): the pages are told, and the flight box follows it.</summary>
     internal void CheckFlightAssist()
     {
-        bool off = game.Status.FlightAssistOff && (game.Status.InMainShip || game.Status.InFighter);
+        bool off = FlightAssistIsOff();
         if (off == faOff) return;
         faOff = off;
         ShowForFlightAssist(off);
         web.Send(Section, Answer());
+        LookAtShaper();
     }
+
+    /// <summary>Flight Assist is off in the game now, in a ship or a fighter.</summary>
+    bool FlightAssistIsOff() => game.Status.FlightAssistOff && (game.Status.InMainShip || game.Status.InFighter);
+
+    void LookAtShaper() => _ = KeepShaper();
+
+    /// <summary>
+    /// Looks at the shaper: what is wanted of it (the settings, Elite's bindings, the curves, the real stick behind each control,
+    /// Flight Assist now) goes to <see cref="FlightShaper"/>, which starts Gimbalyn, hands it the profile and keeps its mode the
+    /// game's. One look at a time (a look that finds another running leaves it), and the pages are told when what they show of it
+    /// changed. Turned off, nothing here touches Gimbalyn but to let it go once.
+    /// </summary>
+    internal Task KeepShaper()
+    {
+        if (Interlocked.Exchange(ref shaperLooking, 1) == 1) return shaperLook;   // (a caller may wait for the look on its way)
+        return shaperLook = Look();
+    }
+
+    async Task Look()
+    {
+        try
+        {
+            long now = Environment.TickCount64;
+            // The sticks are listed now and then (off the window's thread: looking at all of winmm's places is slow), not every look.
+            if (Current.ShaperOn && (shaperSticks is null || now - shaperSticksAt >= SticksEveryMs))
+            {
+                shaperSticks = await Task.Run(() => readShaperSticks(true));
+                shaperSticksAt = now;
+            }
+            FlightSettings wish = Current;
+            FlightControls read = controls;
+            IReadOnlyList<StickState> listed = shaperSticks ?? [];
+            (FlightCurves on, FlightCurves off) = Curves();
+            bool flightAssistOff = FlightAssistIsOff();
+            var ask = new ShaperAsk(wish.ShaperOn, wish.SwitchCurvesWithFa, flightAssistOff, binds, on, off, control => read.RealSource(control, listed), wish.VJoyFolder, shaperPractice);
+            shaperProblem = await shaper.Look(ask, now);
+            string seen = string.Join('|', wish.ShaperOn, shaperProblem, shaper.State, shaper.Mode, string.Join(';', ShaperNotes()));
+            if (seen == shaperSeen) return;
+            shaperSeen = seen;
+            web.Send(Section, Answer());
+        }
+        catch (Exception problem) when (problem is IOException or InvalidOperationException or JsonException or System.ComponentModel.Win32Exception)
+        {
+            Log.Error("Studio Flight: looking at the stick shaper failed", problem);
+        }
+        finally
+        {
+            Volatile.Write(ref shaperLooking, 0);
+        }
+    }
+
+    const int SticksEveryMs = 3000;   // how often the sticks are listed for the shaper
+
+    /// <summary>What the shaper's routing found worth saying, and for a Gremlin curve Studio cannot read, that the shaper would use Studio's default for it.</summary>
+    IReadOnlyList<string> ShaperNotes()
+    {
+        if (!Current.ShaperOn) return [];
+        List<string> notes = [.. shaper.Notes];
+        if (Current.FaOn is null)
+            foreach (string control in (string[])["pitch", "roll", "yaw"])
+                if (binds?.Axes.GetValueOrDefault(control) is { } bound && bound.Device.Equals("vJoy", StringComparison.OrdinalIgnoreCase)
+                    && Gremlin.Through(gremlin.Axes, bound.Axis) is { CurveUnread: true })
+                    notes.Add($"Your Gremlin curve for {control} is not one Studio can read, so Studio's shaper would use its default: save your own Flight Assist on curve here.");
+        return notes;
+    }
+
+    /// <summary>What GET answers of the stick shaper (see the "shaper" of <see cref="Answer"/>).</summary>
+    object ShaperAnswer() => new
+    {
+        on = Current.ShaperOn,
+        switching = Current.SwitchCurvesWithFa,
+        practice = shaperPractice,
+        // Gimbalyn's own word ("running", "busy": another program, as Gremlin, holds vJoy; "noVJoy"), and whether it feeds vJoy now.
+        state = shaper.State,
+        running = Current.ShaperOn && shaperProblem is null && shaper.State == "running",
+        mode = shaper.Mode,
+        problem = Current.ShaperOn ? shaperProblem : null,
+        notes = ShaperNotes(),
+    };
 
     /// <summary>
     /// Flight Assist went off: the flight overlay comes up by itself (when the player wants that). It came back on: the
@@ -259,7 +361,7 @@ public sealed class FlightApi : IDisposable
             && bound.Device.Equals("vJoy", StringComparison.OrdinalIgnoreCase) && Gremlin.Through(gremlin.Axes, bound.Axis) is { CurveUnread: true })];
         // What Studio saved for Gremlin, read back (the profile Gremlin opens may be that very file).
         IReadOnlyList<GremlinAxis>? saved = faOffFile is null ? null : faOffFile == gremlin.Path ? gremlin.Axes : SavedAxes(faOffFile);
-        (bool Off, bool On) older = saved is not null && binds is not null ? Older(saved, binds, Current.FaOn, off, gremlin.Axes) : default;
+        (bool Off, bool On) older = saved is not null && binds is not null ? Older(saved, binds, Current.FaOn, off, gremlin.Axes, Current.SwitchCurvesWithFa) : default;
         GameSnapshot now = game.Snapshot();
         return new
         {
@@ -283,6 +385,7 @@ public sealed class FlightApi : IDisposable
                 outOfDate = older.Off || older.On,
                 older = new { faOff = older.Off, faOn = older.On },
             },
+            shaper = ShaperAnswer(),
             ships = Ships(),
             flying = game.Ship is { Length: > 0 } code && ShipOf(code) is { } ship ? ship.Id : null,
             flyingName = now.ShipType,
@@ -314,7 +417,8 @@ public sealed class FlightApi : IDisposable
     /// (<paramref name="running"/>; so after "Back to the suggestion" a Default still holding the curves saved before is older).
     /// The comparison is of the curves, not of the files' times.
     /// </summary>
-    internal static (bool Off, bool On) Older(IReadOnlyList<GremlinAxis> saved, FlightBinds binds, FlightCurves? on, FlightCurves off, IReadOnlyList<GremlinAxis> running)
+    internal static (bool Off, bool On) Older(IReadOnlyList<GremlinAxis> saved, FlightBinds binds, FlightCurves? on, FlightCurves off, IReadOnlyList<GremlinAxis> running,
+        bool switching = true)
     {
         bool offOlder = false, onOlder = false;
         foreach (string control in (string[])["pitch", "roll", "yaw"])
@@ -322,7 +426,8 @@ public sealed class FlightApi : IDisposable
             if (binds.Axes.GetValueOrDefault(control) is not { } bound || !bound.Device.Equals("vJoy", StringComparison.OrdinalIgnoreCase)) continue;
             if (Gremlin.Through(saved, bound.Axis) is not { } main) continue;   // nothing feeds that axis: saving again cannot change it
             GremlinAxis[] faOff = [.. saved.Where(a => a.Mode == Gremlin.FaOffMode && a.VjoyAxis == bound.Axis)];
-            offOlder |= faOff.Length == 0 || faOff.Any(a => a.Curve is not { } curve || !Same(curve, off.Of(control)));
+            // Not switching, a profile saved before with Studio's FA Off curves is older (saving again takes them out); a mode the player filled themself stays and is never old.
+            offOlder |= switching ? faOff.Length == 0 || faOff.Any(a => a.Curve is not { } curve || !Same(curve, off.Of(control))) : faOff.Any(a => a.Studios);
             if (on is not null) onOlder |= !main.CurveUnread && (main.Curve is not { } mine || !Same(mine, on.Of(control)));
             else if (Gremlin.Through(running, bound.Axis) is { } own) onOlder |= !SameAs(main, own);
         }
@@ -595,6 +700,7 @@ public sealed class FlightApi : IDisposable
         file.Set(Section, Current);
         Rebuild();
         web.Send(Section, Answer());
+        LookAtShaper();   // a switch turned, or a curve changed: the shaper hears of it now, not at the next tick
     }
 
     /// <summary>
@@ -624,9 +730,11 @@ public sealed class FlightApi : IDisposable
         // Every way Flight Assist is bound, the keyboard's first: Gremlin follows a key most surely.
         IReadOnlyList<FlightButton> fa = [.. (binds.Buttons.GetValueOrDefault("fa") ?? []).OrderBy(b => b.Press.Device == "Keyboard" ? 0 : 1)];
         bool toggles = binds.Toggles.GetValueOrDefault("fa", true);
-        (XDocument profile, IReadOnlyList<string> more) = Gremlin.WithFaOff(LoadXml(path), wanted, fa, toggles);
-        // Nothing of Studio's in it (no axis reached, no switch Gremlin can take): no file, and the reasons why.
-        if (!Gremlin.IsStudios(profile))
+        (XDocument profile, IReadOnlyList<string> more) = Gremlin.WithFaOff(LoadXml(path), wanted, fa, toggles, Current.SwitchCurvesWithFa);
+        // Nothing of Studio's in it (no axis reached, no switch Gremlin can take): no file, and the reasons why. Except that a file
+        // Studio wrote earlier, with the switch, is made plain again when the player turned the switch off: that is what they asked.
+        bool takingBack = !Current.SwitchCurvesWithFa && Gremlin.TargetFor(path) is var target && File.Exists(target) && Gremlin.IsStudiosFile(target);
+        if (!Gremlin.IsStudios(profile) && !takingBack)
             return WebResponse.Error("There was nothing to save for Gremlin. " + string.Join(" ", notes.Concat(more)), 409);
         string saved = Gremlin.Save(profile, path);
         Log.Info($"Studio Flight: Gremlin profile with the FA Off mode written to {saved}");

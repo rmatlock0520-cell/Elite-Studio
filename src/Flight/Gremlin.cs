@@ -41,7 +41,9 @@ public sealed record StickCurve(double DeadLow = 4, double DeadHigh = 4, double 
 /// <param name="VjoyAxis">The vJoy axis it goes to, the same way.</param>
 /// <param name="Curve">Its response curve read back as Studio's five numbers; null when it has none or one Studio cannot read.</param>
 /// <param name="CurveUnread">It has a response curve, but not one Studio can read exactly (so Curve is null).</param>
-public sealed record GremlinAxis(string Mode, string DeviceId, string DeviceName, string Axis, int VjoyDevice, string VjoyAxis, StickCurve? Curve, bool CurveUnread = false);
+/// <param name="Studios">Its curve is one Studio put there (it carries Studio's label), not the player's own.</param>
+public sealed record GremlinAxis(string Mode, string DeviceId, string DeviceName, string Axis, int VjoyDevice, string VjoyAxis, StickCurve? Curve, bool CurveUnread = false,
+    bool Studios = false);
 
 /// <summary>
 /// Joystick Gremlin (github.com/WhiteMagic/JoystickGremlin, release 14 and later, whose profiles are
@@ -104,7 +106,8 @@ public static class Gremlin
             XElement? curve = steps.FirstOrDefault(a => (string?)a.Attribute("type") == "response-curve");
             string device = Text(input, "device-id").ToLowerInvariant();
             axes.Add(new GremlinAxis(Text(input, "mode"), device, names.GetValueOrDefault(device, ""), AxisLetters[axis - 1], vjoyDevice,
-                AxisLetters[vjoyAxis - 1], curve is null ? null : ReadCurve(curve), curve is not null && ReadCurve(curve) is null));
+                AxisLetters[vjoyAxis - 1], curve is null ? null : ReadCurve(curve), curve is not null && ReadCurve(curve) is null,
+                curve is not null && Property(curve, "action-label") == CurveLabel));
         }
         return axes;
     }
@@ -127,9 +130,14 @@ public static class Gremlin
     /// <param name="controls">For each of "pitch", "roll" and "yaw": the vJoy axis the game reads it from (the game's letters), and the two curves.</param>
     /// <param name="faSwitches">Every way the game's Flight Assist is bound, keyboard first; empty when it is not bound.</param>
     /// <param name="faToggles">The game's Flight Assist is a switch (true) or held (false).</param>
+    /// <param name="switching">
+    /// The curves follow the game's Flight Assist. False: no FA Off axes and no mode switch are written (and those Studio wrote
+    /// before go), the game always gets the "on" curves in Default; a mode the player filled with their own bindings stays.
+    /// </param>
     /// <returns>The new profile, and what to tell the player about anything that could not be done.</returns>
     public static (XDocument Profile, IReadOnlyList<string> Notes) WithFaOff(XDocument profile,
-        IReadOnlyDictionary<string, (string VjoyAxis, StickCurve? On, StickCurve Off)> controls, IReadOnlyList<FlightButton> faSwitches, bool faToggles)
+        IReadOnlyDictionary<string, (string VjoyAxis, StickCurve? On, StickCurve Off)> controls, IReadOnlyList<FlightButton> faSwitches, bool faToggles,
+        bool switching = true)
     {
         var copy = new XDocument(profile);
         XElement root = Check(copy);
@@ -178,6 +186,8 @@ public static class Gremlin
                     else list.AddFirst(new XElement("action-id", (string)newOn.Attribute("id")!));
                 }
 
+                if (!switching) continue;   // the game always gets Default's curve
+
                 // FA Off: the same input again, doing what it does in Default with the "off" curve in place of the curve,
                 // each step a copy of its own. A binding of that axis the player had put in FA Off gives way to it.
                 foreach (XElement theirs in inputs.Elements("input").Where(other => Text(other, "mode") == FaOffMode && Text(other, "input-type") == "axis"
@@ -207,11 +217,13 @@ public static class Gremlin
 
         // The mode switch, bound in Default only: "FA Off" inherits it. A switch (Cycle) is bound to one key or button,
         // so a single action keeps count of where the cycle is; a held Flight Assist (Temporary) can be bound to every one.
+        if (!switching) faSwitches = [];
         var usable = faSwitches.Select(fa => (Way: fa, At: SwitchInput(root, fa.Press))).ToList();
         foreach ((FlightButton way, _) in usable.Where(u => u.At is null))
             notes.Add($"Gremlin cannot switch modes on {Say(way.Press)}, which switches Flight Assist in the game: that one will switch the game but not Gremlin.");
         var bound = usable.Where(u => u.At is not null).Take(faToggles ? 1 : int.MaxValue).ToList();
-        if (faSwitches.Count == 0) notes.Add("Flight Assist has no key or button in the game, so Gremlin's FA Off mode has no switch. Bind Flight Assist in the game, then save this again.");
+        if (!switching) notes.Add("The curves are not set to follow Flight Assist, so the profile has no FA Off mode: the game gets your Flight Assist on curves.");
+        else if (faSwitches.Count == 0) notes.Add("Flight Assist has no key or button in the game, so Gremlin's FA Off mode has no switch. Bind Flight Assist in the game, then save this again.");
         else if (bound.Count == 0) notes.Add("Bind Flight Assist in the game to a keyboard key (or to a button of the stick this profile uses), then save this again, so that Gremlin's mode switches with it.");
         foreach ((FlightButton way, _) in usable.Where(u => u.At is not null).Skip(bound.Count))
             notes.Add($"{Say(way.Press)} also switches Flight Assist in the game but not Gremlin's mode: use {Say(bound[0].Way.Press)}, or the two will get out of step.");
@@ -235,21 +247,32 @@ public static class Gremlin
         XElement modes = root.Element("modes") ?? Add(root, new XElement("modes"));
         if (!modes.Elements("mode").Any(m => m.Value.Trim() == MainMode)) modes.AddFirst(new XElement("mode", MainMode));
         modes.Elements("mode").Where(m => m.Value.Trim() == FaOffMode).Remove();
-        modes.Add(new XElement("mode", new XAttribute("parent", MainMode), FaOffMode));
+        // Without switching the mode stays only where the player has bindings of their own in it.
+        if (switching || inputs.Elements("input").Any(input => Text(input, "mode") == FaOffMode))
+            modes.Add(new XElement("mode", new XAttribute("parent", MainMode), FaOffMode));
         Prune(root);
         return (copy, notes);
     }
 
-    /// <summary>A profile Studio wrote: it carries an action with one of Studio's labels.</summary>
+    /// <summary>A profile that has something of Studio's in it: it carries an action with one of Studio's labels.</summary>
     internal static bool IsStudios(XDocument profile) =>
         profile.Root?.Element("library")?.Elements("action").Any(a => Property(a, "action-label") is SwitchLabel or CurveLabel) == true;
 
-    static bool IsStudiosFile(string path)
+    /// <summary>
+    /// The note Studio puts at the top of every file it writes: a file Studio wrote stays Studio's to write over even when the
+    /// player turned the switch off and nothing of Studio's actions is left in it.
+    /// </summary>
+    const string Mark = " Written by Elite Studio (Studio Flight). Studio may write this file again; your own profile is never written over. ";
+
+    static bool HasMark(XDocument profile) => profile.Nodes().OfType<XComment>().Any(c => c.Value == Mark);
+
+    internal static bool IsStudiosFile(string path)
     {
         try
         {
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            return IsStudios(XDocument.Load(stream));
+            XDocument written = XDocument.Load(stream);
+            return IsStudios(written) || HasMark(written);
         }
         catch (Exception problem) when (problem is IOException or UnauthorizedAccessException or System.Xml.XmlException)
         {
@@ -266,8 +289,11 @@ public static class Gremlin
         if (File.Exists(playersProfile) && IsStudiosFile(playersProfile)) return playersProfile;
         string folder = Path.GetDirectoryName(playersProfile) ?? ".";
         string name = Path.GetFileNameWithoutExtension(playersProfile);
+        // The first of these that is not there or that Studio wrote: never a file of the player's own.
         string target = Path.Combine(folder, name + "-fa-off.xml");
-        return !File.Exists(target) || IsStudiosFile(target) ? target : Path.Combine(folder, name + "-studio-fa-off.xml");
+        for (int n = 1; File.Exists(target) && !IsStudiosFile(target) && n < 100; n++)
+            target = Path.Combine(folder, name + (n == 1 ? "-studio-fa-off.xml" : $"-studio-fa-off-{n}.xml"));
+        return target;
     }
 
     /// <summary>
@@ -284,7 +310,10 @@ public static class Gremlin
         }
         string temp = target + ".tmp";
         var settings = new System.Xml.XmlWriterSettings { Indent = true, IndentChars = "    ", Encoding = new UTF8Encoding(false) };
-        using (var writer = System.Xml.XmlWriter.Create(temp, settings)) profile.Save(writer);
+        // Marked as Studio's, in a copy (the caller's profile is left as it is).
+        var marked = new XDocument(profile);
+        if (!HasMark(marked)) marked.Root?.AddBeforeSelf(new XComment(Mark));   // (ahead of the root: Gremlin's reader never sees it)
+        using (var writer = System.Xml.XmlWriter.Create(temp, settings)) marked.Save(writer);
         File.Move(temp, target, overwrite: true);
         return target;
     }

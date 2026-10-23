@@ -425,6 +425,37 @@ public static class GimbalynClient
         }
     }
 
+    /// <summary>The command line that starts Gimbalyn for the Studio of that process: Gimbalyn ends when Studio does (see <see cref="Host"/>).</summary>
+    public static string[] LaunchArguments(int studioProcess) => ["--" + Host.Option, "--with", studioProcess.ToString(CultureInfo.InvariantCulture)];
+
+    /// <summary>
+    /// Starts Gimbalyn: Studio's own program again, without a window, as a process of its own. It uses the data folder this Studio
+    /// uses (a practice copy, which has one of its own, never starts it). False when it could not be started.
+    /// </summary>
+    public static bool Launch() => Start(LaunchArguments(Environment.ProcessId));
+
+    /// <summary>
+    /// Centres vJoy once, with Studio's own program again (EliteStudio.exe --gimbalyn-centre), for when a Gimbalyn that was feeding
+    /// ended: vJoy keeps the axes where it left them. It leaves a device another program holds alone. False when it could not be started.
+    /// </summary>
+    public static bool CentreOnce() => Start(["--" + Host.CentreOption]);
+
+    static bool Start(IEnumerable<string> arguments)
+    {
+        if (Environment.ProcessPath is not { } program) return false;
+        var start = new ProcessStartInfo(program) { UseShellExecute = false, CreateNoWindow = true };
+        foreach (string argument in arguments) start.ArgumentList.Add(argument);
+        try
+        {
+            using Process? process = Process.Start(start);
+            return process is not null;
+        }
+        catch (Exception problem) when (problem is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>One request, one answer; null when Gimbalyn does not run or did not answer in time.</summary>
     public static async Task<JsonObject?> Send(string dataDir, JsonObject request, int timeoutMs = 2000)
     {

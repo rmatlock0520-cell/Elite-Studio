@@ -30,6 +30,17 @@ public sealed record FlightSettings
     public string Ship { get; init; } = "";
     /// <summary>Show the flight overlay by itself while Flight Assist is off, and hide it again when it comes back on.</summary>
     public bool ShowWhenFaOff { get; init; } = true;
+    /// <summary>
+    /// Switch the curves with the game's Flight Assist: the game gets the Flight Assist on curves, and the off ones while Flight
+    /// Assist is off. Off: it always gets the on curves. Separate from <see cref="ShowWhenFaOff"/>, which is only the overlay.
+    /// It is for whoever shapes the stick: Studio's own shaper (<see cref="ShaperOn"/>) and the Gremlin profile Studio writes.
+    /// </summary>
+    public bool SwitchCurvesWithFa { get; init; } = true;
+    /// <summary>
+    /// Studio shapes the stick itself, with Gimbalyn, its own program (instead of Joystick Gremlin): it reads the real stick, applies
+    /// the curves and feeds vJoy. Off until the player turns it on, so Studio never takes vJoy unasked.
+    /// </summary>
+    public bool ShaperOn { get; init; }
     /// <summary>What the trainer reads: "stick", the real stick with the FA off curves applied by Studio; "game", what the game itself gets (Gremlin's vJoy).</summary>
     public string Input { get; init; } = "stick";
     /// <summary>
@@ -63,7 +74,7 @@ public sealed record FlightSettings
         ["yawRight"] = "Key_Numpad_6", ["rollLeft"] = "Key_Numpad_7", ["rollRight"] = "Key_Numpad_9",
     };
 
-    static readonly Regex DeviceAxis = new(@"^[0-9A-F]{4}:[0-9A-F]{4}(#\d{1,2})? (X|Y|Z|RX|RY|RZ|U|V)$");
+    static readonly Regex DeviceAxis = new(@"^[0-9A-F]{4}:[0-9A-F]{4}(#\d{1,2})? (X|Y|Z|RX|RY|RZ|U|V|[LR]Stick[XY])$");
     static readonly Regex Exercise = new(@"^(chase|tunnel|track)-[1-3]$");
     static readonly Regex DotGame = new(@"^dot2-(easy|medium|hard)-(faOff|faOn)$");
 

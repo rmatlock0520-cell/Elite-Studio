@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Xml.Linq;
 using EliteStudio.App;
 using EliteStudio.Flight;
 using EliteStudio.Gimbalyn;
@@ -577,5 +578,647 @@ public sealed class GimbalynTests : IDisposable
         Assert.True(options.ContainsKey(Host.Option));
         Assert.Equal("4242", options["with"]);
         Assert.True(options.ContainsKey("start"));
+    }
+
+    // ---- Flight Assist's two curve sets through Gimbalyn (the profile Studio makes, and its dealings with a running Gimbalyn).
+    // Everything here is made-up: a stand-in for the process and the pipe, so no test starts Gimbalyn or touches vJoy.
+
+    static FlightBinds OwnersBinds()
+    {
+        XElement root = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "Fixtures", "gamefiles", "Custom.4.2.binds")).Root!;
+        return FlightBinds.Read("Custom", "Custom.4.2.binds", root, deviceList: null);
+    }
+
+    static readonly FlightCurves FaOnCurves = new(new StickCurve(2, 2, 100, 100, 0), new StickCurve(3, 3, 100, 90, 10), new StickCurve(4, 4, 100, 80, 20));
+    static readonly FlightCurves FaOffCurves = new(new StickCurve(5, 5, 100, 100, 40), new StickCurve(6, 6, 100, 95, 50), new StickCurve(7, 7, 100, 85, 60));
+
+    /// <summary>The Logitech stick behind each turning control, by Windows' letters (the twist is R).</summary>
+    static (string Device, string Letter)? Logitech(string control) => control switch
+    {
+        "pitch" => ("046D:C215", "Y"), "roll" => ("046D:C215", "X"), "yaw" => ("046D:C215", "R"), _ => null,
+    };
+
+    static ShaperProfile.Made MakeProfile(FlightBinds? binds = null, Func<string, (string, string)?>? source = null, bool switching = true, bool faOff = false) =>
+        ShaperProfile.Build(binds ?? OwnersBinds(), source ?? Logitech, FaOnCurves, FaOffCurves, switching, faOff, vjoyFolder: "");
+
+    [Fact]
+    public void Pitch_roll_and_yaw_go_to_the_vJoy_axes_the_game_reads_with_a_curve_set_each_for_Flight_Assist_on_and_off()
+    {
+        ShaperProfile.Made made = MakeProfile();
+
+        Assert.Null(made.Problem);
+        GimbalynProfile profile = made.Profile!;
+        Assert.Equal(1, profile.Device);
+        Assert.Equal([new AxisRoute("046D:C215", "Y", "Y"), new AxisRoute("046D:C215", "X", "X"), new AxisRoute("046D:C215", "R", "RZ")], profile.Routes);
+        Assert.Equal(["FA On", "FA Off"], profile.Modes.Keys);
+        Assert.Equal(FaOnCurves.Pitch, profile.Modes["FA On"]["Y"]);
+        Assert.Equal(FaOnCurves.Roll, profile.Modes["FA On"]["X"]);
+        Assert.Equal(FaOnCurves.Yaw, profile.Modes["FA On"]["RZ"]);
+        Assert.Equal(FaOffCurves.Pitch, profile.Modes["FA Off"]["Y"]);
+        Assert.Equal(FaOffCurves.Roll, profile.Modes["FA Off"]["X"]);
+        Assert.Equal(FaOffCurves.Yaw, profile.Modes["FA Off"]["RZ"]);
+        Assert.Equal(profile.Routes.Count, profile.Cleaned().Routes.Count);   // nothing Gimbalyn would throw away
+        Assert.Equal(2, profile.Cleaned().Modes.Count);
+    }
+
+    [Theory]
+    [InlineData(false, "FA On")]
+    [InlineData(true, "FA Off")]
+    public void The_profile_starts_in_the_mode_the_game_is_in(bool faOff, string mode) =>
+        Assert.Equal(mode, MakeProfile(faOff: faOff).Profile!.Mode);
+
+    [Fact]
+    public void With_switching_off_the_game_always_gets_the_Flight_Assist_on_curves()
+    {
+        GimbalynProfile profile = MakeProfile(switching: false, faOff: true).Profile!;
+
+        Assert.Equal(["FA On"], profile.Modes.Keys);
+        Assert.Equal("FA On", profile.Mode);
+        Assert.Null(profile.ModeKey);
+        Assert.Equal(FaOnCurves.Pitch, profile.Modes["FA On"]["Y"]);
+    }
+
+    [Fact]
+    public void The_Flight_Assist_key_switches_the_mode_at_once_while_Elite_is_in_front()
+    {
+        GimbalynProfile profile = MakeProfile().Profile!;
+
+        Assert.Equal("Key_Z", profile.ModeKey);
+        Assert.Equal("EliteDangerous64", profile.ModeKeyOnlyWith);
+    }
+
+    [Fact]
+    public void A_Flight_Assist_that_is_held_or_on_a_stick_button_has_no_key_so_only_the_game_s_own_flag_switches()
+    {
+        FlightBinds binds = OwnersBinds();
+        FlightBinds hold = binds with { Toggles = new Dictionary<string, bool>(binds.Toggles) { ["fa"] = false } };
+        FlightBinds button = binds with { Buttons = new Dictionary<string, IReadOnlyList<FlightButton>>(binds.Buttons) { ["fa"] = [new FlightButton(new FlightKey("LogitechExtreme3DPro", "Joy_5"), [])] } };
+
+        Assert.Null(MakeProfile(hold).Profile!.ModeKey);
+        Assert.Null(MakeProfile(button).Profile!.ModeKey);
+        Assert.Equal(2, MakeProfile(hold).Profile!.Modes.Count);   // still two modes: the flag switches them
+    }
+
+    [Fact]
+    public void An_axis_the_game_reads_from_a_real_stick_or_that_has_no_stick_is_left_out_and_said()
+    {
+        FlightBinds binds = OwnersBinds();
+        FlightBinds direct = binds with { Axes = new Dictionary<string, FlightAxis>(binds.Axes) { ["roll"] = new FlightAxis("LogitechExtreme3DPro", "X", false, 0) } };
+
+        ShaperProfile.Made rollDirect = MakeProfile(direct);
+        Assert.Equal(["Y", "RZ"], rollDirect.Profile!.Routes.Select(r => r.Target));
+        Assert.Contains("roll", Assert.Single(rollDirect.Notes));
+
+        ShaperProfile.Made noYawStick = MakeProfile(source: c => c == "yaw" ? null : Logitech(c));
+        Assert.Equal(["Y", "X"], noYawStick.Profile!.Routes.Select(r => r.Target));
+        Assert.Contains("yaw", Assert.Single(noYawStick.Notes));
+    }
+
+    [Fact]
+    public void Elite_s_own_dead_zone_on_an_axis_is_said_because_it_stacks_on_the_curve()
+    {
+        FlightBinds binds = OwnersBinds();
+        FlightBinds withDead = binds with { Axes = new Dictionary<string, FlightAxis>(binds.Axes) { ["pitch"] = binds.Axes["pitch"] with { Deadzone = 0.2 } } };
+
+        ShaperProfile.Made made = MakeProfile(withDead);
+
+        Assert.Equal(3, made.Profile!.Routes.Count);   // still routed
+        string note = Assert.Single(made.Notes);
+        Assert.Contains("20%", note);
+        Assert.Contains("pitch", note);
+    }
+
+    [Fact]
+    public void With_nothing_to_route_there_is_no_profile_and_a_reason()
+    {
+        Assert.Contains("bindings", ShaperProfile.Build(null, Logitech, FaOnCurves, FaOffCurves, switching: true, faOff: false, vjoyFolder: "").Problem);
+        ShaperProfile.Made none = MakeProfile(source: _ => null);
+        Assert.Null(none.Profile);
+        Assert.False(string.IsNullOrEmpty(none.Problem));
+    }
+
+    /// <summary>A Gimbalyn that is or is not running, answering as the real one does, and every request it was sent.</summary>
+    internal sealed class FakeGimbalyn
+    {
+        public bool Running, CanStart = true;
+        public int Launches;
+        public readonly List<JsonObject> Requests = [];
+        public string StateAnswer = "running";
+        public string? Problem;
+        public bool Refuses;
+        public string Mode = "";   // the mode it is in: the profile's, then what it was told (or what a press of its key made of it)
+        public string? OnStart;    // when set, a "start" puts it in that state (vJoy was free again)
+        public bool Mute;          // takes the request but never answers it in time (a start that timed out while vJoy's library loaded)
+
+        public bool IsRunning() => Running;
+        public bool Launch()
+        {
+            Launches++;
+            Running = CanStart;
+            return CanStart;
+        }
+
+        public Task<JsonObject?> Send(JsonObject request)
+        {
+            if (!Running) return Task.FromResult<JsonObject?>(null);
+            Requests.Add(request);
+            if (Mute) return Task.FromResult<JsonObject?>(null);
+            if (Refuses) return Task.FromResult<JsonObject?>(new JsonObject { ["ok"] = false, ["error"] = "There is no mode of that name." });
+            // As the real engine: a mode in use stays in use when the new profile has a mode of that name; else it starts in the profile's.
+            if ((string?)request["command"] == "profile")
+                Mode = Mode != "" && request["profile"]!["modes"] is JsonObject modes && modes.ContainsKey(Mode) ? Mode : (string?)request["profile"]!["mode"] ?? "";
+            if ((string?)request["command"] == "mode") Mode = (string)request["mode"]!;
+            if ((string?)request["command"] == "start" && OnStart is not null) (StateAnswer, Problem) = (OnStart, null);
+            return Task.FromResult<JsonObject?>(new JsonObject { ["ok"] = true, ["status"] = new JsonObject { ["state"] = StateAnswer, ["problem"] = Problem, ["mode"] = Mode } });
+        }
+
+        public string[] Commands => [.. Requests.Select(r => (string)r["command"]!)];
+    }
+
+    internal static FlightShaper ShaperFor(FakeGimbalyn gimbalyn) => new(gimbalyn.IsRunning, gimbalyn.Launch, gimbalyn.Send, _ => { }, waitMs: 0);
+
+    [Fact]
+    public async Task A_profile_starts_Gimbalyn_when_it_is_not_running_then_is_sent_and_fed()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = false };
+
+        string? problem = await ShaperFor(gimbalyn).Use(MakeProfile().Profile!);
+
+        Assert.Null(problem);
+        Assert.Equal(1, gimbalyn.Launches);
+        Assert.Equal(["profile", "start"], gimbalyn.Commands);
+        Assert.Equal("Key_Z", (string?)gimbalyn.Requests[0]["profile"]!["modeKey"]);
+    }
+
+    [Fact]
+    public async Task The_same_profile_is_not_sent_twice_but_a_changed_one_is_and_Gimbalyn_is_not_started_again()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        GimbalynProfile profile = MakeProfile().Profile!;
+
+        await shaper.Use(profile);
+        await shaper.Use(profile with { Mode = profile.Mode });   // equal in every way that matters
+        Assert.Equal(["profile", "start"], gimbalyn.Commands);
+
+        await shaper.Use(MakeProfile(switching: false).Profile!);
+        Assert.Equal(["profile", "start", "profile", "start"], gimbalyn.Commands);
+        Assert.Equal(0, gimbalyn.Launches);
+    }
+
+    [Fact]
+    public async Task The_mode_alone_changing_does_not_send_the_profile_again()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+
+        await shaper.Use(MakeProfile(faOff: false).Profile!);
+        await shaper.Use(MakeProfile(faOff: true).Profile!);   // the same profile, started in the other mode
+
+        Assert.Equal(["profile", "start"], gimbalyn.Commands);
+    }
+
+    [Fact]
+    public async Task A_Gimbalyn_that_ended_is_started_again_and_gets_the_profile_again()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        GimbalynProfile profile = MakeProfile().Profile!;
+        await shaper.Use(profile);
+
+        gimbalyn.Running = false;   // closed since
+        Assert.Null(await shaper.Use(profile));
+
+        Assert.Equal(1, gimbalyn.Launches);
+        Assert.Equal(["profile", "start", "profile", "start"], gimbalyn.Commands);
+    }
+
+    [Fact]
+    public async Task Flight_Assist_changing_sends_the_mode_once_per_change_while_switching()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        await shaper.Use(MakeProfile().Profile!);
+        gimbalyn.Requests.Clear();
+
+        await shaper.Follow(faOff: true, now: 0);
+        await shaper.Follow(faOff: true, now: 10);
+        await shaper.Follow(faOff: false, now: 20);
+
+        Assert.Equal(["mode", "mode"], gimbalyn.Commands);
+        Assert.Equal(["FA Off", "FA On"], gimbalyn.Requests.Select(r => (string)r["mode"]!));
+    }
+
+    [Fact]
+    public async Task A_mode_the_key_changed_without_the_game_following_is_put_right_at_the_next_look()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        await shaper.Use(MakeProfile().Profile!);   // in FA On, the game agrees
+        gimbalyn.Requests.Clear();
+
+        await shaper.Follow(faOff: false, now: 0);      // the first look asks and finds nothing wrong
+        gimbalyn.Requests.Clear();
+        gimbalyn.Mode = "FA Off";                        // the key cycled it, the game did not take the press
+        await shaper.Follow(faOff: false, now: 500);     // not yet a second
+        Assert.Empty(gimbalyn.Requests);
+
+        await shaper.Follow(faOff: false, now: 1200);    // asked, found apart: the game's flag may only be late, so not yet told
+        Assert.Equal(["status"], gimbalyn.Commands);
+        Assert.Equal("FA Off", gimbalyn.Mode);
+
+        await shaper.Follow(faOff: false, now: 2300);    // asked again, still apart: told
+        Assert.Equal(["status", "status", "mode"], gimbalyn.Commands);
+        Assert.Equal("FA On", gimbalyn.Mode);
+
+        await shaper.Follow(faOff: false, now: 3400);    // asked again: right now, nothing sent
+        Assert.Equal(["status", "status", "mode", "status"], gimbalyn.Commands);
+    }
+
+    [Fact]
+    public async Task A_press_of_the_mode_key_is_not_undone_while_the_game_s_flag_catches_up()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        await shaper.Use(MakeProfile().Profile!);   // in FA On
+        await shaper.Follow(faOff: false, now: 0);
+        gimbalyn.Requests.Clear();
+
+        gimbalyn.Mode = "FA Off";                        // the player pressed the key: Gimbalyn went at once
+        await shaper.Follow(faOff: false, now: 1200);    // the check lands before the game's flag shows it
+        await shaper.Follow(faOff: true, now: 1300);     // the flag arrives
+        await shaper.Follow(faOff: true, now: 2400);
+
+        Assert.DoesNotContain(gimbalyn.Requests, r => (string?)r["mode"] == "FA On");
+        Assert.Equal("FA Off", gimbalyn.Mode);
+    }
+
+    [Fact]
+    public async Task A_Gimbalyn_that_cannot_feed_vJoy_any_more_is_asked_to_start_again_every_few_seconds_and_the_player_is_told_why()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        Assert.Null(await shaper.Look(Want(), now: 0));
+        gimbalyn.Requests.Clear();
+
+        // The app looks four times a second, each look Update and then Follow, whatever Update said (FlightShaper.Look).
+        // The PC slept, or Joystick Gremlin took vJoy: Gimbalyn still runs and has the profile, but feeds nothing.
+        const string why = "vJoy device 1 is held by joystick_gremlin.";
+        Dictionary<long, string?> said = [];
+        for (long t = 250; t <= 7500; t += 250)
+        {
+            if (t == 1500) (gimbalyn.StateAnswer, gimbalyn.Problem) = ("busy", why);
+            if (t == 6250) gimbalyn.OnStart = "running";   // Gremlin let go
+            said[t] = await shaper.Look(Want(), t);
+            if (t == 6750) Assert.Equal(1, gimbalyn.Commands.Count(c => c == "start"));   // asked once, and only again after a few seconds
+        }
+
+        Assert.Equal(2, gimbalyn.Commands.Count(c => c == "start"));
+        Assert.Equal(why, said[2250]);       // said, not left looking fine
+        Assert.Equal(why, said[6500]);
+        Assert.Null(said[7500]);             // fed again, and not said any more
+        Assert.Equal("running", shaper.State);
+        Assert.Equal(0, gimbalyn.Launches);
+    }
+
+    [Fact]
+    public async Task A_Gimbalyn_that_was_asleep_is_left_to_wake_by_itself()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        await shaper.Look(Want(), now: 0);
+        gimbalyn.Requests.Clear();
+
+        gimbalyn.StateAnswer = "asleep";   // Windows sleeps: Gimbalyn takes vJoy again by itself when it wakes
+        Assert.Null(await shaper.Look(Want(), now: 1000));
+        Assert.Null(await shaper.Look(Want(), now: 1250));
+
+        Assert.Equal(["status"], gimbalyn.Commands);
+    }
+
+    [Fact]
+    public async Task A_restart_that_took_clears_the_words_at_once_though_the_last_try_s_clock_has_not_run_out()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        await shaper.Look(Want(), now: 0);
+        (gimbalyn.StateAnswer, gimbalyn.Problem) = ("busy", "vJoy device 1 is held by joystick_gremlin.");
+        await shaper.Look(Want(), now: 1000);                                  // found busy, asked to start: still busy
+        Assert.Equal(gimbalyn.Problem, await shaper.Look(Want(), now: 1250));   // said (and the next try waits until 6250)
+
+        gimbalyn.OnStart = "running";   // Gremlin let go
+        foreach (long t in new long[] { 2000, 3000, 4000, 5000 }) await shaper.Look(Want(), t);
+        await shaper.Look(Want(), now: 6000);                                  // the start is asked again: it takes
+
+        Assert.Null(await shaper.Look(Want(), now: 6100));   // before the clock of the last try (6250) ran out
+        Assert.Equal("running", shaper.State);
+    }
+
+    [Fact]
+    public async Task A_Gimbalyn_that_ended_while_feeding_has_vJoy_centred_once_and_is_started_again_at_the_next_look()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        int centred = 0;
+        var shaper = new FlightShaper(gimbalyn.IsRunning, gimbalyn.Launch, gimbalyn.Send, _ => { }, waitMs: 0, centre: () => centred++);
+        // Looking every quarter second for a good while: each look that finds nothing wrong pushes the retry clock on
+        for (long t = 0; t < 20000; t += 250) Assert.Null(await shaper.Look(Want(), t));
+
+        gimbalyn.Running = false;   // it ended (vJoy keeps the axes where they were)
+        Assert.Null(await shaper.Look(Want(), 20000));
+
+        Assert.Equal((1, 1), (centred, gimbalyn.Launches));   // not left to wait out a retry clock: the axes are deflected meanwhile
+        Assert.Equal((2, 2), (gimbalyn.Commands.Count(c => c == "profile"), gimbalyn.Commands.Count(c => c == "start")));   // fed again, from the start
+    }
+
+    [Fact]
+    public async Task A_Gimbalyn_that_ended_just_after_it_was_fed_is_centred_once_and_started_again_after_the_wait()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        int centred = 0;
+        var shaper = new FlightShaper(gimbalyn.IsRunning, gimbalyn.Launch, gimbalyn.Send, _ => { }, waitMs: 0, centre: () => centred++);
+        Assert.Null(await shaper.Look(Want(), now: 0));
+
+        gimbalyn.Running = false;
+        Assert.Contains("stopped", await shaper.Look(Want(), now: 250));
+        Assert.Contains("stopped", await shaper.Look(Want(), now: 4000));
+        Assert.Equal((1, 0), (centred, gimbalyn.Launches));   // centred once, not at every look
+
+        Assert.Null(await shaper.Look(Want(), now: 5500));
+        Assert.Equal((1, 1), (centred, gimbalyn.Launches));
+    }
+
+    [Fact]
+    public async Task A_new_profile_does_not_move_a_Gimbalyn_that_already_has_the_mode_so_the_game_s_mode_is_put_in_at_once()
+    {
+        // The last session's Gimbalyn is in FA On and Flight Assist is off in the game: the profile asks for FA Off,
+        // the engine keeps the mode in use (the name is in both profiles), so it is the status that tells where it is
+        var gimbalyn = new FakeGimbalyn { Running = true, Mode = "FA On" };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+
+        Assert.Null(await shaper.Look(Want(faOff: true), now: 0));
+
+        Assert.Equal(["profile", "start", "mode"], gimbalyn.Commands);
+        Assert.Equal("FA Off", gimbalyn.Mode);
+    }
+
+    [Fact]
+    public async Task A_mode_found_wrong_once_is_not_changed_when_the_next_check_finds_it_right()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        await shaper.Use(MakeProfile().Profile!);   // in FA On, the game agrees
+        await shaper.Follow(faOff: false, now: 0);
+        gimbalyn.Requests.Clear();
+
+        gimbalyn.Mode = "FA Off";                        // a key press, the game's flag not there yet
+        await shaper.Follow(faOff: false, now: 1200);
+        gimbalyn.Mode = "FA On";                         // pressed back, or the flag caught up in the same mode
+        await shaper.Follow(faOff: false, now: 2300);
+        gimbalyn.Mode = "FA Off";                        // a new press, the flag late again
+        await shaper.Follow(faOff: false, now: 3400);
+
+        Assert.DoesNotContain("mode", gimbalyn.Commands);   // apart once, right, apart once: never apart twice in a row
+    }
+
+    [Fact]
+    public async Task Turned_off_while_a_try_that_was_not_answered_is_still_pending_Gimbalyn_is_let_go_and_asked_again_until_it_goes()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = false, Mute = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+
+        Assert.Contains("did not answer", await shaper.Look(Want(), now: 0));   // started, then no answer in time: nothing fed as far as Studio knows
+        Assert.Null(await shaper.Look(Want(on: false), now: 100));
+        Assert.Null(await shaper.Look(Want(on: false), now: 200));              // (not at every look)
+        Assert.Equal(["profile", "quit"], gimbalyn.Commands);
+
+        gimbalyn.Mute = false;
+        Assert.Null(await shaper.Look(Want(on: false), now: 5200));             // the quit that was not answered is asked again
+        Assert.Equal(["profile", "quit", "quit"], gimbalyn.Commands);
+
+        gimbalyn.Running = false;                                               // it went
+        Assert.Null(await shaper.Look(Want(on: false), now: 10400));
+        Assert.Equal(["profile", "quit", "quit"], gimbalyn.Commands);
+    }
+
+    [Fact]
+    public async Task With_no_profile_fed_Flight_Assist_sends_nothing_and_with_switching_off_it_sends_no_mode()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        await shaper.Follow(faOff: true, now: 0);   // no profile yet
+        Assert.Empty(gimbalyn.Requests);
+
+        await shaper.Use(MakeProfile(switching: false).Profile!);
+        gimbalyn.Requests.Clear();
+        await shaper.Follow(faOff: true, now: 10);
+        await shaper.Follow(faOff: true, now: 5000);
+
+        Assert.DoesNotContain("mode", gimbalyn.Commands);   // (it is only asked how it is, once a second)
+        Assert.Equal("running", shaper.State);
+    }
+
+    [Fact]
+    public async Task What_Gimbalyn_says_of_itself_is_kept_for_the_pages_and_a_vJoy_lost_later_is_noticed_even_without_switching()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        Assert.Null(shaper.State);
+
+        await shaper.Use(MakeProfile(switching: false).Profile!);
+        Assert.Equal(("running", "FA On"), (shaper.State, shaper.Mode));
+
+        gimbalyn.StateAnswer = "busy";   // Joystick Gremlin took vJoy afterwards
+        await shaper.Follow(faOff: false, now: 2000);
+        Assert.Equal("busy", shaper.State);
+    }
+
+    [Fact]
+    public async Task The_mode_the_game_is_in_is_what_the_page_is_told_after_a_move()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        await shaper.Use(MakeProfile().Profile!);
+
+        await shaper.Follow(faOff: true, now: 0);
+
+        Assert.Equal("FA Off", shaper.Mode);
+    }
+
+    [Fact]
+    public async Task A_Gimbalyn_that_ended_just_after_it_was_fed_is_started_again_only_after_a_few_seconds()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        Assert.Null(await shaper.Update(Want(), now: 0));
+
+        gimbalyn.Running = false;   // it ended at once (a crash, vJoy's library...)
+        Assert.Contains("stopped", await shaper.Update(Want(), now: 250));
+        Assert.Contains("stopped", await shaper.Update(Want(), now: 4000));
+        Assert.Equal(0, gimbalyn.Launches);
+
+        Assert.Null(await shaper.Update(Want(), now: 5500));
+        Assert.Equal(1, gimbalyn.Launches);
+    }
+
+    [Fact]
+    public async Task The_notes_of_the_last_look_are_kept_and_let_go_with_the_shaper()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+
+        await shaper.Update(Want(source: c => c == "yaw" ? null : Logitech(c)), now: 0);
+        Assert.Contains("yaw", Assert.Single(shaper.Notes));
+
+        await shaper.Update(Want(on: false), now: 100);
+        Assert.Empty(shaper.Notes);
+        Assert.Null(shaper.State);
+    }
+
+    [Fact]
+    public void Gimbalyn_is_started_for_this_Studio_and_ends_with_it()
+    {
+        string[] arguments = GimbalynClient.LaunchArguments(4242);
+
+        Assert.Equal(["--gimbalyn", "--with", "4242"], arguments);
+        Dictionary<string, string> options = Program.ParseOptions(arguments);
+        Assert.True(options.ContainsKey(Host.Option));
+        Assert.Equal("4242", options["with"]);
+        Assert.False(options.ContainsKey("data-dir"));   // (that would make it a practice copy)
+    }
+
+    [Fact]
+    public async Task A_mode_that_was_refused_is_sent_again_at_the_next_look()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        await shaper.Use(MakeProfile().Profile!);
+        gimbalyn.Requests.Clear();
+
+        gimbalyn.Refuses = true;
+        await shaper.Follow(faOff: true, now: 0);
+        gimbalyn.Refuses = false;
+        await shaper.Follow(faOff: true, now: 10);
+
+        Assert.Equal(["mode", "mode"], gimbalyn.Commands);
+    }
+
+    [Fact]
+    public async Task Reasons_Gimbalyn_cannot_feed_come_back_as_words_and_the_profile_is_sent_again_next_time()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true, StateAnswer = "busy", Problem = "vJoy device 1 is held by joystick_gremlin." };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        GimbalynProfile profile = MakeProfile().Profile!;
+
+        Assert.Equal("vJoy device 1 is held by joystick_gremlin.", await shaper.Use(profile));
+
+        gimbalyn.StateAnswer = "running";
+        gimbalyn.Problem = null;
+        Assert.Null(await shaper.Use(profile));
+        Assert.Equal(["profile", "start", "profile", "start"], gimbalyn.Commands);
+    }
+
+    [Fact]
+    public async Task A_Gimbalyn_that_cannot_be_started_is_said()
+    {
+        var cannot = new FakeGimbalyn { Running = false, CanStart = false };
+
+        Assert.Contains("start", await ShaperFor(cannot).Use(MakeProfile().Profile!), StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(cannot.Requests);
+    }
+
+    // ---- what is wanted, looked at again and again
+
+    static ShaperAsk Want(bool on = true, bool switching = true, bool faOff = false, FlightBinds? binds = null, bool practice = false,
+        Func<string, (string, string)?>? source = null) =>
+        new(on, switching, faOff, binds ?? OwnersBinds(), FaOnCurves, FaOffCurves, source ?? Logitech, VJoyFolder: "", Practice: practice);
+
+    [Fact]
+    public async Task Looking_again_sends_nothing_new_and_Flight_Assist_changing_is_left_to_Follow()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = false };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+
+        Assert.Null(await shaper.Update(Want(faOff: true), now: 0));
+        Assert.Null(await shaper.Update(Want(faOff: true), now: 250));
+        Assert.Null(await shaper.Update(Want(faOff: false), now: 500));
+
+        Assert.Equal(["profile", "start"], gimbalyn.Commands);
+        Assert.Equal("FA Off", (string?)gimbalyn.Requests[0]["profile"]!["mode"]);   // it started in the mode the game was in
+    }
+
+    [Fact]
+    public async Task Turned_off_Gimbalyn_is_let_go_once_and_not_started_by_looking()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = false };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+
+        Assert.Null(await shaper.Update(Want(on: false), now: 0));   // never fed: nothing to let go
+        Assert.Equal(0, gimbalyn.Launches);
+        await shaper.Update(Want(), now: 100);
+        gimbalyn.Requests.Clear();
+
+        Assert.Null(await shaper.Update(Want(on: false), now: 200));
+        Assert.Null(await shaper.Update(Want(on: false), now: 400));
+
+        Assert.Equal(["quit"], gimbalyn.Commands);
+    }
+
+    [Fact]
+    public async Task A_try_that_failed_waits_a_few_seconds_before_the_next()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true, StateAnswer = "busy", Problem = "vJoy device 1 is held by joystick_gremlin." };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+
+        Assert.Equal(gimbalyn.Problem, await shaper.Update(Want(), now: 0));
+        gimbalyn.Requests.Clear();
+        Assert.Equal(gimbalyn.Problem, await shaper.Update(Want(), now: 1000));   // asked about again, not tried again
+        Assert.Empty(gimbalyn.Requests);
+
+        gimbalyn.StateAnswer = "running";
+        gimbalyn.Problem = null;
+        Assert.Null(await shaper.Update(Want(), now: 6000));   // Gremlin was closed meanwhile
+        Assert.Equal(["profile", "start"], gimbalyn.Commands);
+    }
+
+    [Fact]
+    public async Task A_changed_wish_is_tried_at_once_even_after_a_failure()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = true, StateAnswer = "busy", Problem = "held" };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+        await shaper.Update(Want(), now: 0);
+        gimbalyn.Requests.Clear();
+
+        await shaper.Update(Want(switching: false), now: 500);
+
+        Assert.Equal(["profile", "start"], gimbalyn.Commands);
+    }
+
+    [Fact]
+    public async Task Without_bindings_or_a_stick_the_reason_is_given_and_Gimbalyn_is_not_touched()
+    {
+        var gimbalyn = new FakeGimbalyn { Running = false };
+        FlightShaper shaper = ShaperFor(gimbalyn);
+
+        string? problem = await shaper.Update(new ShaperAsk(true, true, false, null, FaOnCurves, FaOffCurves, Logitech, ""), now: 0);
+
+        Assert.Contains("bindings", problem);
+        Assert.Equal(0, gimbalyn.Launches);
+        Assert.Empty(gimbalyn.Requests);
+    }
+
+    [Fact]
+    public async Task A_practice_copy_never_starts_or_talks_to_Gimbalyn_whatever_is_asked()
+    {
+        foreach (bool running in new[] { false, true })
+        {
+            var gimbalyn = new FakeGimbalyn { Running = running };
+            FlightShaper shaper = ShaperFor(gimbalyn);
+
+            Assert.Contains("practice", await shaper.Update(Want(practice: true), now: 0), StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("practice", await shaper.Update(Want(on: false, practice: true), now: 10), StringComparison.OrdinalIgnoreCase);
+
+            Assert.Equal(0, gimbalyn.Launches);
+            Assert.Empty(gimbalyn.Requests);   // not even to let go of the real Studio's Gimbalyn
+        }
     }
 }
