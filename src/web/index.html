@@ -156,6 +156,22 @@ textarea.inp{height:auto;min-height:70px;padding:8px 10px;font:12px/1.4 var(--mo
 .palettes{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
 .pal{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--panel2);border:1px solid var(--line2);text-align:left;color:var(--text);font:500 13px var(--hud);letter-spacing:.06em;text-transform:uppercase}
 .pal.active{border-color:var(--cyan);box-shadow:inset 0 0 0 1px var(--cyan)}
+/* the player's own colours: a row per part, and under the one opened its colour wheel, a brightness bar and the hex code */
+.parts{display:grid;gap:4px}
+.part{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center;padding:4px;background:var(--panel2);border:1px solid var(--line2)}
+.part.open{border-color:var(--cyan)}
+.part>.pb{display:flex;align-items:center;gap:10px;min-width:0;padding:2px 4px;background:none;border:0;text-align:left;color:var(--text);font-size:13px}
+.part i{flex:none;width:24px;height:24px;border:1px solid rgba(255,255,255,.25)}
+.part .pb span{min-width:0}
+.part .pb small{display:block;color:var(--muted);font-size:12px}
+.wheelbox{display:grid;grid-template-columns:170px minmax(0,1fr);gap:14px;align-items:start;padding:12px 8px;border:1px solid var(--cyan);border-top:0;margin-top:-4px}
+.wheel{position:relative;width:170px;height:170px;border-radius:50%;cursor:crosshair;touch-action:none;
+  background:radial-gradient(closest-side,#fff,rgba(255,255,255,0)),conic-gradient(red,yellow,lime,aqua,blue,magenta,red)}
+.wheel .dark{position:absolute;inset:0;border-radius:50%;background:#000;pointer-events:none}
+.wheel .dot{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #000;pointer-events:none}
+.wheelbox .lbl{margin-bottom:10px}
+.bright{-webkit-appearance:none;appearance:none;width:100%;height:16px;margin:0;border:1px solid var(--line2)}
+.bright::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:22px;background:#fff;border:1px solid #000}
 .readout{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;padding:4px 12px 12px;font:12.5px var(--mono);color:var(--frost)}
 .readout span:nth-child(odd){color:var(--label);font-family:var(--hud);letter-spacing:.08em;text-transform:uppercase}
 details.help{border-bottom:1px solid var(--line)}
@@ -364,7 +380,7 @@ function showState(s) {
 }
 
 // ============================================================ the look: profiles
-const PAL = Studio.palettes;
+const PAL = Studio.palettes, PARTS = Studio.parts;
 const BASE = { palette: 'velvet', density: 'comfortable', header: 'auto', keybar: 'auto', stars: true, glow: true, motion: true };
 const BUILTIN = [
   { id: 'b-velvet', name: 'Velvet Ice', builtIn: true, look: { ...BASE } },
@@ -384,6 +400,9 @@ function cleanLook(l) {
   if (['auto', 'full', 'compact'].includes(l.header)) o.header = l.header;
   if (['auto', 'show', 'hide'].includes(l.keybar)) o.keybar = l.keybar;
   for (const k of ['stars', 'glow', 'motion']) if (typeof l[k] === 'boolean') o[k] = l[k];
+  // the player's own colours, in the order of Studio.parts (so two looks with the same colours compare the same)
+  const own = l.colours && typeof l.colours === 'object' ? Object.keys(PARTS).filter(k => /^#[0-9a-f]{6}$/i.test(l.colours[k])) : [];
+  if (own.length) o.colours = Object.fromEntries(own.map(k => [k, l.colours[k].toLowerCase()]));
   return o;
 }
 let mine = (Array.isArray(store.get('profiles', [])) ? store.get('profiles', []) : [])
@@ -395,9 +414,11 @@ let profileId = store.get('profile', FIRST_PROFILE);
 if (!all().some(p => p.id === profileId)) profileId = FIRST_PROFILE;
 let look = cleanLook(store.get('look', null) || all().find(p => p.id === profileId).look);
 const currentProfile = () => all().find(p => p.id === profileId);
-const sameLook = (a, b) => Object.keys(BASE).every(k => a[k] === b[k]);
+const sameLook = (a, b) => Object.keys(BASE).every(k => a[k] === b[k]) && JSON.stringify(a.colours || {}) === JSON.stringify(b.colours || {});
 const changed = () => !sameLook(look, currentProfile().look);
-const describe = l => `${(PAL[l.palette] || PAL.velvet).name} · ${l.density === 'compact' ? 'Compact' : 'Comfortable'}`;
+const describe = l => `${(PAL[l.palette] || PAL.velvet).name}${l.colours ? ' with your own colours' : ''} · ${l.density === 'compact' ? 'Compact' : 'Comfortable'}`;
+// A look's three swatches: its colour set's, with the player's own colours in their place.
+const swatches = l => { const sw = (PAL[l.palette] || PAL.velvet).sw, own = l.colours || {}; return [own.accent || sw[0], own.ice || sw[1], own.cyan || sw[2]]; };
 const toCode = o => { const b = new TextEncoder().encode(JSON.stringify(o)); let t = ''; for (const x of b) t += String.fromCharCode(x); return 'ESLOOK1:' + btoa(t); };
 const fromCode = c => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(c.slice(8)), ch => ch.charCodeAt(0))));
 
@@ -601,7 +622,7 @@ const HELP = [
     ["This window", "Menu, Help and Profile work by clicking, and Escape closes them. On Studio Flight, Escape pauses the trainer or Chase the dot instead. The 3D map in Studio Nav has its own keys, shown in its Camera pad."],
   ] },
   { id: 'profiles', g: 'g-profile', t: 'Appearance profiles', items: [
-    ["What a profile is", "A profile is a named look for Elite Studio: its colour set, spacing, top bar, key bar and effects. It changes how Studio looks and nothing else. Your HUD themes, trade presets and saved builds stay as they are."],
+    ["What a profile is", "A profile is a named look for Elite Studio: its colour set, your own colours, spacing, top bar, key bar and effects. It changes how Studio looks and nothing else. Your HUD themes, trade presets and saved builds stay as they are."],
     ["Built-in looks", "Velvet Ice, Velvet Ice Compact, Space Dust, Firefly Grove, Earthen Flight, Frost and Classic Orange come with Studio, which starts in Classic Orange. Space Dust, Firefly Grove and Earthen Flight take their colours from your HUD themes of the same names. They carry a padlock and cannot be deleted. Load one, change it, and save the result under your own name."],
     ["Saving the current look", "Open Appearance profiles from the Profile button, the Menu or the key bar. Type a name under 'Save the current look' and press Save. Saving under a name you already use updates that profile."],
     ["Changed, not saved", "After you change a look, the profile name shows a dot. Save changes keeps the changes in your own profile, and Undo changes puts the profile back. A built-in profile offers only Undo changes, so save your version under a new name."],
@@ -615,6 +636,7 @@ const HELP = [
     ["Window size", "The window opens maximised. On a narrow window or a heavily scaled display the pages zoom out, down to 60%, so the layout still fits; they never zoom in. Ctrl and the mouse wheel zoom by hand until the window is next resized."],
     ["Narrower windows", "As the window gets narrower, the tabs drop the word Studio, the status strip drops its labels, and then the tabs drop their glyphs. In a very narrow window each tab shows only its glyph."],
     ["Short windows", "When the window is shorter than 860, the top bar folds into one row, as high as the old bar, and hides the status strip; the Elite light then shows your system. Below 760 the key bar hides too. That keeps room for the trainer's sky in Studio Flight. The Top bar and Key bar choices can override this."],
+    ["Your own colours", "Under 'Your own colours' in Display, click a part (frames and tabs, big buttons, text, page background and more) to open its colour wheel. Click or drag on the wheel to pick the colour, set its brightness on the bar under it, or type a code such as #ff7100. Studio's pages change as you go. The cross beside a part puts back the colour set's own colour. Save the look as a profile to keep your colours, and share them with its code."],
     ["Spacing", "Comfortable leaves room around cards and rows. Compact uses tighter gaps and shorter rows in every studio, so more fits on the screen."],
     ["Top bar and key bar", "Top bar: Automatic uses one row on short windows, or choose Always full or Always one row. Key bar: Automatic hides it on short or narrow windows, or choose Always or Never."],
     ["Effects", "Three switches: Starfield behind the pages, Glow on glyphs and live lights, and Movement, which slides panels and pulses lights. Turn them off for a plainer, calmer screen."],
@@ -737,9 +759,8 @@ function profilesPanel() {
     h('button', { class: 'btn small', onclick: () => { look = { ...cur.look }; applyLook(); renderDrawer('profiles'); toast('Changes undone.'); } }, 'Undo changes')));
   out.push(h('div', { class: 'sect' }, h('h3', null, 'Profiles')));
   for (const p of all()) {
-    const pal = PAL[p.look.palette] || PAL.velvet;
     out.push(h('div', { class: 'prow' + (p.id === profileId ? ' cur' : '') },
-      h('span', { class: 'sw3' }, pal.sw.map(c => h('i', { style: 'background:' + c }))),
+      h('span', { class: 'sw3' }, swatches(p.look).map(c => h('i', { style: 'background:' + c }))),
       h('span', { class: 'pn' }, p.name, h('small', null, describe(p.look) + (p.builtIn ? ' · built in' : ''))),
       h('span', { class: 'acts2' },
         p.id === profileId ? h('span', { class: 'badge ice' }, 'In use') : h('button', { class: 'btn small', onclick: () => loadProfile(p.id) }, glyph('g-load'), 'Load'),
@@ -801,6 +822,7 @@ function displayPanel() {
       h('div', { class: 'palettes' }, Object.entries(PAL).map(([k, p]) => h('button', { class: 'pal' + (k === look.palette ? ' active' : ''), 'aria-pressed': String(k === look.palette), onclick: () => setLook({ palette: k }) },
         h('span', { class: 'sw3' }, p.sw.slice(0, 2).map(c => h('i', { style: 'background:' + c }))), p.name))),
       h('p', { style: 'margin-top:8px' }, 'Green, amber and red keep their meaning in every colour set. Studio UI keeps its own colours, which follow your HUD.')),
+    ownColours(),
     h('div', { class: 'sect' }, h('h3', null, 'Spacing'), seg('Spacing', [['comfortable', 'Comfortable'], ['compact', 'Compact']], look.density, v => setLook({ density: v }), 'boxed'),
       h('p', { style: 'margin-top:8px' }, 'Compact tightens the cards, rows and tables in every studio.')),
     h('div', { class: 'sect' }, h('h3', null, 'Top bar'), seg('Top bar', [['auto', 'Automatic'], ['full', 'Always full'], ['compact', 'Always one row']], look.header, v => setLook({ header: v }), 'boxed'),
@@ -813,6 +835,93 @@ function displayPanel() {
     h('p', { class: 'pnote' }, 'Elite Studio follows the size of its window, not the screen. It lays its pages out 1400 wide and zooms out for a smaller window. The bars above and below fold away on short windows so the studios keep their room.'),
   ];
 }
+// ---- the player's own colours (Display): a row for each part of the look, and under the one opened its colour wheel.
+// The wheel is hue round it and strength out from the white middle; the bar under it is brightness. A drag puts the
+// colour on every page as it goes (once a frame at most) and the panel is drawn anew when it ends.
+let colourPart = null;   // the part whose wheel is open
+// A colour as "#rrggbb", however CSS writes it (a canvas does the reading); grey for anything else.
+const hexOf = (() => { const g = document.createElement('canvas').getContext('2d'); return c => { g.fillStyle = '#808080'; g.fillStyle = c || '#808080'; return /^#[0-9a-f]{6}$/i.test(g.fillStyle) ? g.fillStyle : '#808080'; }; })();
+const partColour = k => hexOf(getComputedStyle(document.documentElement).getPropertyValue(PARTS[k].v).trim());
+// What is typed in the colour code box ("#2a6", "22aa66"...) as "#rrggbb", or null.
+const readHex = t => { t = String(t).trim().replace(/^#/, ''); if (/^[0-9a-f]{3}$/i.test(t)) t = t.replace(/./g, '$&$&'); return /^[0-9a-f]{6}$/i.test(t) ? '#' + t.toLowerCase() : null; };
+function toHsv(hex) {
+  const n = parseInt(hex.slice(1), 16), r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
+  const hue = d === 0 ? 0 : max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return { hue: hue * 60, s: max ? d / max : 0, v: max };
+}
+function fromHsv(hue, s, v) {
+  const f = n => { const k = (n + hue / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); };
+  return '#' + [f(5), f(3), f(1)].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
+}
+function setColour(k, hex) { look = cleanLook({ ...look, colours: { ...look.colours, [k]: hex } }); applyLook(); }
+function clearColours(keys) { const own = { ...look.colours }; for (const k of keys) delete own[k]; setLook({ colours: own }); }
+
+function ownColours() {
+  const own = look.colours || {}, setName = (PAL[look.palette] || PAL.velvet).name, rows = [];
+  for (const [k, part] of Object.entries(PARTS)) {
+    const open = k === colourPart, sw = h('i', { style: 'background:' + partColour(k) }), note = h('small', null, part.about + (own[k] ? ' · yours' : ''));
+    rows.push(h('div', { class: 'part' + (open ? ' open' : '') },
+      h('button', { class: 'pb', id: 'part-' + k, 'aria-expanded': String(open), onclick: () => { colourPart = open ? null : k; renderDrawer('display'); } }, sw, h('span', null, part.name, note)),
+      own[k] ? h('button', { class: 'mini', title: `Back to ${setName}'s colour`, 'aria-label': `${part.name}: back to ${setName}'s colour`, onclick: () => clearColours([k]) }, glyph('g-close')) : h('span')));
+    if (open) rows.push(colourWheel(k, sw, note));
+  }
+  return h('div', { class: 'sect' }, h('h3', null, 'Your own colours'),
+    h('p', null, 'Click a part to choose its colour on the wheel. Your colours go over the colour set above, on every studio page, and are saved and shared with the look.'),
+    h('div', { class: 'parts' }, rows),
+    Object.keys(own).length ? h('div', { class: 'line', style: 'margin-top:8px' },
+      h('button', { class: 'btn small', onclick: () => { colourPart = null; clearColours(Object.keys(own)); } }, `Back to all of ${setName}'s colours`)) : null);
+}
+
+function colourWheel(k, sw, note) {
+  let { hue, s, v } = toHsv(partColour(k)), frame = 0;
+  const dark = h('div', { class: 'dark' }), dot = h('div', { class: 'dot' });
+  const wheel = h('div', { class: 'wheel', id: 'colourWheel', tabindex: 0, role: 'application', 'aria-label': PARTS[k].name + ': colour wheel. The arrow keys turn and strengthen the colour.' }, dark, dot);
+  const bright = h('input', { type: 'range', class: 'bright', id: 'colourBright', min: 0, max: 100, step: 1 });
+  const code = h('input', { class: 'inp', id: 'colourCode', maxlength: 7, spellcheck: 'false', autocomplete: 'off' });
+  const draw = typed => {
+    const hex = fromHsv(hue, s, v), a = hue * Math.PI / 180;
+    dark.style.opacity = (1 - v) * .8;   // darker as the colour is, but never black: the wheel stays readable for a dark background
+    dot.style.left = 50 + 50 * s * Math.sin(a) + '%';
+    dot.style.top = 50 - 50 * s * Math.cos(a) + '%';
+    bright.value = Math.round(v * 100);
+    bright.style.background = `linear-gradient(90deg,#000,${fromHsv(hue, s, 1)})`;
+    if (!typed) code.value = hex;
+    return hex;
+  };
+  // Nothing is chosen until the wheel, the bar or the code is used: then the row shows the new colour as "yours".
+  const change = typed => { sw.style.background = draw(typed); note.textContent = PARTS[k].about + ' · yours'; if (!frame) frame = requestAnimationFrame(() => { frame = 0; setColour(k, fromHsv(hue, s, v)); }); };
+  const done = () => { cancelAnimationFrame(frame); frame = 0; setColour(k, fromHsv(hue, s, v)); renderDrawer('display'); };
+  const pick = e => {
+    const r = wheel.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * 2 - 1, y = (e.clientY - r.top) / r.height * 2 - 1;
+    hue = (Math.atan2(x, -y) * 180 / Math.PI + 360) % 360;
+    s = Math.min(1, Math.hypot(x, y));
+    change();
+  };
+  wheel.addEventListener('pointerdown', e => { wheel.setPointerCapture(e.pointerId); pick(e); });
+  wheel.addEventListener('pointermove', e => { if (wheel.hasPointerCapture(e.pointerId)) pick(e); });
+  wheel.addEventListener('pointerup', done);
+  wheel.addEventListener('keydown', e => {
+    const step = { ArrowLeft: [-5, 0], ArrowRight: [5, 0], ArrowUp: [0, .05], ArrowDown: [0, -.05] }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    hue = (hue + step[0] + 360) % 360;
+    s = Math.max(0, Math.min(1, s + step[1]));
+    change();
+  });
+  bright.addEventListener('input', () => { v = bright.value / 100; change(); });
+  bright.addEventListener('change', done);
+  code.addEventListener('input', () => { const hex = readHex(code.value); if (hex) { ({ hue, s, v } = toHsv(hex)); change(true); } });
+  code.addEventListener('change', () => { if (readHex(code.value)) done(); else code.value = fromHsv(hue, s, v); });
+  draw();
+  return h('div', { class: 'wheelbox' }, wheel,
+    h('div', null,
+      h('label', { class: 'lbl', for: 'colourBright' }, 'Brightness', bright),
+      h('label', { class: 'lbl', for: 'colourCode' }, 'Colour code', code),
+      h('p', { class: 'pnote', style: 'padding:0 0 8px' }, 'Click or drag on the wheel, or type a code such as #ff7100.'),
+      h('button', { class: 'btn small', onclick: () => { colourPart = null; renderDrawer('display'); $('#part-' + k)?.focus(); } }, 'Done')));
+}
+
 function updateReadout() {
   const r = $('#readout'); if (!r) return;
   const rows = [['Window', `${window.innerWidth} × ${window.innerHeight}`], ['Drawn at', `${Math.round(window.devicePixelRatio * 100)}%`], ['Layout', layoutName()]];

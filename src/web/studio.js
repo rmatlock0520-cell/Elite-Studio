@@ -18,8 +18,8 @@
 // for), the clipboard (Studio.copy, Studio.copyName), the whole-page message (Studio.cover), a From box that
 // follows the game (Studio.fromBox), keeping one of the app's pictures on the page (Studio.follow) and going
 // to another studio's page with something for it to do (Studio.open, or Studio.go for a link that does).
-// Every page also wears the player's look (the colour set, spacing and effects the shell keeps as "studio.appearance.look");
-// the shell uses Studio.palettes and Studio.applyLook for its profile panel.
+// Every page also wears the player's look (the colour set, the player's own colours over it, spacing and effects the shell
+// keeps as "studio.appearance.look"); the shell uses Studio.palettes, Studio.parts and Studio.applyLook for its panels.
 // The red "can't reach Elite Studio" bar and the "Start Elite Studio" cover appear by themselves; a page
 // has no markup or code for them.
 // A page's script starts by taking what it uses and stopping if there is no app:
@@ -55,8 +55,8 @@ if (boxed) {
 }
 
 // ---- the player's look (appearance profile)
-// The shell keeps the look the player chose in localStorage as "studio.appearance.look": a colour set, the spacing
-// and three effects. Every page puts it on its <html> as it opens, and again the moment the shell changes it (the
+// The shell keeps the look the player chose in localStorage as "studio.appearance.look": a colour set, the player's own
+// colours for any of its parts ("colours", see parts below), the spacing and three effects. Every page puts it on its <html> as it opens, and again the moment the shell changes it (the
 // storage event reaches every other page of the app: the studios, the in-game boxes, a page in a browser tab).
 // Only "studio.appearance.*" keys are read or written for this; every other key belongs to someone else.
 // Studio UI does not load this file: it keeps its own colours, which follow the player's HUD.
@@ -83,6 +83,38 @@ const palettes = {
 };
 for (const p of Object.values(palettes)) if (p.set) p.sw = [p.set[0], p.set[3], p.set[5]];
 const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+// Two colours mixed, t of the way from the first to the second, as "#rrggbb" (worked out here, not by color-mix, because
+// the canvas pages read these colours back to draw with).
+const mix = (a, b, t) => {
+  const x = parseInt(a.slice(1), 16), y = parseInt(b.slice(1), 16);
+  return '#' + [16, 8, 0].map(s => Math.round((x >> s & 255) * (1 - t) + (y >> s & 255) * t).toString(16).padStart(2, '0')).join('');
+};
+// The words on a colour: a deep shade of it, as the colour sets have, or white on a colour too dark for that.
+const ink = c => { const n = parseInt(c.slice(1), 16); return (n >> 16 & 255) * .3 + (n >> 8 & 255) * .59 + (n & 255) * .11 < 40 ? '#ffffff' : mix(c, '#000000', .88); };
+// The player's own colours: a look's "colours" gives any of these parts a colour of its own ("#rrggbb"), put on over the
+// colour set, in this order (so "Tab and button words" of the player's own wins over the lighter shade "Frames and tabs"
+// brings). "v" is the part's colour in studio.css; "vars" gives it and the shades that go with it (null: let
+// studio.css work it out, so the big actions follow a new ice colour). The shell's Display panel lists them in this order.
+const parts = {
+  accent:   { name: 'Frames and tabs', about: 'Borders, the chosen tab and row, sliders', v: '--accent',
+              vars: c => ({ '--accent': c, '--accent-hi': mix(c, '#ffffff', .3), '--accent-soft': rgba(c, .16), '--accent-line': rgba(c, .5), '--accent-ink': ink(c) }) },
+  accentHi: { name: 'Tab and button words', about: 'The words on tabs, buttons and menus', v: '--accent-hi', vars: c => ({ '--accent-hi': c }) },
+  ice:      { name: 'Big buttons', about: 'Copy name, Profile, Help and the other main actions', v: '--ice',
+              vars: c => ({ '--ice': c, '--ice-soft': rgba(c, .16), '--ice-line': rgba(c, .55), '--ice-ink': ink(c),
+                '--act-ink': null, '--act-top': null, '--act-bot': null, '--act-top-h': null, '--act-bot-h': null }) },
+  cyan:     { name: 'Live lights', about: 'What is live or picked, and the big buttons\' words', v: '--cyan', vars: c => ({ '--cyan': c }) },
+  frost:    { name: 'Headings', about: 'Card titles and the brand', v: '--frost', vars: c => ({ '--frost': c }) },
+  label:    { name: 'Labels', about: 'The names over boxes and in the bars', v: '--label', vars: c => ({ '--label': c }) },
+  text:     { name: 'Text', about: 'Everything you read', v: '--text', vars: c => ({ '--text': c }) },
+  muted:    { name: 'Dim text', about: 'Hints and small print', v: '--muted', vars: c => ({ '--muted': c, '--faint': mix(c, '#000000', .4) }) },
+  link:     { name: 'Names you can open', about: 'Systems, stations and links', v: '--link', vars: c => ({ '--link': c, '--link-seen': mix(c, '#808080', .35) }) },
+  bg:       { name: 'Page background', about: 'Behind every page', v: '--bg', vars: c => ({ '--bg': c, '--bg2': mix(c, '#ffffff', .03) }) },
+  panel:    { name: 'Cards and panels', about: 'Cards, boxes and the panels that open', v: '--panel',
+              vars: c => ({ '--panel': c, '--panel2': mix(c, '#ffffff', .05), '--panel3': mix(c, '#ffffff', .1) }) },
+  line:     { name: 'Lines', about: 'Lines between rows, and the edges of boxes', v: '--line',
+              vars: c => ({ '--line': c, '--line2': mix(c, '#ffffff', .1), '--edge': mix(c, '#ffffff', .3) }) },
+};
+const isColour = c => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c);
 function readLook() { try { const v = JSON.parse(localStorage.getItem('studio.appearance.look') || 'null'); return v && typeof v === 'object' ? v : null; } catch (e) { return null; } }
 function applyLook() {
   const look = readLook(), root = document.documentElement, s = root.style;
@@ -101,6 +133,9 @@ function applyLook() {
   if (pal && pal.act) acts.forEach((n, i) => s.setProperty(n, pal.act[i]));
   if (pal && pal.link) { s.setProperty('--link', pal.link[0]); s.setProperty('--link-seen', pal.link[1]); }
   if (pal && pal.glow2) s.setProperty('--glow2', pal.glow2);
+  const own = look && look.colours && typeof look.colours === 'object' ? look.colours : {};
+  for (const [k, part] of Object.entries(parts))
+    if (isColour(own[k])) for (const [n, v] of Object.entries(part.vars(own[k]))) { if (v == null) s.removeProperty(n); else s.setProperty(n, v); }
   root.classList.toggle('dense', !!look && look.density === 'compact');
   root.classList.toggle('no-stars', !!look && look.stars === false);
   root.classList.toggle('no-glow', !!look && look.glow === false);
@@ -694,5 +729,5 @@ function report(text) {
 window.addEventListener('error', e => report((e.message || 'error') + (e.filename ? ' (line ' + e.lineno + ')' : '')));
 window.addEventListener('unhandledrejection', e => report('Unhandled: ' + ((e.reason && e.reason.message) || e.reason)));
 
-return { served, boxed, api, onEvent, follow, open, go, $, h, stationIcon, link, inspect, stationSheet, options, fromBox, whole, count, credits, tons, ly, ago, dot, wideDot, toast, ask, nameLength, copy, copyName, cover, palettes, applyLook };
+return { served, boxed, api, onEvent, follow, open, go, $, h, stationIcon, link, inspect, stationSheet, options, fromBox, whole, count, credits, tons, ly, ago, dot, wideDot, toast, ask, nameLength, copy, copyName, cover, palettes, parts, applyLook };
 })();
