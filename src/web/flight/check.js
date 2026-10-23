@@ -41,7 +41,6 @@ const MOUSE = 'mouse';
 const CONTROLS = ['pitch', 'roll', 'yaw'];
 const NAMES = { pitch: 'Pitch', roll: 'Roll', yaw: 'Yaw' };
 const MOTION = { pitch: 'forward / back', roll: 'left / right', yaw: 'twist' };
-const EARLIER_MOTION = { ...MOTION };   // (setYawWords changes MOTION.yaw for a pad; checks saved before they carried their words were of a stick)
 const PUSHED = { forward: 'a push forward', back: 'a pull back', left: 'a push left', right: 'a push right', twistLeft: 'a twist left', twistRight: 'a twist right' };
 // Each push, and which way of moving the stick it is.
 const PUSHES = [
@@ -54,12 +53,6 @@ const PUSHES = [
 const OFF = 'off', ON = 'on';
 // 5 s each, the owner's choice: time to read the step before doing it. A rest that follows a push or a change of hand
 // counts from 2 s in, while the stick comes back and the hand settles.
-// A game pad has no twist: Elite turns a pad's yaw with a stick (the right one, GamePad_RStickX, as its own pad presets have it).
-// When the player's yaw is bound to a pad stick, the two twist steps ask for that stick pushed sideways instead (setYawWords).
-const YAW_STICK = { word: 'twist', twistLeft: 'TWIST the stick all the way LEFT', twistRight: 'TWIST the stick all the way RIGHT',
-  pushedLeft: 'a twist left', pushedRight: 'a twist right' };
-const yawPad = which => ({ word: which + ' stick sideways', twistLeft: `Push the ${which.toUpperCase()} STICK all the way LEFT`, twistRight: `Push the ${which.toUpperCase()} STICK all the way RIGHT`,
-  pushedLeft: `a push of the ${which} stick left`, pushedRight: `a push of the ${which} stick right` });
 const STEPS = [
   { say: 'Hands off the stick', sub: 'Let it rest by itself. Do not touch it.', secs: 5, rest: OFF },
   { say: 'Hand on, relaxed', sub: 'Hold the stick as you do in flight, without pushing it any way.', secs: 5, rest: ON, settle: 2 },
@@ -200,7 +193,6 @@ function start() {
   if (!axesNow()) { show(h('p', { class: 'warn' }, 'Studio has no reading from that device. Move it a little, or pick another.')); return; }
   if (!env.getInfo()) { show(h('p', { class: 'warn' }, 'Studio has not loaded your curves yet. Wait a moment, then press Start again.')); return; }
   try { sound = sound || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { sound = null; }
-  setYawWords(env.getInfo());
   run = { device, i: -1, at: 0, records: [] };
   lastSeen = performance.now();
   show(null);
@@ -208,17 +200,6 @@ function start() {
   $('#check-start').disabled = true;
   $('#check-device').disabled = true;
   next(performance.now());
-}
-
-// The words of the two yaw steps, for the way the player's yaw is bound: a stick's twist, or a pad's stick pushed sideways.
-function setYawWords(info) {
-  const yaw = info && info.binds && info.binds.axes && info.binds.axes.yaw;
-  const pad = yaw && /^([LR])StickX$/.exec(yaw.axis);
-  const words = pad ? yawPad(pad[1] === 'L' ? 'left' : 'right') : YAW_STICK;
-  for (const step of STEPS) if (step.motion === 'yaw') step.say = words[step.push];
-  MOTION.yaw = words.word;
-  PUSHED.twistLeft = words.pushedLeft;
-  PUSHED.twistRight = words.pushedRight;
 }
 
 function stop(text) {
@@ -471,7 +452,7 @@ function finish() {
       else if (reach < 0.99 && steady) satX = Math.max(60, Math.min(100, Math.floor(reach * 100) - 2));
     }
     suggest[control] = { deadLow, deadHigh, ...(satX != null && satX < off[control].satX ? { satX } : {}) };
-    found.push({ control, motion, word: MOTION[motion], axis: l, off: offSpan, on: onSpan, reach: [reachNeg, reachPos],
+    found.push({ control, motion, axis: l, off: offSpan, on: onSpan, reach: [reachNeg, reachPos],
       before: [off[control].deadLow, off[control].deadHigh], set: [deadLow, deadHigh],
       need: needLow > 25 || needHigh > 25 ? [needLow, needHigh] : null, satX: suggest[control].satX || null });
   }
@@ -510,16 +491,13 @@ function finish() {
   setDeadZones(suggest, status, record);
 }
 
-// The words for what was pushed, as the check found it (an earlier check keeps its own: the stick bound now may be another kind).
-const motionWord = f => f.word || EARLIER_MOTION[f.motion] || f.motion;
-
 // The findings as a table: for the check just run, and for each earlier one.
 function table(found) {
   return h('div', { class: 'tablebox' }, h('table', null,
     h('thead', null, h('tr', null, h('th', null, 'Control'), h('th', { class: 'r' }, 'Hands off'), h('th', { class: 'r' }, 'Hand on, relaxed'),
       h('th', { class: 'r' }, 'Reaches − / +'), h('th', { class: 'r' }, 'Dead zone before − / +'), h('th', { class: 'r' }, 'New dead zone − / +'))),
     h('tbody', null, found.map(f => h('tr', null,
-      h('td', null, NAMES[f.control] || f.control, h('small', null, ' · ' + motionWord(f) + ' · axis ' + f.axis)),
+      h('td', null, NAMES[f.control] || f.control, h('small', null, ' · ' + (MOTION[f.motion] || f.motion) + ' · axis ' + f.axis)),
       h('td', { class: 'r' }, spanText(f.off)),
       h('td', { class: 'r' }, spanText(f.on)),
       h('td', { class: 'r' }, (f.reach[0] != null ? pct(-f.reach[0]) : '?') + ' / ' + (f.reach[1] != null ? pct(f.reach[1]) : '?')),
@@ -630,23 +608,6 @@ function selftest() {
       { device: '231D:0200', name: 'controller 231D:0200' }, { device: '044F:B10A', name: 'controller 044F:B10A' }]);
     return [list.map(o => o.text), idText('046D:C215#2'), idText(MOUSE)];
   }, [['Logitech Extreme 3D', 'vJoy Device (vJoy, the virtual stick)', 'Unnamed controller', 'Unnamed controller (2)', 'Mouse'], 'Its id in Windows: 046D:C215', '']);
-  // A game pad has no twist: its yaw is a stick pushed sideways.
-  check('the yaw steps say twist for a stick and the pad\'s stick sideways for a game pad', () => {
-    const said = info => { setYawWords(info); return [STEPS.filter(s => s.motion === 'yaw' && s.round === 1).map(s => s.say), MOTION.yaw, PUSHED.twistLeft]; };
-    const out = [said(null), said({ binds: { axes: { yaw: { axis: 'RZ' } } } }), said({ binds: { axes: { yaw: { axis: 'RStickX' } } } }), said({ binds: { axes: { yaw: { axis: 'LStickX' } } } })];
-    setYawWords(env && env.getInfo());   // as the app says again
-    return out;
-  }, [[['TWIST the stick all the way LEFT', 'TWIST the stick all the way RIGHT'], 'twist', 'a twist left'],
-    [['TWIST the stick all the way LEFT', 'TWIST the stick all the way RIGHT'], 'twist', 'a twist left'],
-    [['Push the RIGHT STICK all the way LEFT', 'Push the RIGHT STICK all the way RIGHT'], 'right stick sideways', 'a push of the right stick left'],
-    [['Push the LEFT STICK all the way LEFT', 'Push the LEFT STICK all the way RIGHT'], 'left stick sideways', 'a push of the left stick left']]);
-  // An earlier check is drawn when the page opens, before any check is started: it says what it was found with.
-  check('an earlier check keeps the words it was found with, whatever is bound now (one from before it kept them was of a stick)', () => {
-    setYawWords({ binds: { axes: { yaw: { axis: 'RStickX' } } } });   // a pad is bound now: yaw is "right stick sideways"
-    const out = [motionWord({ motion: 'yaw', word: 'twist' }), motionWord({ motion: 'yaw' }), motionWord({ motion: 'pitch' }), MOTION.yaw];
-    setYawWords(env && env.getInfo());
-    return out;
-  }, ['twist', 'twist', 'forward / back', 'right stick sideways']);
   return checks;
 }
 

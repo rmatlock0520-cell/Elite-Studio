@@ -12,10 +12,7 @@ public sealed record FlightKey(string Device, string Key);
 public sealed record FlightButton(FlightKey Press, IReadOnlyList<FlightKey> Hold);
 
 /// <summary>A stick axis bound to a flight control, with the game's own two settings for it.</summary>
-/// <param name="Axis">
-/// The game's name for the axis without "Joy_" and "Axis": "X", "Y", "Z", "RX", "RY", "RZ", "U" (first slider), "V"; for a game pad
-/// (Elite's "GamePad", its stick as the game has it) the stick and its direction: "LStickX", "LStickY", "RStickX", "RStickY".
-/// </param>
+/// <param name="Axis">The game's name for the axis without "Joy_" and "Axis": "X", "Y", "Z", "RX", "RY", "RZ", "U" (first slider), "V".</param>
 /// <param name="Deadzone">The game's own dead zone for it, 0 to 1.</param>
 public sealed record FlightAxis(string Device, string Axis, bool Inverted, double Deadzone);
 
@@ -76,7 +73,6 @@ public sealed record FlightBinds(
         ["T16000M"] = "044F:B10A", ["T16000MTHROTTLE"] = "044F:B687", ["ThrustMasterWarthogJoystick"] = "044F:0402",
         ["ThrustMasterWarthogThrottle"] = "044F:0404", ["SaitekX52"] = "06A3:075C", ["SaitekX52Pro"] = "06A3:0762",
         ["SaitekX56Joystick"] = "0738:2221", ["SaitekX56Throttle"] = "0738:A221",
-        ["GamePad"] = "045E:028E",   // the Xbox 360 pad; the game's own list has the other pads (Xbox One, Series, other makers)
     };
 
     /// <summary>
@@ -109,10 +105,9 @@ public sealed record FlightBinds(
             XElement? binding = node?.Element("Binding");
             if (node is null || binding is null || Device(binding) is not { } device) continue;
             string key = (string?)binding.Attribute("Key") ?? "";
-            // A stick's "Joy_RZAxis", or a game pad's stick ("GamePad_RStickX", and "Pad_RStickX" of the older Xbox 360 preset).
-            Match axis = Regex.Match(key, "^(?:Neg_|Pos_)?(?:Joy_([A-Z]+)Axis|(?:Game)?Pad_([LR]Stick[XY]))$");
-            if (!axis.Success) continue;   // a mouse axis, a trigger, or something new
-            axes[name] = new FlightAxis(device, axis.Groups[1].Success ? axis.Groups[1].Value : axis.Groups[2].Value, Number(node.Element("Inverted")) != 0, Number(node.Element("Deadzone")));
+            Match axis = Regex.Match(key, "^(?:Neg_|Pos_)?Joy_([A-Z]+)Axis$");
+            if (!axis.Success) continue;   // a mouse axis, or something new
+            axes[name] = new FlightAxis(device, axis.Groups[1].Value, Number(node.Element("Inverted")) != 0, Number(node.Element("Deadzone")));
         }
 
         var buttons = new Dictionary<string, IReadOnlyList<FlightButton>>();

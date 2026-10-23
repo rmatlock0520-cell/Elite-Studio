@@ -5,8 +5,7 @@ namespace EliteStudio.Flight;
 /// product's numbers, "046D:C215"), or failing those its name ("Logitech Extreme 3D", which is all
 /// Joystick Gremlin keeps), and the axis by the game's letters ("RZ").
 /// </summary>
-/// <param name="Pad">A game pad's stick: with none of its numbers plugged in, the only real stick there is counts as it only if it looks like a pad.</param>
-public sealed record AxisRef(IReadOnlyList<string> Devices, string? Name, string Axis, bool Pad = false);
+public sealed record AxisRef(IReadOnlyList<string> Devices, string? Name, string Axis);
 
 /// <summary>One control this moment: what the game gets, and for pitch, roll and yaw what the real stick behind it does (before Gremlin's curve). Null where it cannot be read.</summary>
 /// <param name="Invert">The game's "invert" for the axis.</param>
@@ -35,15 +34,11 @@ public sealed class FlightControls
     readonly Dictionary<string, IReadOnlyList<FlightButton>> buttons = [];
     readonly IReadOnlyDictionary<string, string> axisFix;
     readonly IReadOnlyDictionary<string, IReadOnlyList<string>> devices;   // the numbers of each device the game names
-    readonly HashSet<string> named = [];   // turning controls the game reads from a stick itself, which the player named (the stick they named is what the game gets)
 
     /// <summary>Studio's guess at which of Windows' letters each of the game's axis letters is (the player can correct it).</summary>
     static readonly Dictionary<string, string[]> Guess = new()
     {
         ["X"] = ["X"], ["Y"] = ["Y"], ["Z"] = ["Z"], ["RZ"] = ["R"], ["RX"] = ["U"], ["RY"] = ["V"], ["U"] = ["U", "Z"], ["V"] = ["V"],
-        // A game pad's sticks, as Windows' joystick calls show an XInput pad: the left stick is X and Y, the right stick's side to
-        // side is U and its up and down is R (the triggers are one axis, Z). The player can correct it with Detect, as for a stick.
-        ["LStickX"] = ["X"], ["LStickY"] = ["Y"], ["RStickX"] = ["U"], ["RStickY"] = ["R"],
     };
 
     /// <param name="binds">The game's bindings; null when they could not be read.</param>
@@ -55,19 +50,11 @@ public sealed class FlightControls
         foreach (string name in Axes)
         {
             FlightAxis? bound = binds?.Axes.GetValueOrDefault(name);
-            // A game pad's name is given so that, when none of the pad's numbers fits the one plugged in (the game's own list of pads
-            // is out of reach, and pads come in many makes), the only real stick there is counts as it.
-            AxisRef? game = bound is null ? null : new AxisRef(binds!.Devices.GetValueOrDefault(bound.Device) ?? [], bound.Axis.Contains("Stick") ? bound.Device : null, bound.Axis, bound.Axis.Contains("Stick"));
+            AxisRef? game = bound is null ? null : new AxisRef(binds!.Devices.GetValueOrDefault(bound.Device) ?? [], null, bound.Axis);
             AxisRef? real = null;
             if (Turning.Contains(name))
             {
-                if (settings.Sources.GetValueOrDefault(name) is { } chosen && chosen.Split(' ') is [var device, var letter])
-                {
-                    real = new AxisRef([device], null, letter);
-                    // The game reads that stick itself (a game pad Studio could not match by its numbers, for one): where Studio cannot
-                    // find the game's own, what the game gets is what the player named.
-                    if (bound is not null && !bound.Device.Equals("vJoy", StringComparison.OrdinalIgnoreCase)) named.Add(name);
-                }
+                if (settings.Sources.GetValueOrDefault(name) is { } chosen && chosen.Split(' ') is [var device, var letter]) real = new AxisRef([device], null, letter);
                 // The game reads vJoy: the real stick is the one Gremlin passes on to it. With no route there Studio does not know
                 // the stick, and vJoy's value must never stand in for it: it is already curved, and the trainer would curve it again.
                 else if (bound is not null && bound.Device.Equals("vJoy", StringComparison.OrdinalIgnoreCase))
@@ -99,7 +86,7 @@ public sealed class FlightControls
         var controls = new Dictionary<string, ControlValue>();
         foreach ((string name, (AxisRef? game, AxisRef? real, bool invert)) in axes)
         {
-            double? stick = Value(frame, real), gets = Value(frame, game) ?? (named.Contains(name) ? stick : null);
+            double? gets = Value(frame, game), stick = Value(frame, real);
             controls[name] = new ControlValue(gets, stick, invert, Turning.Contains(name) && gets is not null && stick is null);
         }
         var held = new HashSet<string>(frame.Keys, StringComparer.OrdinalIgnoreCase);
@@ -123,14 +110,8 @@ public sealed class FlightControls
         if (byNumber is not null || where.Name is null) return byNumber;
         string name = Plain(where.Name);
         return sticks.FirstOrDefault(s => Plain(s.Name) is { Length: > 0 } other && (other.StartsWith(name, StringComparison.Ordinal) || name.StartsWith(other, StringComparison.Ordinal)))
-            ?? OnlyOne(sticks.Where(s => !s.Device.StartsWith("1234:BEAD", StringComparison.OrdinalIgnoreCase)).ToList(), where.Pad);
-
-        // The only real stick there is, for a pad's stick only when it is called like a pad: a flight stick plugged in while the pad is not must not stand in for it.
-        static StickState? OnlyOne(List<StickState> real, bool pad) =>
-            real.Count == 1 && (!pad || PadLike.IsMatch(real[0].Name)) ? real[0] : null;
+            ?? (sticks.Count(s => !s.Device.StartsWith("1234:BEAD", StringComparison.OrdinalIgnoreCase)) == 1 ? sticks.First(s => !s.Device.StartsWith("1234:BEAD", StringComparison.OrdinalIgnoreCase)) : null);
     }
-
-    static readonly System.Text.RegularExpressions.Regex PadLike = new("pad|controller|xbox|xinput|dualshock|dualsense", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     /// <summary>
     /// The real stick behind pitch, roll or yaw among those in a reading: its device and Windows' letter for the axis, as Gimbalyn
