@@ -1381,12 +1381,16 @@ public sealed class FlightTests : IDisposable
 
     // ------------------------------------------------------------ a game pad instead of a stick
 
-    /// <summary>Elite's Xbox preset as far as flight goes (the game's own ConsoleX360): the pad is Device="GamePad" and its sticks "GamePad_LStickX" and so on; a trigger on an axis; Flight Assist on a bumper.</summary>
+    /// <summary>
+    /// Elite's Xbox preset as far as flight goes, as the game ships it (ConsoleX360.binds): the pad is Device="GamePad" and its
+    /// sticks "GamePad_LStickX" and so on, pitch NOT inverted (XInput's up is positive); Flight Assist on a bumper with B held.
+    /// The throttle on a trigger is added here (the preset has none).
+    /// </summary>
     static FlightBinds PadBinds() => FlightBinds.Read("ConsoleX360", "ConsoleX360.binds", XElement.Parse("""
         <Root>
           <YawAxisRaw><Binding Device="GamePad" Key="GamePad_RStickX" /><Inverted Value="0" /><Deadzone Value="DefaultPlatformDeadzone" /></YawAxisRaw>
           <RollAxisRaw><Binding Device="GamePad" Key="GamePad_LStickX" /><Inverted Value="0" /><Deadzone Value="DefaultPlatformDeadzone" /></RollAxisRaw>
-          <PitchAxisRaw><Binding Device="GamePad" Key="GamePad_LStickY" /><Inverted Value="1" /><Deadzone Value="0.15" /></PitchAxisRaw>
+          <PitchAxisRaw><Binding Device="GamePad" Key="GamePad_LStickY" /><Inverted Value="0" /><Deadzone Value="DefaultPlatformDeadzone" /></PitchAxisRaw>
           <VerticalThrustRaw><Binding Device="GamePad" Key="GamePad_RStickY" /><Inverted Value="0" /><Deadzone Value="DefaultPlatformDeadzone" /></VerticalThrustRaw>
           <ThrottleAxis><Binding Device="GamePad" Key="GamePad_RTrigger" /><Inverted Value="0" /><Deadzone Value="0.0" /></ThrottleAxis>
           <ToggleFlightAssist><Primary Device="GamePad" Key="GamePad_RBumper"><Modifier Device="GamePad" Key="GamePad_FaceRight" /></Primary><Secondary Device="{NoDevice}" Key="" /><ToggleOn Value="1" /></ToggleFlightAssist>
@@ -1398,7 +1402,7 @@ public sealed class FlightTests : IDisposable
     {
         FlightBinds binds = PadBinds();
 
-        Assert.Equal(new FlightAxis("GamePad", "LStickY", true, 0.15), binds.Axes["pitch"]);
+        Assert.Equal(new FlightAxis("GamePad", "LStickY", false, 0), binds.Axes["pitch"]);
         Assert.Equal(new FlightAxis("GamePad", "LStickX", false, 0), binds.Axes["roll"]);
         Assert.Equal(new FlightAxis("GamePad", "RStickX", false, 0), binds.Axes["yaw"]);
         Assert.Equal("RStickY", binds.Axes["vertical"].Axis);
@@ -1419,7 +1423,8 @@ public sealed class FlightTests : IDisposable
 
         ControlsFrame now = controls.Take(new FlightFrame(1, [logitech, pad], []));
 
-        // left stick: X and Y; the right stick sideways is U and up and down is R; the pad is what the game reads, so it is the real stick too
+        // left stick: X and Y; the right stick sideways is U and up and down is R; the pad is what the game reads, so it is the real stick too.
+        // Each Y down positive, as Windows gives it; the game's invert for it turned over, as Elite reads the pad up positive (XInput's)
         Assert.Equal(new ControlValue(-0.4, -0.4, true), now.Controls["pitch"]);
         Assert.Equal(new ControlValue(0.2, 0.2, false), now.Controls["roll"]);
         Assert.Equal(new ControlValue(-0.7, -0.7, false), now.Controls["yaw"]);
@@ -1454,6 +1459,198 @@ public sealed class FlightTests : IDisposable
 
         Assert.Equal(new Dictionary<string, string> { ["045E:028E RStickX"] = "Z" }, clean.AxisFix);
         Assert.Equal(new Dictionary<string, string> { ["yaw"] = "045E:028E RStickX" }, clean.Sources);
+    }
+
+    // ------------------------------------------------------------ a game pad as Elite reads it (XInput)
+
+    [Fact]
+    public void An_XInput_reading_has_the_game_s_names_with_down_and_right_positive_and_triggers_from_0_to_1()
+    {
+        // A held, the right shoulder, the cross's up; the left trigger full, the right one under XInput's threshold (30 of 255)
+        StickState pad = XInputPads.State(0, new PadReading(0x1000 | 0x0200 | 0x0001, 255, 20, 32767, 32767, -32768, -16384));
+
+        Assert.Equal("XInput#1", pad.Device);
+        Assert.Equal("Xbox-style controller", pad.Name);
+        Assert.Equal(1, pad.Axes["LStickX"]);
+        Assert.Equal(-1, pad.Axes["LStickY"]);                   // pushed up: XInput's up is positive; Windows' joystick calls (and Studio) have it negative
+        Assert.Equal(-1, pad.Axes["RStickX"]);
+        Assert.Equal(16384 / 32768.0, pad.Axes["RStickY"], 9);   // pulled half way down
+        Assert.Equal(1, pad.Axes["LTrigger"]);
+        Assert.Equal(20 / 255.0, pad.Axes["RTrigger"], 9);
+        Assert.Equal((1UL << 0) | (1UL << 5) | (1UL << 10) | (1UL << 14), pad.Down);
+        Assert.Equal("Xbox-style controller 3", XInputPads.State(2, default).Name);
+        Assert.Equal([0.0, 0.0], [XInputPads.Stick(0), XInputPads.State(0, default).Axes["LStickY"]]);
+    }
+
+    [Theory]
+    [InlineData("GamePad_FaceDown", 0)]
+    [InlineData("GamePad_FaceRight", 1)]
+    [InlineData("Pad_RBumper", 5)]
+    [InlineData("GamePad_Back", 6)]
+    [InlineData("GamePad_Start", 7)]
+    [InlineData("GamePad_RThumb", 9)]
+    [InlineData("GamePad_DPadLeft", 13)]
+    [InlineData("GamePad_LTrigger", 14)]
+    [InlineData("Pos_GamePad_RTrigger", 15)]
+    [InlineData("Pos_Pad_LTrigger", 14)]
+    [InlineData("Pad_A", 0)]
+    [InlineData("Pad_B", 1)]
+    [InlineData("Pad_X", 2)]
+    [InlineData("Pad_Y", 3)]
+    [InlineData("GamePad_LStickX", null)]
+    [InlineData("Joy_1", null)]
+    [InlineData("Key_A", null)]
+    public void A_pad_button_s_name_is_its_place_in_the_reading(string key, int? bit) => Assert.Equal(bit, XInputPads.Bit(key));
+
+    [Fact]
+    public void Each_button_lands_on_the_place_its_name_gives()
+    {
+        // every XInput mask and both triggers, one at a time, against the name the game gives that button
+        (ushort Mask, string Name)[] buttons =
+        [
+            (0x1000, "GamePad_FaceDown"), (0x2000, "GamePad_FaceRight"), (0x4000, "GamePad_FaceLeft"), (0x8000, "GamePad_FaceUp"),
+            (0x0100, "GamePad_LBumper"), (0x0200, "GamePad_RBumper"), (0x0020, "GamePad_Back"), (0x0010, "GamePad_Start"),
+            (0x0040, "GamePad_LThumb"), (0x0080, "GamePad_RThumb"), (0x0001, "GamePad_DPadUp"), (0x0008, "GamePad_DPadRight"),
+            (0x0002, "GamePad_DPadDown"), (0x0004, "GamePad_DPadLeft"),
+        ];
+        foreach ((ushort mask, string name) in buttons)
+            Assert.Equal(1UL << XInputPads.Bit(name)!.Value, XInputPads.State(0, new PadReading(mask, 0, 0, 0, 0, 0, 0)).Down);
+        Assert.Equal(1UL << XInputPads.Bit("GamePad_LTrigger")!.Value, XInputPads.State(0, new PadReading(0, 31, 30, 0, 0, 0, 0)).Down);
+        Assert.Equal(1UL << XInputPads.Bit("GamePad_RTrigger")!.Value, XInputPads.State(0, new PadReading(0, 30, 31, 0, 0, 0, 0)).Down);
+    }
+
+    [Fact]
+    public void Empty_slots_are_asked_only_when_looking_for_new_pads()
+    {
+        var asked = new List<uint>();
+        bool plugged = true;
+        var pads = new XInputPads(slot => { asked.Add(slot); return slot == 1 && plugged ? new PadReading(0, 0, 0, 100, 0, 0, 0) : null; });
+
+        Assert.Equal(["XInput#2"], pads.Read(lookForNew: true).Select(p => p.Device));
+        Assert.Equal([0u, 1, 2, 3], asked);
+        asked.Clear();
+        Assert.Equal(["XInput#2"], pads.Read(lookForNew: false).Select(p => p.Device));
+        Assert.Equal([1u], asked);   // only where a pad was
+        plugged = false;
+        asked.Clear();
+        Assert.Empty(pads.Read(lookForNew: false));
+        Assert.Empty(pads.Read(lookForNew: false));
+        Assert.Equal([1u], asked);   // gone: not asked again until the next look for new ones
+    }
+
+    [Fact]
+    public void XInput_itself_answers_on_this_computer_without_failing()
+    {
+        // whatever is plugged in here: no pad, or pads named by their slot
+        IReadOnlyList<StickState> found = new XInputPads().Read(lookForNew: true);
+        Assert.All(found, pad => Assert.Matches("^XInput#[1-4]$", pad.Device));
+        Assert.All(found, pad => Assert.Equal(["LStickX", "LStickY", "RStickX", "RStickY", "LTrigger", "RTrigger"], pad.Axes.Keys));
+    }
+
+    [Fact]
+    public void A_pad_Elite_reads_is_read_from_XInput_by_the_game_s_names_before_its_copy_in_Windows_joystick_list()
+    {
+        // the same pad twice: as Windows' joystick calls show it (its numbers are in the bindings, its letters a guess), and as XInput gives it
+        StickState copy = Stick("045E:028E", "Controller (XBOX 360 For Windows)", 0, ("X", 0.9), ("Y", 0.9), ("Z", 0.9), ("R", 0.9), ("U", 0.9));
+        StickState pad = XInputPads.State(0, new PadReading(0, 0, 0, 6554, -13107, -26214, 0));
+        var controls = new FlightControls(PadBinds(), [], new FlightSettings { AxisFix = new() { ["045E:028E RStickX"] = "Z" } }.Cleaned());
+
+        ControlsFrame now = controls.Take(new FlightFrame(1, [copy, pad], []));
+
+        Assert.Equal(new ControlValue(pad.Axes["LStickY"], pad.Axes["LStickY"], true), now.Controls["pitch"]);
+        Assert.Equal(new ControlValue(pad.Axes["LStickX"], pad.Axes["LStickX"], false), now.Controls["roll"]);
+        Assert.Equal(new ControlValue(pad.Axes["RStickX"], pad.Axes["RStickX"], false), now.Controls["yaw"]);   // the fix is for the copy
+        Assert.Equal(("XInput#1", "RStickX"), controls.RealSource("yaw", [copy, pad]));
+        // without XInput's pad (a PlayStation pad, or XInput not there) the copy is read as before
+        Assert.Equal(0.9, controls.Take(new FlightFrame(2, [copy], [])).Controls["yaw"].Game);
+    }
+
+    [Fact]
+    public void A_pad_pushed_or_pulled_turns_the_ship_the_way_Elite_turns_it_from_XInput_and_from_its_copy_alike()
+    {
+        // Elite's own presets: pitch on the pad's "LStickY" not inverted, on a stick's "Joy_YAxis" (down positive) inverted. So the
+        // game takes XInput's value as it comes (up positive), and Studio's reading, down positive with the invert turned over,
+        // must come to the same: the invert's sign times the reading is the game's.
+        var controls = new FlightControls(PadBinds(), [], new FlightSettings());
+        StickState back = XInputPads.State(0, new PadReading(0, 0, 0, 0, -32768, 0, 32767));                       // left stick pulled back, right pushed up
+        StickState copyBack = Stick("045E:028E", "Controller (XBOX 360 For Windows)", 0, ("X", 0), ("Y", 1), ("R", -1), ("U", 0));   // the same, as Windows shows it
+        static double Game(ControlValue c) => (c.Invert ? -1 : 1) * c.Game!.Value;
+
+        foreach (StickState pad in new[] { back, copyBack })
+        {
+            ControlsFrame now = controls.Take(new FlightFrame(1, [pad], []));
+            Assert.Equal(new ControlValue(1, 1, true), now.Controls["pitch"]);   // drawn low, as a stick pulled back is
+            Assert.Equal(-1, Game(now.Controls["pitch"]));                       // what Elite gets: XInput's -1, not inverted
+            Assert.Equal(1, Game(now.Controls["vertical"]));                     // XInput's +1
+        }
+        // inverted in the game, the other way round
+        var inverted = new FlightControls(FlightBinds.Read("ConsoleX360", "ConsoleX360.binds", XElement.Parse("""
+            <Root><PitchAxisRaw><Binding Device="GamePad" Key="GamePad_LStickY" /><Inverted Value="1" /><Deadzone Value="0" /></PitchAxisRaw></Root>
+            """), deviceList: null), [], new FlightSettings());
+        Assert.Equal(new ControlValue(1, 1, false), inverted.Take(new FlightFrame(1, [back], [])).Controls["pitch"]);
+    }
+
+    [Fact]
+    public void A_stick_Windows_has_no_name_for_is_not_taken_for_a_pad_that_is_not_plugged_in()
+    {
+        StickState unnamed = Stick("231D:0200", "controller 231D:0200", 0, ("X", 0.3), ("Y", 0.3), ("R", 0.3), ("U", 0.3));
+        StickState x52 = Stick("06A3:0762", "Saitek X52 Flight Controller", 0, ("X", 0.3), ("Y", 0.3), ("R", 0.3), ("U", 0.3));
+        StickState vjoy = Stick("1234:BEAD", "vJoy Device", 0, ("X", 0.5));
+
+        foreach (StickState stick in new[] { unnamed, x52 })
+        {
+            ControlsFrame now = new FlightControls(PadBinds(), [], new FlightSettings()).Take(new FlightFrame(1, [stick, vjoy], []));
+            Assert.All(new[] { "pitch", "roll", "yaw", "vertical" }, c => Assert.Null(now.Controls[c].Game));
+        }
+        // a pad Windows does name still is
+        foreach (string name in new[] { "Controller (Xbox Series X)", "Wireless Controller", "Generic USB Gamepad" })
+        {
+            StickState named = Stick("1A2B:3C4D", name, 0, ("X", 0.3), ("Y", 0.3), ("R", 0.3), ("U", 0.3));
+            Assert.Equal(0.3, new FlightControls(PadBinds(), [], new FlightSettings()).Take(new FlightFrame(1, [named, vjoy], [])).Controls["roll"].Game);
+        }
+    }
+
+    [Fact]
+    public void A_stick_named_by_numbers_or_by_Gremlin_is_never_XInput_s_copy_of_a_pad()
+    {
+        StickState copy = Stick("045E:028E", "Controller (XBOX 360 For Windows)", 0, ("X", 0.4));
+        StickState pad = XInputPads.State(0, new PadReading(0, 0, 0, 0, 0, 0, 0));
+
+        // Gremlin's name for the pad differs from Windows' (no name match): "the only real stick there is" is still the copy
+        Assert.Equal(copy, FlightControls.Find([pad, copy], new AxisRef([], "Xbox Wireless Controller", "X")));
+        Assert.Null(FlightControls.Find([pad], new AxisRef([], "Xbox-style controller", "X")));
+        Assert.Null(FlightControls.Find([pad], new AxisRef(["XInput#1"], null, "X")));
+    }
+
+    [Fact]
+    public void A_pad_stick_Detect_named_before_XInput_was_read_is_read_from_XInput_now()
+    {
+        // saved while Studio read only Windows' joystick calls: yaw from the pad by its numbers (the copy goes quiet while Elite is in front)
+        var controls = new FlightControls(PadBinds(), [], new FlightSettings { Sources = new() { ["yaw"] = "045E:028E RStickX" } }.Cleaned());
+        StickState copy = Stick("045E:028E", "Controller (XBOX 360 For Windows)", 0, ("X", 0), ("Y", 0), ("R", 0), ("U", 0));
+        StickState pad = XInputPads.State(0, new PadReading(0, 0, 0, 0, 0, 16384, 0));
+
+        ControlsFrame now = controls.Take(new FlightFrame(1, [copy, pad], []));
+
+        Assert.Equal(pad.Axes["RStickX"], now.Controls["yaw"].Real);
+        Assert.Equal(("XInput#1", "RStickX"), controls.RealSource("yaw", [copy, pad]));
+        // named before Studio read pads at all (1.9.5's Detect): by Windows' letter for the copy, with its fix
+        var older = new FlightControls(PadBinds(), [], new FlightSettings { Sources = new() { ["yaw"] = "045E:028E U" }, AxisFix = new() { ["045E:028E U"] = "U" } }.Cleaned());
+        Assert.Equal(pad.Axes["RStickX"], older.Take(new FlightFrame(1, [copy, pad], [])).Controls["yaw"].Real);
+        Assert.Equal(0, older.Take(new FlightFrame(2, [copy], [])).Controls["yaw"].Real);   // the copy alone: still read
+    }
+
+    [Fact]
+    public void A_pad_button_with_a_held_one_is_pressed_only_with_both_down_on_the_pad()
+    {
+        var controls = new FlightControls(PadBinds(), [], new FlightSettings());
+        ControlsFrame With(ushort buttons) => controls.Take(new FlightFrame(1, [XInputPads.State(0, new PadReading(buttons, 0, 0, 0, 0, 0, 0))], []));
+
+        Assert.Contains("fa", With(0x0200 | 0x2000).Pressed);       // the right shoulder with B held, as the game's Xbox preset has it
+        Assert.DoesNotContain("fa", With(0x0200).Pressed);
+        Assert.DoesNotContain("fa", With(0x2000).Pressed);
+        // the copy in Windows' joystick list has no names for its buttons: only XInput's pad presses them
+        Assert.DoesNotContain("fa", controls.Take(new FlightFrame(1, [Stick("045E:028E", "Controller (XBOX 360 For Windows)", ulong.MaxValue)], [])).Pressed);
     }
 
     [Fact]

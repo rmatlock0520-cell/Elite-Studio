@@ -26,8 +26,9 @@ internal sealed class WindowsSticks
 
     sealed record Found(string Device, string Name, bool Hat, (uint Min, uint Max)?[] Ranges);
     readonly Found?[] found = new Found?[Places];
+    readonly XInputPads xinput = new();   // Xbox-style pads also as Elite reads them (they are in Windows' joystick list too, as a copy)
 
-    /// <summary>Every controller that answers.</summary>
+    /// <summary>Every controller that answers, and after them every Xbox-style pad as XInput gives it (see <see cref="XInputPads"/>).</summary>
     /// <param name="lookForNew">Look at all the places, not only at those a controller was on last time (slow: do it now and then).</param>
     public IReadOnlyList<StickState> Read(bool lookForNew)
     {
@@ -48,6 +49,7 @@ internal sealed class WindowsSticks
                 if (stick.Ranges[i] is { } range) axes[Letters[i]] = Scale(raw[i], range.Min, range.Max);
             sticks.Add(new StickState(stick.Device, stick.Name, axes, now.Buttons | (stick.Hat ? WindowsPads.HatButtons(now.Hat) << 32 : 0)));
         }
+        sticks.AddRange(xinput.Read(lookForNew));
         return sticks;
     }
 

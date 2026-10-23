@@ -42,7 +42,8 @@ public sealed class FlightControls
     {
         ["X"] = ["X"], ["Y"] = ["Y"], ["Z"] = ["Z"], ["RZ"] = ["R"], ["RX"] = ["U"], ["RY"] = ["V"], ["U"] = ["U", "Z"], ["V"] = ["V"],
         // A game pad's sticks, as Windows' joystick calls show an XInput pad: the left stick is X and Y, the right stick's side to
-        // side is U and its up and down is R (the triggers are one axis, Z). The player can correct it with Detect, as for a stick.
+        // side is U and its up and down is R (the triggers are one axis, Z). Only when XInput gives no pad: it names the axes
+        // itself. The player can correct it with Detect, as for a stick.
         ["LStickX"] = ["X"], ["LStickY"] = ["Y"], ["RStickX"] = ["U"], ["RStickY"] = ["R"],
     };
 
@@ -63,7 +64,9 @@ public sealed class FlightControls
             {
                 if (settings.Sources.GetValueOrDefault(name) is { } chosen && chosen.Split(' ') is [var device, var letter])
                 {
-                    real = new AxisRef([device], null, letter);
+                    // For a pad's stick, still the pad XInput gives first (the copy Windows' joystick calls show goes quiet while Elite is
+                    // in front), by the game's name for the axis: one named before Studio read pads has a letter of Windows' ("U").
+                    real = game is { Pad: true } ? new AxisRef([device], null, game.Axis, true) : new AxisRef([device], null, letter);
                     // The game reads that stick itself (a game pad Studio could not match by its numbers, for one): where Studio cannot
                     // find the game's own, what the game gets is what the player named.
                     if (bound is not null && !bound.Device.Equals("vJoy", StringComparison.OrdinalIgnoreCase)) named.Add(name);
@@ -74,7 +77,10 @@ public sealed class FlightControls
                     real = Gremlin.Through(gremlin, bound.Axis) is { } through ? new AxisRef([], through.DeviceName, through.Axis) : null;
                 else real = game;   // the game reads the stick itself
             }
-            axes[name] = (game, real, bound?.Inverted ?? false);
+            // A pad's up and down reaches Elite up positive, as XInput gives it, and Studio down positive, as every other stick
+            // (XInputPads): the game's invert for it means the other way round here.
+            bool padY = game is { Pad: true } && game.Axis.EndsWith("StickY", StringComparison.Ordinal);
+            axes[name] = (game, real, (bound?.Inverted ?? false) != padY);
         }
         ThrottleForwardOnly = binds?.Values.GetValueOrDefault("ThrottleRange")?.Contains("Forward", StringComparison.OrdinalIgnoreCase) == true;
         foreach ((string name, _) in FlightBinds.ButtonActions)
@@ -109,12 +115,16 @@ public sealed class FlightControls
     }
 
     /// <summary>
-    /// The stick a reference means, among those in the reading: by its numbers (with "#2" and so on, that very one of two
-    /// alike, or when its twin is gone and it is the only one left, that one; without, the first), else by its name,
-    /// else the only real stick there is.
+    /// The stick a reference means, among those in the reading: for a game pad's stick the first pad XInput gives (the one Elite
+    /// reads, see <see cref="XInputPads"/>); else by its numbers (with "#2" and so on, that very one of two alike, or when its
+    /// twin is gone and it is the only one left, that one; without, the first), else by its name, else the only real stick there is.
     /// </summary>
     internal static StickState? Find(IReadOnlyList<StickState> sticks, AxisRef where)
     {
+        if (where.Pad && sticks.FirstOrDefault(IsXInput) is { } pad) return pad;
+        // Anything else (a stick by its numbers, Gremlin's name for it) is one of Windows' joystick list: XInput's pads are copies of
+        // pads in it, and must neither be taken for one nor make two of "the only real stick there is".
+        if (!where.Pad) sticks = [.. sticks.Where(s => !IsXInput(s))];
         static string Plain(string text) => string.Concat(text.Where(char.IsLetterOrDigit)).ToLowerInvariant();
         static bool Exactly(StickState stick, string device) => stick.Device.Equals(device, StringComparison.OrdinalIgnoreCase);
         static bool Alike(StickState stick, string device) => stick.Device.Split('#')[0].Equals(device.Split('#')[0], StringComparison.OrdinalIgnoreCase);
@@ -125,12 +135,16 @@ public sealed class FlightControls
         return sticks.FirstOrDefault(s => Plain(s.Name) is { Length: > 0 } other && (other.StartsWith(name, StringComparison.Ordinal) || name.StartsWith(other, StringComparison.Ordinal)))
             ?? OnlyOne(sticks.Where(s => !s.Device.StartsWith("1234:BEAD", StringComparison.OrdinalIgnoreCase)).ToList(), where.Pad);
 
-        // The only real stick there is, for a pad's stick only when it is called like a pad: a flight stick plugged in while the pad is not must not stand in for it.
+        // The only real stick there is, for a pad's stick only when it is called like a pad: a flight stick plugged in while the pad is
+        // not must not stand in for it. ("Controller" alone is no sign: "Saitek X52 Flight Controller", and Studio's own
+        // "controller 231D:0200" for one Windows has no name for.)
         static StickState? OnlyOne(List<StickState> real, bool pad) =>
             real.Count == 1 && (!pad || PadLike.IsMatch(real[0].Name)) ? real[0] : null;
     }
 
-    static readonly System.Text.RegularExpressions.Regex PadLike = new("pad|controller|xbox|xinput|dualshock|dualsense", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    static bool IsXInput(StickState stick) => stick.Device.StartsWith(XInputPads.Prefix, StringComparison.Ordinal);
+
+    static readonly System.Text.RegularExpressions.Regex PadLike = new(@"game ?pad|\bpad\b|xbox|xinput|dualshock|dualsense|wireless controller", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     /// <summary>
     /// The real stick behind pitch, roll or yaw among those in a reading: its device and Windows' letter for the axis, as Gimbalyn
@@ -139,9 +153,13 @@ public sealed class FlightControls
     internal (string Device, string Letter)? RealSource(string control, IReadOnlyList<StickState> sticks) =>
         axes.GetValueOrDefault(control).Real is { } real && Find(sticks, real) is { } stick && Letter(stick, real.Axis) is { } letter ? (stick.Device, letter) : null;
 
-    /// <summary>Windows' letter for one of the game's axis letters on a stick: the player's correction, else Studio's guess among the axes the stick has.</summary>
+    /// <summary>
+    /// Windows' letter for one of the game's axis letters on a stick: the player's correction, else the axis of that very name
+    /// (a pad XInput gives has the game's names, "LStickX"), else Studio's guess among the axes the stick has.
+    /// </summary>
     internal string? Letter(StickState stick, string axis) =>
         axisFix.GetValueOrDefault($"{stick.Device} {axis}") is { } fixedLetter ? fixedLetter
+            : stick.Axes.ContainsKey(axis) ? axis
             : Guess.GetValueOrDefault(axis)?.FirstOrDefault(stick.Axes.ContainsKey);
 
     double? Value(FlightFrame frame, AxisRef? where)
@@ -150,10 +168,15 @@ public sealed class FlightControls
         return stick.Axes.TryGetValue(letter, out double value) ? value : null;
     }
 
-    /// <summary>Whether a key or button is held in a reading: a keyboard key by the keys held, a stick's button by its buttons ("Joy_4", "Joy_POV1Up").</summary>
+    /// <summary>
+    /// Whether a key or button is held in a reading: a keyboard key by the keys held, a stick's button by its buttons ("Joy_4",
+    /// "Joy_POV1Up"), a game pad's ("GamePad_RBumper") by the first pad XInput gives, as Elite reads it.
+    /// </summary>
     bool Down(FlightFrame frame, HashSet<string> keys, FlightKey key)
     {
         if (key.Device == "Keyboard") return keys.Contains(key.Key);
+        if (XInputPads.Bit(key.Key) is { } bit)
+            return frame.Sticks.FirstOrDefault(IsXInput) is { } pad && (pad.Down >> bit & 1) != 0;
         int number = key.Key switch
         {
             "Joy_POV1Up" => 33, "Joy_POV1Right" => 34, "Joy_POV1Down" => 35, "Joy_POV1Left" => 36,

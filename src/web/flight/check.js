@@ -143,7 +143,7 @@ function deviceOptions(list) {
     return { value: s.device, text: seen[name] > 1 ? name + ' (' + seen[name] + ')' : name };
   }).concat({ value: MOUSE, text: 'Mouse' });
 }
-const idText = id => !id || id === MOUSE ? '' : 'Its id in Windows: ' + id.split('#')[0];
+const idText = id => !id || id === MOUSE ? '' : /^XInput#/.test(id) ? 'Read the way Elite reads an Xbox-style controller' : 'Its id in Windows: ' + id.split('#')[0];
 
 // The axes of the chosen device, by Windows' letters.
 function axesNow() {
@@ -159,6 +159,9 @@ function controlNow(letter, axes) {
   return same.length === 1 ? same[0] : null;
 }
 const OTHER = { Z: 'throttle or slider', U: 'slider', V: 'slider' };
+// An Xbox-style controller's sticks and triggers by what they are (XInputPads gives them the game's own names).
+const PAD = { LStickX: 'Left stick sideways', LStickY: 'Left stick up and down', RStickX: 'Right stick sideways',
+  RStickY: 'Right stick up and down', LTrigger: 'Left trigger', RTrigger: 'Right trigger' };
 const bars = {};
 function buildBars() {
   $('#check-id').textContent = idText(device);
@@ -180,7 +183,7 @@ function drawBars() {
   const info = env.getInfo(), off = info && info.settings.faOff;
   for (const [letter, v] of Object.entries(axes)) {
     const b = bars[letter], control = controlNow(letter, axes), c = off && control && off[control];
-    b.name.textContent = letter + (control ? ' · ' + NAMES[control] : OTHER[letter] ? ' · ' + OTHER[letter] : '');
+    b.name.textContent = (PAD[letter] || letter) + (control ? ' · ' + NAMES[control] : OTHER[letter] ? ' · ' + OTHER[letter] : '');
     const x = Math.max(-1, Math.min(1, v));
     b.fill.style.left = (x < 0 ? 50 + x * 50 : 50) + '%';
     b.fill.style.width = Math.abs(x) * 50 + '%';
@@ -628,8 +631,9 @@ function selftest() {
   check('the device list: plain names, no hex id, no two the same; the id is for the small print under it', () => {
     const list = deviceOptions([{ device: '046D:C215', name: 'Logitech Extreme 3D' }, { device: '1234:BEAD', name: 'vJoy Device' },
       { device: '231D:0200', name: 'controller 231D:0200' }, { device: '044F:B10A', name: 'controller 044F:B10A' }]);
-    return [list.map(o => o.text), idText('046D:C215#2'), idText(MOUSE)];
-  }, [['Logitech Extreme 3D', 'vJoy Device (vJoy, the virtual stick)', 'Unnamed controller', 'Unnamed controller (2)', 'Mouse'], 'Its id in Windows: 046D:C215', '']);
+    return [list.map(o => o.text), idText('046D:C215#2'), idText(MOUSE), idText('XInput#1')];
+  }, [['Logitech Extreme 3D', 'vJoy Device (vJoy, the virtual stick)', 'Unnamed controller', 'Unnamed controller (2)', 'Mouse'], 'Its id in Windows: 046D:C215', '',
+    'Read the way Elite reads an Xbox-style controller']);
   // A game pad has no twist: its yaw is a stick pushed sideways.
   check('the yaw steps say twist for a stick and the pad\'s stick sideways for a game pad', () => {
     const said = info => { setYawWords(info); return [STEPS.filter(s => s.motion === 'yaw' && s.round === 1).map(s => s.say), MOTION.yaw, PUSHED.twistLeft]; };

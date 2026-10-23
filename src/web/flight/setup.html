@@ -528,17 +528,25 @@ async function detectStep() {
       if (!detecting.peaks[key] || moved > detecting.peaks[key].moved) detecting.peaks[key] = { device: s.device, letter, moved };
     }
   }
-  const most = (vjoy, least) => Object.values(detecting.peaks).filter(p => /^1234:BEAD/i.test(p.device) === vjoy && p.moved > least)
+  const vjoy = d => /^1234:BEAD/i.test(d), xinput = d => /^XInput#/.test(d);
+  const most = which => Object.values(detecting.peaks).filter(p => which(p.device) && p.moved > (vjoy(p.device) ? 0.25 : 0.4))
     .sort((a, b) => b.moved - a.moved)[0] || null;
-  const now = performance.now(), real = most(false, 0.4), game = most(true, 0.25);
+  const control = detecting.control, bound = info.binds && info.binds.axes[control];
+  // An Xbox-style controller read the way Elite reads it has the game's own names for its sticks, so a control the game reads
+  // from it needs nothing set. Its copy in Windows' joystick list is the one Gremlin reads, so that is the one a fix is for.
+  if (bound && /Stick[XY]$/.test(bound.axis) && most(xinput)) {
+    detecting = null;
+    toast(NAMES[control] + ': Studio reads your controller the way Elite does, so there is nothing to set.');
+    return;
+  }
+  const now = performance.now(), real = most(d => !vjoy(d) && !xinput(d)), game = most(vjoy);
   if (real && !detecting.realAt) detecting.realAt = now;
   // Done when the real stick has moved and vJoy has followed it (or had a second and a half to), or when time is up.
   if (now < detecting.until && !(real && (game || now - detecting.realAt > 1500))) return;
-  const control = detecting.control, foundBefore = detecting.found;
+  const foundBefore = detecting.found;
   detecting = null;
   if (!real && !game) { toast('Nothing moved far enough. Click Detect again and move the control all the way.', true); return; }
   // A fix names the device and the game's letter for the axis (Gremlin's, for the real stick behind it), and gives Windows' letter.
-  const bound = info.binds && info.binds.axes[control];
   const through = throughFor(bound);
   const fix = { ...info.settings.axisFix }, changes = { axisFix: fix };
   if (real) {
