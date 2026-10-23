@@ -19,9 +19,12 @@
   score and tips, some with a one-click change naming its way. After a round the field shows the round's record (every reading
   of the stick while it was flown, Flight.recorder): "Your curve", with bars where the stick spent its time, and "Over the
   round", the stick, the mark and the dot. A narrow window shows it all in one column.
-  The level and the curve choice are kept in the page's own storage; the curves, the stick readings and the best scores are the
-  app's: GET /api/flight and the "flight" event, "flight-input" events, POST /api/flight/settings (the curves) and
-  POST /api/flight/score ({ game: 'dot2-medium-faOff', pct }, the best kept per level and curve set).
+  "Last rounds" on the left: the last ten rounds of the level and curve picked, newest first, each with its score and the curve
+  change made since the round before it (did it help?); a click shows that round's record over the field again.
+  The level and the curve choice are kept in the page's own storage; the curves, the stick readings, the best scores and the last
+  rounds are the app's: GET /api/flight and the "flight" event, "flight-input" events, POST /api/flight/settings (the curves),
+  POST /api/flight/score ({ game: 'dot2-medium-faOff', pct }, the best kept per level and curve set) and GET/POST
+  /api/flight/rounds (the last ten rounds of each, with their records: Flight.roundsList).
   chase.html?selftest checks the game's rules, the shared flight parts and this page's own (ChasePage, below).
 -->
 <style>
@@ -98,6 +101,9 @@
     <p class="small warn" id="stick-lost" hidden></p>
     <h2>Best scores</h2>
     <div class="best" id="best"></div>
+    <h2>Last rounds</h2>
+    <p class="small muted" id="rounds-what"></p>
+    <div class="rounds" id="rounds"></div>
     <h2>Controls</h2>
     <div class="keys" id="keys"></div>
   </aside>
@@ -130,6 +136,7 @@
 //   ChasePage.stickOf(frame)              the real stick for the rules ({ pitch, yaw }; null for one Studio cannot read)
 //   ChasePage.lostLine(frame)             the one line when there is no stick, or Studio cannot find it behind pitch or yaw
 //   ChasePage.advise(result, curves)      the tips after a round; ChasePage.tipChange(tip, curves): a tip's one-click change
+//   ChasePage.kept(round)                 a finished round as the app keeps it for "Last rounds" (POST /api/flight/rounds)
 var ChasePage = (() => {
 'use strict';
 const CHOICES = ['faOff', 'faOn', 'follow'];
@@ -218,6 +225,8 @@ function record(round, o) {
   return Flight.recorder({ axes: ['pitch', 'yaw'], curves: s.curves, sign: s.sign, target: { name: 'the dot', aim: true },
     off: v => ({ pitch: s.dot.y - mark(v, 'pitch'), yaw: s.dot.x - mark(v, 'yaw') }), clock: () => s.t, ...o });
 }
+// A finished round (its result and its record kept): what the app keeps of it, under its level and curve set.
+const kept = round => Flight.keptRound(round.id, { pct: round.result.pct }, round.set, round.record);
 
 // ---- the self-test: [{ name, ok, got, want }], as Flight.selftest() answers
 function selftest() {
@@ -323,10 +332,20 @@ function selftest() {
     return [Object.keys(r.axes), r.sign, r.target.aim, r.seconds, r.curves.yaw.bend, [r3(r.axes.pitch.off[0]), r3(r.axes.yaw.off[0])]];
   }, [['pitch', 'yaw'], { pitch: -1, yaw: 1 }, true, 2.5, 40,
     [Math.round((-0.2 + Chase.markOf(0.4, curve({ satY: 100, bend: 35 }))) * 1000) / 1000, Math.round((0.3 - Chase.markOf(-0.25, curve({ satY: 100, bend: 40 }))) * 1000) / 1000]]);
+  // Q5: a finished round kept for "Last rounds", and the change between two rounds in this page's words.
+  check('a finished round is kept as the app takes it: its game, its score, the curve set and the curves it was flown with, and its record', () => {
+    const round = begin('hard', 'faOn', info(), { controls: { pitch: { invert: false }, yaw: { invert: false } } }, 3);
+    round.result = { pct: 41.5 };
+    round.record = { frames: 1830, curves: { pitch: round.s.curves.pitch, yaw: round.s.curves.yaw } };
+    const body = kept(round);
+    return [body.game, body.pct, body.set, body.curves.yaw.bend, body.record.frames];
+  }, ['dot2-hard-faOn', 41.5, 'faOn', 20, 1830]);
+  check('the change between two rounds names the way as this page does: "Softer middle 35 → 45, up and down"', () =>
+    Flight.curveChange({ pitch: curve({ bend: 35 }), yaw: curve() }, { pitch: curve({ bend: 45 }), yaw: curve() }, AXES), 'Softer middle 35 → 45, up and down');
   return checks;
 }
 
-return { CHOICES, GOOD, setFor, gameId, begin, stickOf, lostLine, advise, tipChange, taken, record, selftest };
+return { CHOICES, GOOD, AXES, setFor, gameId, begin, stickOf, lostLine, advise, tipChange, taken, record, kept, selftest };
 })();
 
 (() => {
@@ -339,6 +358,8 @@ let info = null;          // GET /api/flight
 let frame = null;         // the newest reading of the sticks
 let run = null;           // the round on screen: ChasePage.begin's, with { phase, phaseAt, left, pausedAt, result, best, fresh, tips, applied,
                           //   rec: its recorder while flown, record: what it kept }
+let rounds = { game: null, list: [] };   // the last rounds the app keeps of the game picked now (GET /api/flight/rounds)
+let past = null;          // one of those shown over the field (clicked), with when it was flown, until Close, Start or another pick
 let preview = null;       // the field shown before Start
 let paused = '';
 const read = Flight.reader();
@@ -390,6 +411,7 @@ function drawSide() {
     const v = scores[ChasePage.gameId(l.id, k)];
     return [h('span', null, l.name), h('span', { class: 'small muted' }, SET_NAMES[k]), h('output', null, v == null ? '–' : v + '%')];
   })));
+  drawRounds();
   $('.tune-box').classList.toggle('locked', busy());
   tune.draw();
   drawKeys();
@@ -402,6 +424,19 @@ function usingWhy() {
   if (!info || !info.gameRunning) return 'Elite is not running, so your Flight Assist off curve.';
   return 'Elite has Flight Assist ' + (info.faOff ? 'off' : 'on') + ' now.';
 }
+// "Last rounds": the game picked now (its level, and the curve set the choice gives), read from the app when that changes. Each
+// with its score and the curve change since the round before it; a click shows it over the field (not while a round is flown).
+function drawRounds() {
+  const game = ChasePage.gameId(level, set());
+  if (game !== rounds.game) {
+    rounds = { game, list: [] };
+    Studio.api('GET', '/api/flight/rounds?game=' + game).then(tookRounds, () => {});
+  }
+  $('#rounds-what').textContent = Chase.LEVELS.find(l => l.id === level).name + ' with your ' + SET_NAMES[set()] + ' curve, newest first. Click one to see it again.';
+  Flight.roundsList($('#rounds'), rounds.list, { names: ChasePage.AXES, score: r => r.pct + '%', picked: past, disabled: busy(),
+    pick: (r, when) => { past = { ...r, when }; showRecord(); drawRounds(); }, empty: 'None yet: each round you play here is kept, the last ten.' });
+}
+function tookRounds(answer) { if (answer.game === rounds.game) { rounds.list = answer.rounds; drawRounds(); } }
 function drawKeys() {
   $('#keys').replaceChildren(h('div', null,   // in h(), a line with nothing to say (null) is left out
     info && !info.binds ? h('div', { class: 'warn' }, info.bindsProblem || 'Elite\'s bindings are not known yet.') : null,
@@ -416,6 +451,7 @@ function pick(change) {
   if (busy()) return;
   change();
   run = null;
+  past = null;
   $('#report').replaceChildren(h('p', { class: 'muted' }, 'Press Start (or Enter). Keep the mark on the dot for the whole round. Esc pauses.'));
   newPreview();
   drawSide();
@@ -431,6 +467,7 @@ function startRound() {
   read.reset();
   run = { ...ChasePage.begin(level, choice, info, frame, (Date.now() >>> 0) || 1), phase: 'count', phaseAt: performance.now(), left: 0, pausedAt: 0, applied: new Set() };
   paused = '';
+  past = null;
   document.activeElement && document.activeElement.blur();
   $('#report').replaceChildren(h('p', { class: 'muted' }, 'Get onto the dot before it moves: the mark follows your stick already.'));
   drawSide();
@@ -440,6 +477,7 @@ function stopRound() {
   if (run && run.rec) run.rec.stop();
   run = null;
   paused = '';
+  past = null;
   $('#report').replaceChildren(h('p', { class: 'muted' }, 'Stopped. Press Start (or Enter) to go again.'));
   newPreview();
   drawSide();
@@ -452,9 +490,15 @@ function fly() {
   round.left = 0;
   round.rec = ChasePage.record(round, { active: () => run === round && round.phase === 'fly' && !paused });
 }
-// After a round its record takes the field's place: "Your curve" and "Over the round", beside the tips.
-const showRecord = () => Flight.showRecord($('#record'), run && run.phase === 'done' ? run.record : null,
-  { names: { pitch: 'Up and down', yaw: 'Left and right' }, extra: 'Press Enter to fly again.' });
+// After a round its record takes the field's place: "Your curve" and "Over the round", beside the tips. A round clicked under
+// "Last rounds" takes it too, until Close (then the round just flown shows again, if there is one), Start or another pick.
+const NAMES = { pitch: 'Up and down', yaw: 'Left and right' };
+function showRecord() {
+  if (past) {
+    const close = h('button', { class: 'btn small', 'aria-label': 'Close the kept round', onclick: () => { past = null; showRecord(); drawRounds(); } }, 'Close');
+    Flight.showRecord($('#record'), past.record, { names: NAMES, extra: [h('span', null, 'Your round of ' + past.when + ': ' + past.pct + '% on the dot'), close] });
+  } else Flight.showRecord($('#record'), run && run.phase === 'done' ? run.record : null, { names: NAMES, extra: 'Press Enter to fly again.' });
+}
 function finish(out) {
   run.rec.stop();
   run.record = run.rec.compact();
@@ -464,8 +508,9 @@ function finish(out) {
   run.best = was == null ? null : was;
   run.fresh = was == null || out.result.pct > was;
   run.tips = ChasePage.advise(out.result, run.s.curves);   // from the curves the round was flown with
-  // Kept the moment the round ends, so leaving the page next cannot lose it.
+  // Kept the moment the round ends, so leaving the page next cannot lose it: the best score, and the round with the last ones.
   call('POST', '/api/flight/score', { game: run.id, pct: out.result.pct }).catch(e => toast(e.message, true));
+  Studio.api('POST', '/api/flight/rounds', ChasePage.kept(run)).then(tookRounds, e => toast(e.message, true));
   drawSide();
   drawReport();
   showRecord();

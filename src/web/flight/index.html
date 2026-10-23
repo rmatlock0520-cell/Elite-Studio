@@ -16,9 +16,12 @@
   after each set what happened and what to change. After a set the exercise's place shows an attempt's record (every
   reading of the stick while it was flown, Flight.recorder): "Your curve", with bars where the stick spent its time, and
   "Over the round", the stick, what the curve made of it and how far off the target was; the attempt is picked above it.
+  "Last rounds" on the left: the exercise's last ten attempts, newest first, each with its result and the curve change made
+  since the one before it (did it help?); a click shows that attempt's record over the exercise again.
   A set is five attempts; three good ones pass it and open the next exercise. The ship flies as Elite's do with
   Flight Assist off (sim.js); the app reads the stick and the keys (POST /api/flight/stream, "flight-input" events)
-  and keeps the curves and the progress (GET /api/flight, POST .../settings, .../progress, and the "flight" event).
+  and keeps the curves, the progress and the last rounds (GET /api/flight, POST .../settings, .../progress, GET/POST
+  .../rounds, and the "flight" event).
 -->
 <style>
 .layout{--side:330px}
@@ -93,6 +96,9 @@
     <h2>Exercises</h2>
     <div class="ladder" id="ladder"></div>
     <p class="small muted" style="margin-top:8px">Each set is five attempts. Three good ones pass it and open the next exercise.</p>
+    <h2>Last rounds</h2>
+    <p class="small muted" id="rounds-what"></p>
+    <div class="rounds" id="rounds"></div>
     <h2>Ship</h2>
     <div class="field"><select id="ship" aria-label="Ship to fly like"></select></div>
     <p class="small muted" id="ship-note"></p>
@@ -134,6 +140,8 @@ let info = null;          // GET /api/flight
 let frame = null;         // the newest reading of the sticks
 let chosen = Sim.FREE;    // the exercise on screen
 let run = null;           // the set being flown: { ex, results, a, phase, phaseAt, said, rec: the attempt's recorder while flown }
+let rounds = { game: null, list: [] };   // the last attempts the app keeps of the exercise on screen (GET /api/flight/rounds)
+let past = null;          // one of those shown over the exercise (clicked), with when it was flown, until Close, Start or another exercise
 let preview = null;       // the attempt shown before Start
 let paused = '';
 let view = 'dot';
@@ -216,7 +224,25 @@ function drawSide() {
   for (const b of document.querySelectorAll('#input button')) b.classList.toggle('active', b.dataset.input === info.settings.input);
   tune.draw();
   drawKeys();
+  drawRounds();
 }
+
+// "Last rounds": the exercise on screen's last ten attempts as the app keeps them, read from the app when another is chosen, each
+// with its result and the curve change since the one before it; a click shows it over the exercise (not while a set is flown).
+function drawRounds() {
+  const game = chosen === Sim.FREE ? null : chosen.id;
+  if (game !== rounds.game) {
+    rounds = { game, list: [] };
+    if (game) Studio.api('GET', '/api/flight/rounds?game=' + game).then(tookRounds, () => {});
+  }
+  $('#rounds-what').textContent = game ? 'Your last attempts at ' + chosen.title + ' ' + ['', 'I', 'II', 'III'][chosen.level] + ', newest first. Click one to see it again.'
+    : 'Free flight keeps no rounds.';
+  if (!game) { $('#rounds').replaceChildren(); return; }
+  Flight.roundsList($('#rounds'), rounds.list, { names: { pitch: 'pitch', yaw: 'yaw', roll: 'roll' }, picked: past, disabled: busy(),
+    score: r => (r.ok ? '✓ ' : '✗ ') + r.why + (r.record.through === 'game' ? ' (flown as the game gets it)' : ''),
+    pick: (r, when) => { past = { ...r, when }; showRecord(); drawRounds(); }, empty: 'None yet: each attempt you fly here is kept, the last ten.' });
+}
+function tookRounds(answer) { if (answer.game === rounds.game) { rounds.list = answer.rounds; drawRounds(); } }
 
 // After a set, the tips' buttons are worked out from the curves: when those change by hand, the tips follow.
 function redrawTips() { if (run && run.phase === 'done') drawReport(); }
@@ -261,6 +287,7 @@ function choose(ex) {
   chosen = ex;
   run = null;
   paused = '';
+  past = null;
   newPreview();
   drawSide();
   drawTries();
@@ -279,6 +306,7 @@ function startSet() {
   if (busy()) { stopSet(); return; }
   run = { ex: chosen, results: [], phase: 'count', phaseAt: performance.now(), applied: new Set() };
   paused = '';
+  past = null;
   nextAttempt();
   $('#go').textContent = 'Stop';
   document.activeElement && document.activeElement.blur();
@@ -319,6 +347,8 @@ function finishAttempt(out) {
   const a = run.a, kept = run.rec ? run.rec.compact() : null;   // the attempt's record
   if (run.rec) { run.rec.stop(); run.rec = null; }
   run.results.push({ ok: out.ok, why: out.why, crossings: { ...a.crossings }, peak: { ...a.peak }, speedAtEnd: Sim.len(a.s.v), firstOn: a.firstOn, onTime: a.onTime, record: kept });
+  // Kept with the exercise's last ten attempts the moment it ends: its result, the Flight Assist off curves as flown, its record.
+  if (kept) Studio.api('POST', '/api/flight/rounds', Flight.keptRound(run.ex.id, { ok: out.ok, why: out.why }, 'faOff', kept)).then(tookRounds, e => toast(e.message, true));
   run.said = out;
   run.phase = 'after';
   run.phaseAt = performance.now();
@@ -357,8 +387,14 @@ async function endSet() {
 }
 
 // After a set, an attempt's record takes the exercise's place: "Your curve" and "Over the round", beside the tips; the last
-// attempt first, any other at a click. Otherwise the place is the exercise's.
+// attempt first, any other at a click. An attempt clicked under "Last rounds" takes it too, until Close (then the set's own
+// show again, if there is one), Start or another exercise. Otherwise the place is the exercise's.
 function showRecord(i) {
+  if (past) {
+    const close = h('button', { class: 'btn small', 'aria-label': 'Close the kept attempt', onclick: () => { past = null; showRecord(); drawRounds(); } }, 'Close');
+    Flight.showRecord($('#record'), past.record, { extra: [h('span', null, 'Your attempt of ' + past.when + ': ' + (past.ok ? 'good' : 'missed')), close] });
+    return;
+  }
   const kept = run && run.phase === 'done' ? run.results.map((r, k) => r.record ? k : -1).filter(k => k >= 0) : [];
   const k = kept.includes(i) ? i : kept[kept.length - 1];
   if (k == null) { Flight.showRecord($('#record'), null); return; }

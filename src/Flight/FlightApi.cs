@@ -13,6 +13,14 @@ namespace EliteStudio.Flight;
 public sealed record TrainerShip(string Id, string Name, double Speed, double Boost, double Pitch, double Roll, double Yaw, double BoostEvery);
 
 /// <summary>
+/// One round kept for its game's "Last rounds" (flight-rounds.json): when it was flown (Studio's clock, "2026-10-22T14:32:05.120"),
+/// its score (Chase the dot: the share of the round on the dot, in percent) or result (a trainer attempt: good or not, and why),
+/// the curve set it was flown with ("faOff" or "faOn") and that set's numbers as flown, by control, and the page's record of
+/// the round (flight.js's Flight.recorder, as the page sent it: Studio only keeps it, the page draws it).
+/// </summary>
+public sealed record FlightRound(string Time, double? Pct, bool? Ok, string? Why, string Set, Dictionary<string, StickCurve> Curves, JsonObject Record);
+
+/// <summary>
 /// Studio Flight, for flying with Flight Assist off: the routes its pages use, the stream of the
 /// sticks for the trainer, the flight overlay, and the overlay showing by itself while Flight Assist
 /// is off.
@@ -21,7 +29,8 @@ public sealed record TrainerShip(string Id, string Name, double Speed, double Bo
 /// Gremlin's profile, the ships, Flight Assist now); POST /api/flight/settings (the named settings
 /// changed); POST /api/flight/progress ({"exercise":"chase-1","successes":3,"attempts":5}, one set of
 /// the trainer flown); POST /api/flight/score ({"game":"dot2-medium-faOff","pct":62.5}, a round of Chase the dot
-/// played, its best kept); POST /api/flight/stream (the stick readings as "flight-input" events for the
+/// played, its best kept); GET /api/flight/rounds?game=dot2-medium-faOff and POST /api/flight/rounds (the last ten rounds
+/// of each game, see <see cref="FlightRound"/>); POST /api/flight/stream (the stick readings as "flight-input" events for the
 /// next few seconds); POST /api/flight/gremlin (writes the FA Off profile for Joystick Gremlin);
 /// GET /api/flight/vjoy (looks for vJoy and says what state it is in, see <see cref="VJoyState"/>),
 /// POST /api/flight/vjoy/folder (the player points to vJoy's folder by hand, the only way to set it),
@@ -52,20 +61,24 @@ public sealed class FlightApi : IDisposable
 
     readonly Func<string?, VJoyInstall> findVJoy;
     readonly Func<string, Task<VJoyProbeResult?>> askVJoy;
+    readonly string? roundsFile;   // flight-rounds.json in the data folder; null: the rounds are kept for this run only
+    Dictionary<string, List<FlightRound>>? rounds;   // by game, oldest first, never changed in place; read from the file at the first ask
 
     /// <param name="overlay">The overlay, for its flight box; null for none.</param>
     /// <param name="gremlinProfile">Where Gremlin's profile is (null: the one Gremlin last opened); tests hand in their own.</param>
     /// <param name="sticks">How sticks are read; tests hand in their own (see <see cref="FlightReader"/>).</param>
     /// <param name="findVJoy">How vJoy is looked for in what Windows keeps (null: <see cref="VJoyFinder.Look"/>); tests hand in their own.</param>
     /// <param name="askVJoy">How vJoy's library is asked (null: Studio's helper, <see cref="VJoyHelper.Ask"/>); tests hand in their own.</param>
+    /// <param name="dataDir">Studio's data folder, where the last rounds are kept (flight-rounds.json); null keeps them for this run only.</param>
     public FlightApi(WebServer web, StudioSettings settings, GameState game, OverlayHost? overlay, string bindingsDir, Func<string?>? gameDir,
         Func<string?>? gremlinProfile = null, Func<bool, IReadOnlyList<StickState>>? sticks = null, Func<int, bool>? held = null,
-        Func<string?, VJoyInstall>? findVJoy = null, Func<string, Task<VJoyProbeResult?>>? askVJoy = null)
+        Func<string?, VJoyInstall>? findVJoy = null, Func<string, Task<VJoyProbeResult?>>? askVJoy = null, string? dataDir = null)
     {
         (this.web, file, this.game, this.overlay, this.bindingsDir, this.gameDir) = (web, settings, game, overlay, bindingsDir, gameDir);
         this.gremlinProfile = gremlinProfile ?? (() => Gremlin.LastProfile());
         this.findVJoy = findVJoy ?? VJoyFinder.Look;
         this.askVJoy = askVJoy ?? VJoyHelper.Ask;
+        roundsFile = dataDir is null ? null : Path.Combine(Path.GetFullPath(dataDir), RoundsFile);
         try
         {
             Current = settings.Get<FlightSettings>(Section).Cleaned();
@@ -87,6 +100,10 @@ public sealed class FlightApi : IDisposable
         web.Map("POST", "/api/flight/settings", Change);
         web.Map("POST", "/api/flight/progress", Progress);
         web.Map("POST", "/api/flight/score", Score);
+        web.Map("GET", "/api/flight/rounds", request => IsGame(request.Query.GetValueOrDefault("game"), out string game)
+            ? WebResponse.Json(new { game, rounds = Rounds().GetValueOrDefault(game) ?? [] })
+            : WebResponse.Error("That is not a game of Chase the dot or of the trainer.", 400));
+        web.Map("POST", "/api/flight/rounds", KeepRound);
         web.Map("POST", "/api/flight/stream", _ =>
         {
             reader.Stream();
@@ -433,7 +450,7 @@ public sealed class FlightApi : IDisposable
     WebResponse Progress(WebRequest request)
     {
         SetBody set = request.Read<SetBody>();
-        if (!System.Text.RegularExpressions.Regex.IsMatch(set.Exercise ?? "", "^(chase|tunnel|track)-[1-3]$") || set.Attempts is < 1 or > 5 || set.Successes < 0 || set.Successes > set.Attempts)
+        if (!IsExercise(set.Exercise) || set.Attempts is < 1 or > 5 || set.Successes < 0 || set.Successes > set.Attempts)
             return WebResponse.Error("That is not a set of the trainer.", 400);
         ExerciseRecord was = Current.Progress.GetValueOrDefault(set.Exercise!) ?? new ExerciseRecord();
         bool passed = set.Successes >= 3;
@@ -471,6 +488,105 @@ public sealed class FlightApi : IDisposable
         double best = Math.Max(Current.Scores.GetValueOrDefault(round.Game) ?? 0, pct);
         Save(Current with { Scores = new Dictionary<string, double?>(Current.Scores) { [round.Game] = best } });
         return WebResponse.Json(Answer());
+    }
+
+    // ------------------------------------------------------------ the last ten rounds of each game
+
+    const string RoundsFile = "flight-rounds.json";
+    /// <summary>The rounds kept of each game, and the most a round sent may be (Flight.recorder's longest record, a four-minute tunnel run, is about 23 KB).</summary>
+    const int RoundsKept = 10, RoundBytes = 32 * 1024;
+    static readonly JsonSerializerOptions RoundsJson = new(StudioSettings.Json) { WriteIndented = false };
+
+    /// <summary>An exercise of the trainer: "chase-1" to "track-3".</summary>
+    static bool IsExercise(string? id) => System.Text.RegularExpressions.Regex.IsMatch(id ?? "", "^(chase|tunnel|track)-[1-3]$");
+
+    /// <summary>A game whose last rounds are kept: one of Chase the dot ("dot2-medium-faOff") or an exercise of the trainer ("tunnel-2").</summary>
+    static bool IsGame(string? id, out string game) => FlightSettings.IsDotGame(game = id ?? "") || IsExercise(game);
+
+    sealed class SentRound
+    {
+        public string Game { get; set; } = "";
+        public double? Pct { get; set; }
+        public bool? Ok { get; set; }
+        public string? Why { get; set; }
+        public string Set { get; set; } = "";
+        public Dictionary<string, StickCurve?>? Curves { get; set; }
+        public JsonObject? Record { get; set; }
+    }
+
+    /// <summary>
+    /// A round of Chase the dot played, or an attempt of the trainer flown: kept with the last ones of its game, the oldest going
+    /// when there are more than ten. The file is written whole beside the old one and swapped in, as settings.json is, so a write
+    /// that fails leaves the rounds kept before whole, and Studio keeps the ones it had. Answers the game's rounds as kept now.
+    /// </summary>
+    WebResponse KeepRound(WebRequest request)
+    {
+        if (System.Text.Encoding.UTF8.GetByteCount(request.Body) > RoundBytes)
+            return WebResponse.Error($"That round is too big to keep: Studio keeps rounds of up to {RoundBytes / 1024} KB.", 400);
+        SentRound sent;
+        try
+        {
+            sent = request.Read<SentRound>();
+        }
+        catch (Exception wrong) when (wrong is JsonException or InvalidOperationException)
+        {
+            sent = new SentRound();
+        }
+        bool dot = FlightSettings.IsDotGame(sent.Game);
+        Dictionary<string, StickCurve> curves = (sent.Curves ?? []).Where(p => p.Key is "pitch" or "roll" or "yaw" && p.Value is not null)
+            .ToDictionary(p => p.Key, p => p.Value!.Cleaned());
+        if (!IsGame(sent.Game, out string game) || (dot ? sent.Pct is not (>= 0 and <= 100) : sent.Ok is null)
+            || sent.Set is not ("faOff" or "faOn") || curves.Count == 0 || sent.Record is null)
+            return WebResponse.Error("That is not a round of Chase the dot or of the trainer.", 400);
+        string why = (sent.Why ?? "").Trim();
+        // To the thousandth of a second: a page tells the rounds apart by it.
+        var round = new FlightRound(DateTime.Now.ToString("yyyy-MM-dd'T'HH:mm:ss.fff", CultureInfo.InvariantCulture), dot ? sent.Pct : null,
+            dot ? null : sent.Ok, dot ? null : why[..Math.Min(why.Length, 200)], sent.Set, curves, sent.Record);
+        var all = new Dictionary<string, List<FlightRound>>(Rounds()) { [game] = [.. (Rounds().GetValueOrDefault(game) ?? []).Append(round).TakeLast(RoundsKept)] };
+        if (roundsFile is not null)
+        {
+            string temp = roundsFile + ".tmp";
+            try
+            {
+                File.WriteAllText(temp, JsonSerializer.Serialize(all, RoundsJson));
+                File.Move(temp, roundsFile, overwrite: true);
+            }
+            catch (Exception problem) when (problem is IOException or UnauthorizedAccessException)
+            {
+                try
+                {
+                    File.Delete(temp);   // what was written of the new file (a folder in its way is not Studio's to take away)
+                }
+                catch (Exception left) when (left is IOException or UnauthorizedAccessException) { }
+                Log.Error("Studio Flight: a round could not be kept in " + roundsFile, problem);
+                return WebResponse.Error("Studio could not keep this round: " + problem.Message, 500);
+            }
+        }
+        rounds = all;
+        return WebResponse.Json(new { game, rounds = all[game] });
+    }
+
+    /// <summary>
+    /// The rounds kept, by game, oldest first: read from flight-rounds.json at the first ask. The file may have been edited by hand:
+    /// a game Studio does not have, an entry with nothing in it and rounds past the last ten are left out. One Studio cannot read is
+    /// kept beside it for the owner to send in (flight-rounds.json.unreadable), as settings.json is, and the rounds start again.
+    /// </summary>
+    Dictionary<string, List<FlightRound>> Rounds()
+    {
+        if (rounds is not null) return rounds;
+        if (roundsFile is null || !File.Exists(roundsFile)) return rounds = [];
+        try
+        {
+            var read = JsonSerializer.Deserialize<Dictionary<string, List<FlightRound?>?>>(File.ReadAllText(roundsFile), RoundsJson) ?? [];
+            return rounds = read.Where(p => IsGame(p.Key, out _) && p.Value is not null).ToDictionary(p => p.Key, p => p.Value!
+                .Where(r => r is { Time: not null, Set: not null, Curves: not null, Record: not null }).Select(r => r!).TakeLast(RoundsKept).ToList());
+        }
+        catch (JsonException problem)
+        {
+            File.Move(roundsFile, roundsFile + ".unreadable", overwrite: true);
+            Log.Error("flight-rounds.json could not be read; it was kept as flight-rounds.json.unreadable and the last rounds start again", problem);
+            return rounds = [];
+        }
     }
 
     void Save(FlightSettings changed)

@@ -847,6 +847,259 @@ public sealed class FlightTests : IDisposable
         Assert.Equal("eagle", (await Ask(web, "GET", "")).Json.GetProperty("settings").GetProperty("ship").GetString());
     }
 
+    // ------------------------------------------------------------ the last ten rounds of each game (flight-rounds.json)
+
+    /// <summary>
+    /// Studio Flight with a data folder of its own, as Program.cs hands it Studio's (settings.json is kept outside it here, so
+    /// the folder holds only what the rounds put there): the routes of the last rounds, and Studio started again on that folder.
+    /// </summary>
+    sealed class RoundsKept : IDisposable
+    {
+        readonly PracticeGame game = new();
+        readonly GameWatcher watcher;
+        readonly string settings;
+        FlightApi flight;
+        public readonly WebServer Web;
+        public readonly string Data;
+
+        public RoundsKept(string temp)
+        {
+            Data = Directory.CreateDirectory(Path.Combine(temp, "data")).FullName;
+            settings = Path.Combine(temp, "settings.json");
+            watcher = game.Watch();
+            Web = new WebServer(temp);
+            flight = Start();
+        }
+
+        FlightApi Start() => new(Web, new Settings(settings), watcher.State, null, game.BindingsDir, null,
+            gremlinProfile: () => null, sticks: _ => [], held: _ => false, dataDir: Data);
+
+        /// <summary>The file the rounds are kept in.</summary>
+        public string File => Path.Combine(Data, "flight-rounds.json");
+
+        /// <summary>Studio closed and started again on the same data folder.</summary>
+        public void Restart()
+        {
+            flight.Dispose();
+            flight = Start();
+        }
+
+        public Task<(int Status, JsonElement Json)> Post(JsonNode round) => Post(round.ToJsonString());
+
+        public Task<(int Status, JsonElement Json)> Post(string body) => Ask(Web, "POST", "/rounds", body);
+
+        /// <summary>GET /api/flight/rounds?game=...: the game's rounds as kept, oldest first.</summary>
+        public async Task<(int Status, JsonElement Json)> Get(string game)
+        {
+            WebResponse answer = await Web.Handle(new WebRequest("GET", "/api/flight/rounds", new Dictionary<string, string> { ["game"] = game }, ""));
+            return (answer.Status, JsonDocument.Parse(answer.Body).RootElement);
+        }
+
+        /// <summary>The scores of a game's rounds as kept, oldest first (Chase the dot's).</summary>
+        public async Task<double[]> Scores(string game = "dot2-medium-faOff") =>
+            [.. (await Get(game)).Json.GetProperty("rounds").EnumerateArray().Select(r => r.GetProperty("pct").GetDouble())];
+
+        public void Dispose()
+        {
+            flight.Dispose();
+            Web.Dispose();
+            watcher.Dispose();
+            game.Dispose();
+        }
+    }
+
+    static JsonObject Curve(double bend) => new() { ["deadLow"] = 4, ["deadHigh"] = 4, ["satX"] = 92, ["satY"] = 100, ["bend"] = bend };
+
+    /// <summary>A round of Chase the dot as the page posts it: its game, its score, the curve set and its curves as flown, and its record.</summary>
+    static JsonObject DotRound(double pct, string game = "dot2-medium-faOff", double bend = 35) => new()
+    {
+        ["game"] = game, ["pct"] = pct, ["set"] = "faOff",
+        ["curves"] = new JsonObject { ["pitch"] = Curve(bend), ["yaw"] = Curve(40) },
+        ["record"] = new JsonObject { ["frames"] = 1830, ["seconds"] = 30, ["through"] = "curve", ["axes"] = new JsonObject() },
+    };
+
+    /// <summary>An attempt of the trainer as its page posts it: its result (good or not, and why) in place of a score.</summary>
+    static JsonObject Attempt(bool ok, string why, string game = "chase-1") => new()
+    {
+        ["game"] = game, ["ok"] = ok, ["why"] = why, ["set"] = "faOff",
+        ["curves"] = new JsonObject { ["pitch"] = Curve(35), ["yaw"] = Curve(35), ["roll"] = Curve(20) },
+        ["record"] = new JsonObject { ["frames"] = 1220, ["seconds"] = 20, ["through"] = "curve", ["axes"] = new JsonObject() },
+    };
+
+    [Fact]
+    public async Task The_last_ten_rounds_of_each_game_are_kept_in_the_data_folder_and_a_restart_keeps_them()
+    {
+        using var kept = new RoundsKept(temp);
+        // Eleven rounds of one game, a curve changed before each: the answer is that game's rounds as kept now.
+        for (int i = 1; i <= 11; i++)
+        {
+            (int status, JsonElement answer) = await kept.Post(DotRound(i, bend: 30 + i));
+            Assert.Equal(200, status);
+            Assert.Equal(("dot2-medium-faOff", Math.Min(i, 10)), (answer.GetProperty("game").GetString(), answer.GetProperty("rounds").GetArrayLength()));
+        }
+        // Two attempts of the trainer, each in its own game
+        Assert.Equal(200, (await kept.Post(Attempt(true, "On target 7.2 of 20 s (6 needed), first on it after 3.1 s"))).Status);
+        Assert.Equal(200, (await kept.Post(Attempt(false, "Hit the wall 410 m in, at 220 m/s", "tunnel-2"))).Status);
+
+        async Task Check()
+        {
+            // the newest ten, oldest first: the first round is gone
+            Assert.Equal(new double[] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 }, await kept.Scores());
+            JsonElement newest = (await kept.Get("dot2-medium-faOff")).Json.GetProperty("rounds")[9];
+            // its curve set and the numbers as flown, its record as the page sent it, and when (Studio's clock)
+            Assert.Equal("faOff", newest.GetProperty("set").GetString());
+            Assert.Equal((41.0, 40.0, 92.0), (newest.GetProperty("curves").GetProperty("pitch").GetProperty("bend").GetDouble(),
+                newest.GetProperty("curves").GetProperty("yaw").GetProperty("bend").GetDouble(), newest.GetProperty("curves").GetProperty("pitch").GetProperty("satX").GetDouble()));
+            Assert.Equal(1830, newest.GetProperty("record").GetProperty("frames").GetInt32());
+            Assert.True(DateTime.TryParse(newest.GetProperty("time").GetString(), System.Globalization.CultureInfo.InvariantCulture, out DateTime when)
+                && Math.Abs((DateTime.Now - when).TotalMinutes) < 10, newest.GetProperty("time").GetString());
+            // a trainer attempt: its result in place of a score
+            JsonElement attempt = Assert.Single((await kept.Get("chase-1")).Json.GetProperty("rounds").EnumerateArray());
+            Assert.Equal((true, "On target 7.2 of 20 s (6 needed), first on it after 3.1 s", JsonValueKind.Null),
+                (attempt.GetProperty("ok").GetBoolean(), attempt.GetProperty("why").GetString(), attempt.GetProperty("pct").ValueKind));
+            Assert.Equal(20, attempt.GetProperty("curves").GetProperty("roll").GetProperty("bend").GetDouble());
+            Assert.False(Assert.Single((await kept.Get("tunnel-2")).Json.GetProperty("rounds").EnumerateArray()).GetProperty("ok").GetBoolean());
+            // every game its own: another level, the other curve set, another exercise
+            Assert.Empty(await kept.Scores("dot2-hard-faOff"));
+            Assert.Empty(await kept.Scores("dot2-medium-faOn"));
+            Assert.Empty(await kept.Scores("chase-2"));
+        }
+        await Check();
+        kept.Restart();
+        await Check();
+        // The settings route has no say over them: a page sending "rounds" with its settings changes nothing of them.
+        byte[] before = File.ReadAllBytes(kept.File);
+        Assert.Equal(200, (await Ask(kept.Web, "POST", "/settings", "{\"rounds\":{},\"Rounds\":null,\"ship\":\"eagle\"}")).Status);
+        Assert.Equal(before, File.ReadAllBytes(kept.File));
+        await Check();
+
+        // Kept in the data folder Studio was handed, one file and nothing beside it, and nowhere else.
+        Assert.Equal([kept.File], Directory.GetFileSystemEntries(kept.Data));
+        JsonElement file = JsonDocument.Parse(File.ReadAllText(kept.File)).RootElement;
+        Assert.Equal([("chase-1", 1), ("dot2-medium-faOff", 10), ("tunnel-2", 1)], file.EnumerateObject().Select(p => (p.Name, p.Value.GetArrayLength())).OrderBy(p => p.Name).ToArray());
+        Assert.False(File.Exists(Path.Combine(Environment.CurrentDirectory, "flight-rounds.json")));
+        Assert.False(File.Exists(Path.Combine(AppContext.BaseDirectory, "flight-rounds.json")));
+    }
+
+    [Theory]
+    [InlineData("dot2-extreme-faOff", "", null)]     // no such level
+    [InlineData("dot5-medium-faOff", "", null)]      // no five-axis dot game: the tunnel is that
+    [InlineData("dot2-medium-roll", "", null)]       // no such curve set
+    [InlineData("spin-1", "", null)]                 // an exercise the trainer no longer has
+    [InlineData("chase-4", "", null)]
+    [InlineData("free", "", null)]                   // free flight keeps no score
+    [InlineData("", "", null)]
+    [InlineData("dot2-medium-faOff", "pct", null)]   // a round of Chase the dot without its score...
+    [InlineData("dot2-medium-faOff", "pct", "140")]  // ...more than the whole round...
+    [InlineData("dot2-medium-faOff", "pct", "-1")]
+    [InlineData("dot2-medium-faOff", "pct", "\"lots\"")]
+    [InlineData("chase-1", "ok", null)]              // an attempt without its result
+    [InlineData("chase-1", "ok", "\"yes\"")]
+    [InlineData("dot2-medium-faOff", "set", "\"roll\"")]   // no such curve set
+    [InlineData("dot2-medium-faOff", "set", null)]
+    [InlineData("dot2-medium-faOff", "curves", null)]      // no curves...
+    [InlineData("dot2-medium-faOff", "curves", "{}")]
+    [InlineData("dot2-medium-faOff", "curves", "{\"throttle\":{\"bend\":35}}")]   // ...or none of the turning controls'
+    [InlineData("dot2-medium-faOff", "record", null)]      // no record...
+    [InlineData("dot2-medium-faOff", "record", "[1]")]     // ...or not one
+    [InlineData("dot2-medium-faOff", "record", "\"x\"")]
+    public async Task A_round_of_a_game_Studio_does_not_have_or_short_of_what_a_round_is_is_turned_away(string game, string field, string? value)
+    {
+        using var kept = new RoundsKept(temp);
+        JsonObject round = game.StartsWith("dot", StringComparison.Ordinal) ? DotRound(50) : Attempt(true, "On target 7.2 of 20 s (6 needed)");
+        round["game"] = game;
+        if (field.Length > 0) round[field] = value is null ? null : JsonNode.Parse(value);
+        if (value is null && field.Length > 0) round.Remove(field);
+
+        (int status, JsonElement json) = await kept.Post(round);
+        Assert.Equal(400, status);
+        Assert.False(json.GetProperty("ok").GetBoolean());
+        Assert.Empty(await kept.Scores());
+        Assert.Empty((await kept.Get("chase-1")).Json.GetProperty("rounds").EnumerateArray());
+        Assert.Empty(Directory.GetFileSystemEntries(kept.Data));   // nothing written
+    }
+
+    [Fact]
+    public async Task A_round_over_32_KB_is_turned_away_and_one_at_the_cap_is_kept()
+    {
+        using var kept = new RoundsKept(temp);
+        // A round whose body is exactly so many bytes (Q4's longest record, a four-minute tunnel run, is about 23 KB).
+        string Sized(int bytes)
+        {
+            JsonObject round = DotRound(50);
+            round["record"]!["pad"] = "";
+            round["record"]!["pad"] = new string('x', bytes - System.Text.Encoding.UTF8.GetByteCount(round.ToJsonString()));
+            return round.ToJsonString();
+        }
+        Assert.Equal(32 * 1024, System.Text.Encoding.UTF8.GetByteCount(Sized(32 * 1024)));
+        Assert.Equal(200, (await kept.Post(Sized(32 * 1024))).Status);
+        (int status, JsonElement json) = await kept.Post(Sized(32 * 1024 + 1));
+        Assert.Equal(400, status);
+        Assert.False(json.GetProperty("ok").GetBoolean());
+        Assert.Equal(new double[] { 50 }, await kept.Scores());
+        // a body that is no round at all, and a game asked for that Studio does not have
+        Assert.Equal(400, (await kept.Post("[1]")).Status);
+        Assert.Equal(400, (await kept.Post("")).Status);
+        Assert.Equal(400, (await kept.Get("dot2-extreme-faOff")).Status);
+        Assert.Equal(400, (await kept.Get("")).Status);
+        Assert.Equal(new double[] { 50 }, await kept.Scores());
+    }
+
+    [Fact]
+    public async Task A_failed_write_leaves_the_rounds_kept_before_whole()
+    {
+        using var kept = new RoundsKept(temp);
+        for (int i = 1; i <= 10; i++) Assert.Equal(200, (await kept.Post(DotRound(i))).Status);
+        byte[] before = File.ReadAllBytes(kept.File);
+        async Task TheTenAsTheyWere((int Status, JsonElement Json) answer)
+        {
+            Assert.Equal(500, answer.Status);
+            Assert.False(answer.Json.GetProperty("ok").GetBoolean());
+            Assert.Equal(before, File.ReadAllBytes(kept.File));   // the file whole, as it was
+            Assert.Equal(new double[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }, await kept.Scores());   // and Studio still has the ten it had
+        }
+
+        // The new file cannot be written beside the old one (a folder in its way here; a full disk or an antivirus does the same)...
+        Directory.CreateDirectory(kept.File + ".tmp");
+        await TheTenAsTheyWere(await kept.Post(DotRound(11)));
+        Directory.Delete(kept.File + ".tmp");
+        // ...or it cannot take the old one's place: another program has the file open.
+        using (new FileStream(kept.File, FileMode.Open, FileAccess.Read, FileShare.Read))
+            await TheTenAsTheyWere(await kept.Post(DotRound(11)));
+        Assert.Equal([kept.File], Directory.GetFileSystemEntries(kept.Data));   // nothing left beside it
+
+        // The way clear again, the next round is kept.
+        Assert.Equal(200, (await kept.Post(DotRound(11))).Status);
+        Assert.Equal(new double[] { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 }, await kept.Scores());
+    }
+
+    [Fact]
+    public async Task A_rounds_file_edited_by_hand_or_unreadable_never_stops_the_rounds()
+    {
+        using var kept = new RoundsKept(temp);
+        JsonObject Stored(double pct) => new()
+        {
+            ["time"] = "2026-10-21T21:05:00", ["pct"] = pct, ["ok"] = null, ["why"] = null, ["set"] = "faOff",
+            ["curves"] = new JsonObject { ["pitch"] = Curve(35), ["yaw"] = Curve(40) }, ["record"] = new JsonObject { ["frames"] = 1830 },
+        };
+        // Typed into the file by hand: twelve rounds of one game and an empty entry among them, a game Studio does not have, a null.
+        var twelve = new JsonArray(Enumerable.Range(1, 12).Select(i => (JsonNode?)Stored(i)).ToArray());
+        twelve.Insert(5, null);
+        File.WriteAllText(kept.File, new JsonObject { ["dot2-easy-faOff"] = twelve, ["spin-1"] = new JsonArray(Stored(5)), ["chase-1"] = null }.ToJsonString());
+        kept.Restart();
+        Assert.Equal(new double[] { 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 }, await kept.Scores("dot2-easy-faOff"));
+        Assert.Equal(200, (await kept.Get("chase-1")).Status);
+        Assert.Empty((await kept.Get("chase-1")).Json.GetProperty("rounds").EnumerateArray());
+
+        // A file Studio cannot read is kept aside for the owner to send in, and the rounds start again.
+        File.WriteAllText(kept.File, "{ not json");
+        kept.Restart();
+        Assert.Empty(await kept.Scores("dot2-easy-faOff"));
+        Assert.Equal("{ not json", File.ReadAllText(kept.File + ".unreadable"));
+        Assert.Equal(200, (await kept.Post(DotRound(64, "dot2-easy-faOff"))).Status);
+        Assert.Equal(new double[] { 64 }, await kept.Scores("dot2-easy-faOff"));
+    }
+
     /// <summary>
     /// The owner's bar for the stick readings: at least 55 a second, never more than 25 ms apart, and each one's time later than the
     /// last (the stick check drops a reading whose time repeats). Windows' tick count moves in steps of about 15.6 ms, so readings

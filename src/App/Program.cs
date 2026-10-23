@@ -190,10 +190,11 @@ public static class Program
         using var overlay = new Overlay.OverlayHost(web, settings, watcher.State, headless: window is null);
         // Studio Flight, for flying with Flight Assist off: the trainer's stream of the sticks, the flight overlay (shown by
         // itself while Flight Assist is off), and Joystick Gremlin's profile with an FA Off mode. A practice copy must not
-        // touch the player's real Gremlin files: it uses "gremlin\profile.xml" in its own data folder, when there is one.
+        // touch the player's real Gremlin files: it uses "gremlin\profile.xml" in its own data folder, when there is one. The last
+        // ten rounds of each of its games are kept in the data folder too (flight-rounds.json).
         string practiceProfile = Path.Combine(Paths.DataDir, "gremlin", "profile.xml");
         using var flight = new Flight.FlightApi(web, settings, watcher.State, overlay, Paths.BindingsDir, GameDir,
-            gremlinProfile: Paths.Practice ? () => File.Exists(practiceProfile) ? practiceProfile : null : null);
+            gremlinProfile: Paths.Practice ? () => File.Exists(practiceProfile) ? practiceProfile : null : null, dataDir: Paths.DataDir);
         // The clients for the community's services are made here and closed when the app ends. Studio Nav's, for Spansh
         // (--offline: a practice run reaches neither Spansh nor EDAstro):
         using var spansh = new Nav.Spansh(options.ContainsKey("offline") ? new Offline() : null);

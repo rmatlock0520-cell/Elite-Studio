@@ -8,6 +8,8 @@
 //   Flight.tuneBox(section, ...)   the +/- curve buttons beside a game, for the Flight Assist off or on curves
 //   Flight.recorder(o)             every reading of the sticks while a round is flown, and the record kept after it
 //   Flight.showRecord(box, record) the record's two views after a round: "Your curve" and "Over the round"
+//   Flight.roundsList(el, rounds)  "Last rounds": a game's last ten rounds as the app keeps them, with the curve change between
+//                                  them (Flight.curveChange) and a click to see one again; Flight.keptRound: a round as sent
 //   Flight.fit(canvas)             a canvas sized to its box for the screen's pixels
 //   Flight.keyText / buttonText / axisText / deviceText    a binding in words;  Flight.stickName(stick): a stick in words
 //   Flight.deviceNames(binds, sticks) / idsText(names) / devicesInWords(text, binds, names)   a controller Elite knows only by
@@ -731,6 +733,60 @@ function roundPane(canvas, record, a, name, ink) {
   g.fillText('0 s', L, h - 3);
 }
 
+// ---- the last rounds: the app keeps the last ten of each game (GET /api/flight/rounds?game=…, POST /api/flight/rounds)
+// The owner's ask: see whether a curve change helped. Each round the app keeps has when it was flown (the app's clock), its score
+// (pct: Chase the dot) or result (ok and why: a trainer attempt), the curve set it was flown with and its numbers as flown, and
+// its record (Flight.recorder's compact one, which Flight.showRecord draws).
+//   Flight.keptRound(game, score, set, record)  a round as the page sends it: score { pct } or { ok, why }; the curves the record's
+//   Flight.curveChange(before, after, names)    what changed from one round's curves to the next, in words ("Softer middle
+//                                               35 → 45, up and down"; names: each axis as the page says it, in that order)
+//   Flight.roundsList(el, rounds, o)            fills el with a game's rounds as the app keeps them (oldest first), newest first:
+//                                               when, its score and the change since the round before it, each a button
+//     o: { names, score(round): its score in words, pick(round, when): show it, picked: the round shown now, disabled: while a round
+//          is flown, empty: the line when none is kept }
+const keptRound = (game, score, set, record) => ({ game, ...score, set, curves: record.curves, record });
+const PARTS = { deadLow: 'Dead zone − side', deadHigh: 'Dead zone + side', satX: 'How far the stick travels', satY: 'Most it gives', bend: 'Softer middle' };
+function curveChange(before, after, names) {
+  const said = [];
+  for (const [axis, way] of Object.entries(names || {})) {
+    const a = before && before[axis], b = after && after[axis];
+    if (!a || !b) continue;
+    const moved = Object.keys(PARTS).filter(k => Math.abs(b[k] - a[k]) >= 0.05);
+    // Both dead zones moved alike (the stick check sets them so): one change.
+    const alike = moved.includes('deadLow') && moved.includes('deadHigh') && a.deadLow === a.deadHigh && b.deadLow === b.deadHigh;
+    for (const k of moved) if (!(alike && k === 'deadHigh')) said.push((alike ? PARTS[k].replace(/ − side$/, '') : PARTS[k]) + ' ' + a[k] + ' → ' + b[k] + ', ' + way);
+  }
+  return said.length > 3 ? said.slice(0, 3).join('; ') + '; and ' + (said.length - 3) + ' more changes' : said.join('; ');
+}
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const two = n => String(n).padStart(2, '0');
+// The rows of "Last rounds", newest first: { round, when (the time today, else the day too), label (to the second, so no two
+// buttons share a name), score, change }. o.now: the time now (a test's).
+function roundRows(list, o) {
+  const all = list || [], now = o.now || new Date();
+  return all.map((round, i) => {
+    const d = new Date(round.time), day = d.getDate() + ' ' + MONTHS[d.getMonth()], clock = two(d.getHours()) + ':' + two(d.getMinutes()), score = o.score(round);
+    return { round, when: d.toDateString() === now.toDateString() ? clock : day + ' ' + clock, label: 'Show the round of ' + day + ' ' + clock + ':' + two(d.getSeconds()) + ': ' + score,
+      score, change: i === 0 ? 'The oldest round kept here' : curveChange(all[i - 1].curves, round.curves, o.names) || 'The same curve as the round before' };
+  }).reverse();
+}
+const ROUNDS_LOOK = `.rounds{display:grid;gap:4px}
+.rounds button{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 10px;align-items:baseline;text-align:left;padding:5px 9px;border-radius:8px;border:1px solid var(--line);background:var(--panel);font-size:12.5px}
+.rounds button:hover:not(:disabled){border-color:var(--accent-line)}
+.rounds button.active{border-color:var(--accent);background:var(--accent-soft)}
+.rounds button:disabled{opacity:.5;cursor:not-allowed}
+.rounds .when{font-family:var(--mono);color:var(--muted)}
+.rounds small{grid-column:1/-1;color:var(--muted);font-size:11.5px}`;
+function roundsList(el, list, o) {
+  if (!el) return;
+  const { h } = Studio;
+  if (!document.getElementById('rounds-look')) document.head.append(h('style', { id: 'rounds-look' }, ROUNDS_LOOK));
+  const rows = roundRows(list, o);
+  el.replaceChildren(...(rows.length ? rows.map(r => h('button', { class: o.picked && o.picked.time === r.round.time ? 'active' : null, disabled: !!o.disabled,
+    'aria-label': r.label, title: 'Show this round again: your curve, and the round over time', onclick: () => o.pick(r.round, r.when) },
+    h('span', { class: 'when' }, r.when), h('span', null, r.score), h('small', null, r.change))) : [h('p', { class: 'small muted' }, o.empty || 'No rounds kept yet.')]));
+}
+
 // ---- the self-test (Flight.selftest(), from a page's console or a script): the hands picture puts the red dot where the
 // ship's stick is (the trainer with the FA Off curves: the real stick through them; Stick setup: what the game gets), the
 // trainer says when it cannot find the real stick, and the curve buttons change and send the curve set they were told, with
@@ -1023,9 +1079,39 @@ function selftest() {
     const r = rec.compact();
     return [r.changed, r.curves.pitch.bend, rec.frames.map(f => r3(f.v.pitch.curved))];
   }, [true, 30, [r3(curve(0.5, flat({ bend: 20 }))), r3(curve(0.5, flat({ bend: 30 })))]]);
+
+  // Q5: the last ten rounds of each game. The curve change made between two rounds in words (each part by its plain name, the
+  // way as the page says it), so the owner can see whether a change helped; when each was flown; a round as the app keeps it.
+  const ways = { pitch: 'up and down', yaw: 'left and right' };
+  const was = { pitch: flat({ deadLow: 4, deadHigh: 4, satX: 92, bend: 35 }), yaw: flat({ deadLow: 4, deadHigh: 4, satX: 92, bend: 40 }) };
+  const moved = (axis, fields) => ({ ...was, [axis]: { ...was[axis], ...fields } });
+  check('the curve change between two rounds in words: "Softer middle 35 → 45, up and down"', () => curveChange(was, moved('pitch', { bend: 45 }), ways),
+    'Softer middle 35 → 45, up and down');
+  check('several changes: each part and way named, a dead zone moved alike on both sides is one change; the same curve: nothing to say', () => [
+    curveChange(was, { pitch: { ...was.pitch, deadLow: 6, deadHigh: 6 }, yaw: { ...was.yaw, deadHigh: 5, satX: 97 } }, ways),
+    curveChange(was, JSON.parse(JSON.stringify(was)), ways)],
+    ['Dead zone 4 → 6, up and down; Dead zone + side 4 → 5, left and right; How far the stick travels 92 → 97, left and right', '']);
+  check('a curve put back to the suggestion (many parts at once): the first three changes, and how many more', () =>
+    curveChange(was, { pitch: flat({ deadLow: 2, deadHigh: 3, satX: 95, bend: 20 }), yaw: flat({ deadLow: 2, deadHigh: 2, satX: 95, bend: 20 }) }, ways),
+    'Dead zone − side 4 → 2, up and down; Dead zone + side 4 → 3, up and down; How far the stick travels 92 → 95, up and down; and 4 more changes');
+  const kept3 = [{ time: '2026-10-21T21:05:00', pct: 40, set: 'faOff', curves: was, record: { frames: 1830 } },
+    { time: '2026-10-22T14:32:05', pct: 52.5, set: 'faOff', curves: moved('pitch', { bend: 45 }), record: { frames: 1830 } },
+    { time: '2026-10-22T14:33:10', pct: 55, set: 'faOff', curves: moved('pitch', { bend: 45 }), record: { frames: 1830 } }];
+  const rowsOf = list => roundRows(list, { names: ways, score: r => r.pct + '%', now: new Date(2026, 9, 22, 15, 0) });
+  check('"Last rounds": newest first, each with when (today the time, else the day too), its score and the curve change since the round before it', () =>
+    rowsOf(kept3).map(r => [r.when, r.score, r.change]),
+    [['14:33', '55%', 'The same curve as the round before'], ['14:32', '52.5%', 'Softer middle 35 → 45, up and down'], ['21 Oct 21:05', '40%', 'The oldest round kept here']]);
+  check('no two rounds\' buttons share a name: each says when to the second', () => {
+    const labels = rowsOf(kept3.concat([{ ...kept3[2], time: '2026-10-22T14:33:50' }])).map(r => r.label);
+    return [labels[0], new Set(labels).size === labels.length];
+  }, ['Show the round of 22 Oct 14:33:50: 55%', true]);
+  check('a round as the app keeps it: its game, its score (or an attempt\'s result), the curve set, the curves as flown (the record\'s) and the record', () => {
+    const record = { frames: 1830, seconds: 30, curves: was, axes: {} };
+    return [keptRound('dot2-medium-faOff', { pct: 62.5 }, 'faOff', record), keptRound('tunnel-2', { ok: false, why: 'Out of time' }, 'faOff', record).ok];
+  }, [{ game: 'dot2-medium-faOff', pct: 62.5, set: 'faOff', curves: was, record: { frames: 1830, seconds: 30, curves: was, axes: {} } }, false]);
   return checks;
 }
 
-return { curve, stream, reader, drawInputs, stickLost, olderLine, tuneBox, recorder, showRecord, fit, keyText, buttonText, axisText, deviceText, stickName,
-  deviceNames, idsText, devicesInWords, clamp, look, selftest };
+return { curve, stream, reader, drawInputs, stickLost, olderLine, tuneBox, recorder, showRecord, keptRound, curveChange, roundsList, fit, keyText, buttonText,
+  axisText, deviceText, stickName, deviceNames, idsText, devicesInWords, clamp, look, selftest };
 })();
