@@ -150,6 +150,7 @@ td.sys .muted{display:block;white-space:normal;font-size:12.5px}
         <button class="btn primary cta" id="copy" title="Then paste it into the galaxy map's search box with Ctrl+V"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-copy"/></svg>Copy name</button>
       </div>
       <p class="muted" id="next-facts"></p>
+      <p id="direct" hidden><span></span> <button type="button" class="btn small" id="as-exact" title="Asks Spansh's exact plotter for the same trip: every jump, with the stars to scoop fuel at">List every jump</button></p>
       <p class="note" id="next-note" hidden><span class="tag">THERE</span><span></span></p>
       <div class="foot">
         <span id="left"></span>
@@ -277,6 +278,12 @@ function showNext(route, progress) {
     if (hop.refuel) facts.push('scoop fuel there');
   }
   $('#next-facts').textContent = facts.join(wideDot);
+  // Spansh's neutron plotter answers a trip that no neutron star makes shorter with the destination alone (HIP 49104 to
+  // Shinrarta Dezhra, 147 ly, in October 2026): said in words, or the route looks as if its neutron stars went missing.
+  const direct = !arrived && route.request.kind === 'neutron' && !route.hops.some(stop => stop.neutron);
+  $('#direct').hidden = !direct;
+  if (direct) $('#direct').firstChild.textContent = 'No neutron star on the way would make this trip shorter, so Spansh sends you straight to '
+    + route.hops[route.hops.length - 1].system + ' (' + about(progress.jumpsLeft) + '). The galaxy map plots those jumps for you.';
   // A stop of a trip says what to do there: for the stop the ship is in that is the thing to do now.
   for (const [box, note] of [['#here-note', progress.hereNote], ['#next-note', progress.nextNote]]) {
     $(box).hidden = !note;
@@ -494,6 +501,15 @@ $('#form').addEventListener('input', dropComplaint);
 $('#cancel').addEventListener('click', () => call('POST', '/api/nav/cancel', {}).then(dropComplaint, e => toast(e.message, true)));
 $('#clear').addEventListener('click', () => call('POST', '/api/nav/clear', {}).then(dropComplaint, e => toast(e.message, true)));
 $('#copy').addEventListener('click', () => { if (view.progress && view.progress.next) Studio.copyName(view.progress.next); });
+// "List every jump" under a neutron route with no neutron star on it: the same trip, asked of the exact plotter through the form.
+$('#as-exact').addEventListener('click', () => {
+  const r = view.route && view.route.request;
+  if (!r) return;
+  setKind('exact');
+  $('#to').value = r.to;
+  if ($('#from').value !== r.from) { $('#from').value = r.from; $('#from').dispatchEvent(new Event('input', { bubbles: true })); }   // typed: From stops following the game
+  plot();
+});
 $('#hops').addEventListener('click', e => { const name = e.target.closest('.name'); if (name) Studio.copyName(name.textContent); });
 window.addEventListener('resize', () => { inView = -1; markRows(); });   // a window made smaller may have pushed the next stop out of sight
 // The table coming (back) into sight: the moment to bring the next stop into view if it moved on meanwhile.
