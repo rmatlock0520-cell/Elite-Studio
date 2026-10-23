@@ -846,4 +846,86 @@ public sealed class FlightTests : IDisposable
         // the null is left out, and the rest of the section is still the player's
         Assert.Equal("eagle", (await Ask(web, "GET", "")).Json.GetProperty("settings").GetProperty("ship").GetString());
     }
+
+    /// <summary>
+    /// The owner's bar for the stick readings: at least 55 a second, never more than 25 ms apart, and each one's time later than the
+    /// last (the stick check drops a reading whose time repeats). Windows' tick count moves in steps of about 15.6 ms, so readings
+    /// timed by it show gaps of 31 ms and repeated times. A busy test machine can hold up any thread now and then, so the reader has
+    /// three tries of a second and a half to show it keeps the beat.
+    /// </summary>
+    [Fact]
+    public void Readings_come_about_sixty_a_second_evenly_and_their_times_always_go_up()
+    {
+        var tries = new List<string>();
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var sent = new System.Collections.Concurrent.ConcurrentQueue<(long At, long Time)>();
+            using (var reader = new FlightReader(_ => [], _ => false, frame => sent.Enqueue((clock.ElapsedMilliseconds, frame.Time))))
+            {
+                reader.Stream();
+                reader.Start();
+                Thread.Sleep(1800);
+            }
+            // a second and a half, after the reader has had 200 ms to start
+            long[] times = [.. sent.Where(s => s.At >= 200 && s.At < 1700).Select(s => s.Time)];
+            long[] gaps = [.. times.Skip(1).Select((time, i) => time - times[i])];
+            double perSecond = times.Length / 1.5;
+            long longest = gaps.Length == 0 ? long.MaxValue : gaps.Max();
+            int repeated = gaps.Count(gap => gap <= 0);
+            if (perSecond >= 55 && longest <= 25 && repeated == 0) return;
+            tries.Add($"{perSecond:0.#} a second, longest gap {longest} ms, {repeated} times not later than the one before");
+        }
+        Assert.Fail("The readings missed the bar (55 a second, no gap over 25 ms, times always later) in all three tries: " + string.Join("; ", tries));
+    }
+
+    /// <summary>
+    /// Studio's window thread also answers every page and draws the overlay, so the readings must not wait for it: while it is
+    /// busy for a quarter of a second the stream to the pages keeps coming. What touches the window still happens on that thread:
+    /// <see cref="FlightReader.Read"/> (the flight box draws itself) and <see cref="FlightReader.OverlayWants"/> (whether it is on screen).
+    /// </summary>
+    [Fact]
+    public void The_stream_keeps_its_beat_while_the_window_thread_is_busy_and_Read_comes_on_that_thread() => OverlayTests.OnWindowThread(() =>
+    {
+        var dispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
+        SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(dispatcher));
+        int window = Environment.CurrentManagedThreadId;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var sent = new System.Collections.Concurrent.ConcurrentQueue<long>();   // when each reading went to the pages
+        var readOn = new System.Collections.Concurrent.ConcurrentQueue<int>();
+        var askedOn = new System.Collections.Concurrent.ConcurrentQueue<int>();
+        using var reader = new FlightReader(_ => [], _ => false, _ => sent.Enqueue(clock.ElapsedMilliseconds));
+        reader.Read += _ => readOn.Enqueue(Environment.CurrentManagedThreadId);
+        reader.OverlayWants = () =>
+        {
+            askedOn.Enqueue(Environment.CurrentManagedThreadId);
+            return true;   // the flight box is on screen
+        };
+        reader.Stream();
+        reader.Start();
+
+        long busyFrom = 0, busyTo = 0;
+        var done = new System.Windows.Threading.DispatcherFrame();
+        var busy = new System.Windows.Threading.DispatcherTimer(TimeSpan.FromMilliseconds(500), System.Windows.Threading.DispatcherPriority.Normal, (timer, _) =>
+        {
+            ((System.Windows.Threading.DispatcherTimer)timer!).Stop();
+            busyFrom = clock.ElapsedMilliseconds;
+            Thread.Sleep(250);   // a slow page answer, say
+            busyTo = clock.ElapsedMilliseconds;
+        }, dispatcher);
+        var end = new System.Windows.Threading.DispatcherTimer(TimeSpan.FromMilliseconds(1200), System.Windows.Threading.DispatcherPriority.Normal, (timer, _) =>
+        {
+            ((System.Windows.Threading.DispatcherTimer)timer!).Stop();
+            done.Continue = false;
+        }, dispatcher);
+        System.Windows.Threading.Dispatcher.PushFrame(done);
+
+        Assert.True(busyTo > busyFrom);
+        int whileBusy = sent.Count(at => at > busyFrom && at < busyTo);
+        Assert.True(whileBusy >= 8, $"{whileBusy} readings went to the pages in the {busyTo - busyFrom} ms the window thread was busy (want 8 or more)");
+        Assert.NotEmpty(readOn);
+        Assert.All(readOn, thread => Assert.Equal(window, thread));
+        Assert.NotEmpty(askedOn);
+        Assert.All(askedOn, thread => Assert.Equal(window, thread));
+    });
 }
