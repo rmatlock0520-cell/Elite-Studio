@@ -184,8 +184,7 @@ function watchTurns(a, axes) {
 function watchPasses(a, off) {
   const ex = a.ex, near = Math.max(8, 3 * ex.dot), band = ex.dot / 4;
   const forced = a.jinkAt != null && a.time - a.jinkAt < 1;
-  const t = rot(qconj(a.s.q), a.target), ahead = -t[2];   // the target in the ship's own frame
-  const misses = { pitch: Math.atan2(t[1], ahead) / D, yaw: Math.atan2(t[0], ahead) / D };
+  const misses = offTarget(a);
   for (const axis of ['pitch', 'yaw']) {
     const e = misses[axis];
     if (Math.abs(e) < band) continue;
@@ -242,6 +241,27 @@ function update(a, cmd, dt) {
   return { done: false };
 }
 
+// ---- the attempt's record (Flight.recorder)
+// How far off the target is now, on each axis, as the exercise measures it, the way the stick turns the nose toward it: the
+// chase and the track, the target's angle off the nose up (pitch) and to the right (yaw), in degrees; the tunnel, how far the
+// middle of the tunnel is above the ship (pitch) and to its right (yaw), in metres. Roll has none; free flight no target.
+function offTarget(a) {
+  const ex = a.ex, s = a.s;
+  if (ex.kind === 'chase' || ex.kind === 'track') {
+    const t = rot(qconj(s.q), a.target), ahead = -t[2];   // the target in the ship's own frame
+    return { pitch: Math.atan2(t[1], ahead) / D, yaw: Math.atan2(t[0], ahead) / D, roll: null };
+  }
+  if (ex.kind !== 'tunnel') return null;
+  const middle = sub(follow(a.path, s.p, a.at).point, s.p);
+  return { pitch: dot(middle, up(s)), yaw: dot(middle, right(s)), roll: null };
+}
+// The target in the record's words, and how far off it the graph's edge is: six dot sizes off the nose, or the tunnel's wall.
+const target = ex => ex.kind === 'tunnel' ? { name: 'the middle of the tunnel: how far off, to the wall at ' + ex.radius + ' m', edge: ex.radius }
+  : { name: 'the target: how far off your nose, to ' + 6 * ex.dot + '°', edge: 6 * ex.dot };
+// An attempt's recorder: pitch, yaw and roll from every reading while it is flown, on its own clock, with how far off the target
+// was. o: the page's { curves, through, active } (and listen, for a test).
+const record = (a, o) => Flight.recorder({ axes: ['pitch', 'yaw', 'roll'], target: target(a.ex), off: () => offTarget(a), clock: () => a.time, ...o });
+
 // The dot of the track and chase exercises moves across the sky: steadily one way (line), along a slow curve (curve), or in sudden new directions (jink).
 function moveTarget(a, dt) {
   const ex = a.ex, t = a.time;
@@ -297,17 +317,18 @@ function tunnel(ex) {
   return { points, turns, stepLength };
 }
 
-// The point of the centre line nearest the ship, looked for around where it was last: its step, how far along, how far off.
+// The point of the centre line nearest the ship, looked for around where it was last: its step, how far along, how far off,
+// and the point itself.
 function follow(path, p, from) {
   const pts = path.points;
-  let best = from, bestOff = Infinity, bestAlong = 0;
+  let best = from, bestOff = Infinity, bestAlong = 0, bestPoint = p;
   for (let i = Math.max(0, from - 20); i < Math.min(pts.length - 1, from + 80); i++) {
     const a = pts[i].p, b = pts[i + 1].p, ab = sub(b, a);
-    const k = clamp(dot(sub(p, a), ab) / dot(ab, ab), i === 0 ? -20 : 0, 1);
-    const off = len(sub(p, add(a, mul(ab, k))));
-    if (off < bestOff) { bestOff = off; best = i; bestAlong = (i + k) * path.stepLength; }
+    const k = clamp(dot(sub(p, a), ab) / dot(ab, ab), i === 0 ? -20 : 0, 1), point = add(a, mul(ab, k));
+    const off = len(sub(p, point));
+    if (off < bestOff) { bestOff = off; best = i; bestAlong = (i + k) * path.stepLength; bestPoint = point; }
   }
-  return { i: best, off: bestOff, along: bestAlong };
+  return { i: best, off: bestOff, along: bestAlong, point: bestPoint };
 }
 
 // ---- pictures
@@ -672,8 +693,33 @@ function selftest() {
       return way && !/\b(More|Less) "/.test(t.text) ? way[1] : t.text;
     })[0];
   }), ['Raise', 'Lower']);
+
+  // Q4: the round's record. How far off the target was, on each axis, as each exercise measures it, and the trainer's recorder.
+  const spec = { name: 'Cobra Mk III', speed: 280, boost: 400, pitch: 40, roll: 100, yaw: 10, boostEvery: 5 };
+  const r3 = v => v == null ? v : Math.round(v * 1000) / 1000;
+  const offOf = (id, set) => { const a = start(EXERCISES.find(e => e.id === id), spec); set(a); const o = offTarget(a); return [r3(o.pitch), r3(o.yaw), o.roll]; };
+  check('the record\'s distance to the target, chase and track: degrees off the nose up and down (pitch) and side to side (yaw); roll has none', () => [
+    offOf('chase-1', a => { a.s.q = [1, 0, 0, 0]; a.target = rot(qaxis(RIGHT, 10 * D), NOSE); }),
+    offOf('track-2', a => { a.s.q = [1, 0, 0, 0]; a.target = rot(qaxis([0, -1, 0], 10 * D), NOSE); })], [[10, 0, null], [0, 10, null]]);
+  check('the record\'s distance to the target, tunnel: how far the middle of the tunnel is above (pitch) and to the right (yaw), in metres', () => [
+    offOf('tunnel-1', a => { a.s.p = [5, 0, -100]; }), offOf('tunnel-1', a => { a.s.p = [0, -3, -100]; })], [[0, -5, null], [3, 0, null]]);
+  check('the record\'s words for the target: the chase\'s and the track\'s up to six dot sizes off the nose, the tunnel\'s up to its wall', () =>
+    ['chase-1', 'track-3', 'tunnel-2'].map(id => target(EXERCISES.find(e => e.id === id))), [
+      { name: 'the target: how far off your nose, to 21°', edge: 21 },
+      { name: 'the target: how far off your nose, to 12°', edge: 12 },
+      { name: 'the middle of the tunnel: how far off, to the wall at 95 m', edge: 95 }]);
+  check('the trainer\'s record: pitch, yaw and roll from every reading, on the attempt\'s own clock, with its distance to the target', () => {
+    const a = start(EXERCISES.find(e => e.id === 'chase-1'), spec), fns = [], c = { deadLow: 0, deadHigh: 0, satX: 100, satY: 100, bend: 0 };
+    a.s.q = [1, 0, 0, 0];
+    a.target = rot(qaxis(RIGHT, 10 * D), NOSE);
+    const rec = record(a, { curves: () => ({ pitch: c, yaw: c, roll: c }), through: 'curve', active: () => true, listen: fn => { fns.push(fn); return () => {}; } });
+    a.time = 1.5;
+    fns.forEach(fn => fn({ time: 1, pressed: [], controls: { pitch: { real: 0.2, game: 0.2 }, yaw: { real: 0, game: 0 }, roll: { real: 0, game: 0 } } }));
+    const r = rec.compact();
+    return [Object.keys(r.axes), r.frames, r.seconds, r3(r.axes.pitch.off[0]), r.axes.roll.off[0], r.target.edge];
+  }, [['pitch', 'yaw', 'roll'], 1, 1.5, 10, null, 21]);
   return checks;
 }
 
-return { EXERCISES, FREE, RANKS, start, update, draw, advise, change, taken, D, len, selftest };
+return { EXERCISES, FREE, RANKS, start, update, record, draw, advise, change, taken, D, len, selftest };
 })();

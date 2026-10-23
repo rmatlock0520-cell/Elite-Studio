@@ -6,6 +6,8 @@
 //   Flight.stickLost(frame, info)  the line to show when Studio cannot find the real stick behind pitch, roll or yaw, and why
 //   Flight.olderLine(gremlin)      Stick setup's line when the FA Off profile saved for Gremlin is older than the curves
 //   Flight.tuneBox(section, ...)   the +/- curve buttons beside a game, for the Flight Assist off or on curves
+//   Flight.recorder(o)             every reading of the sticks while a round is flown, and the record kept after it
+//   Flight.showRecord(box, record) the record's two views after a round: "Your curve" and "Over the round"
 //   Flight.fit(canvas)             a canvas sized to its box for the screen's pixels
 //   Flight.keyText / buttonText / axisText / deviceText    a binding in words;  Flight.stickName(stick): a stick in words
 //   Flight.deviceNames(binds, sticks) / idsText(names) / devicesInWords(text, binds, names)   a controller Elite knows only by
@@ -80,9 +82,9 @@ function reader() {
       if (fromKeys) out.source[name] = 'keys';
       return clamp((value == null ? 0 : sign * value) + fromKeys, -1, 1);
     };
-    out.pitch = turn('pitch', 'pitchUp', 'pitchDown', -1);
-    out.roll = turn('roll', 'rollRight', 'rollLeft', 1);
-    out.yaw = turn('yaw', 'yawRight', 'yawLeft', 1);
+    out.pitch = turn('pitch', 'pitchUp', 'pitchDown', NATIVE.pitch);
+    out.roll = turn('roll', 'rollRight', 'rollLeft', NATIVE.roll);
+    out.yaw = turn('yaw', 'yawRight', 'yawLeft', NATIVE.yaw);
 
     const lat = c('lateral'), vert = c('vertical'), ahead = c('ahead'), thr = c('throttle');
     out.lateral = clamp((lat.game != null ? (lat.invert ? -1 : 1) * lat.game : 0) + keys('right', 'left'), -1, 1);
@@ -104,6 +106,8 @@ function reader() {
 }
 const PRESETS = [['speedMinus100', -1], ['speedMinus75', -0.75], ['speedMinus50', -0.5], ['speedMinus25', -0.25], ['speedZero', 0],
   ['speed25', 0.25], ['speed50', 0.5], ['speed75', 0.75], ['speed100', 1]];
+// Which way a stick position turns the ship before the game's invert: Elite's pitch axis is "nose down" for a stick pulled back.
+const NATIVE = { pitch: -1, roll: 1, yaw: 1 };
 
 // ---- the look's colours
 // What the look the player picked sets on <html> (studio.js puts its colours there as a page opens and when the look
@@ -504,6 +508,229 @@ function tuneBox(section, { call, info, set = () => 'faOff', note = () => '', ch
   return { hold, draw, show, graph, change, save, nudge, putBack };
 }
 
+// ---- a round's record, and its two views after the round
+// The owner's ruling: after a round the record shows both his curve, with a band where his stick spent its time, beside the
+// tips, and a line graph over the round of his stick, what the curve made of it and the dot or target.
+// Flight.recorder(o) keeps every reading of the sticks the app sends while a round is flown: each "flight-input" event, taken
+// from the stream itself and never once an animation frame (a page draws when it can; the readings come about sixty a second
+// whatever it does). For each axis: the real stick (null when Studio has no reading of it), what the curve made of it, what the
+// game gets, and how far off the target was in the round's own measure. It listens from the moment it is made until stop().
+//   o.axes        the axes it keeps ('pitch', 'yaw', 'roll')
+//   o.curves      each axis's curve as flown, or a function giving them as they are now (the trainer's buttons change them at once)
+//   o.sign        which way each axis moves the mark or turns the ship (1 or -1); unless told, as the reading's invert has it
+//   o.through     what the ship gets: 'curve', the stick through those curves (unless told), or 'game', what the game gets
+//   o.target      the target in words, and how it is drawn: { name, aim: true } when the stick aims (the dot game: the curve's
+//                 output is the mark's place, and off the dot's distance from it, in the field's units), else { name, edge }:
+//                 off in the game's own unit, drawn up to edge
+//   o.off(values) how far off the target is now, per axis ({ pitch, yaw }); values: this reading's { raw, curved, game } per axis
+//   o.clock()     seconds into the round;  o.active(): whether the round is being flown now (not counting down, paused or over)
+//   o.listen(fn)  where the readings come from, unless the app's "flight-input" events; answers a stop
+// rec.frames: every reading kept, { t, v: { pitch: { raw, curved, game, off, dead } } };  rec.stop();  rec.compact(): the record
+// kept after the round, at most 300 points an axis (each the mean of its share of the readings) and where the stick spent its
+// time in 20 parts of its travel: what Flight.showRecord draws, and what a round's history can keep.
+const POINTS = 300, BINS = 20;
+const reading = v => (v != null && isFinite(v) ? +v : null);
+const inDeadZone = (x, c) => !!c && (x < 0 ? -x <= c.deadLow / 100 : x <= c.deadHigh / 100);
+function recorder(o) {
+  const axes = o.axes, frames = [];
+  const now = () => (typeof o.curves === 'function' ? o.curves() : o.curves) || {};
+  const pick = c => Object.fromEntries(axes.map(a => [a, { ...c[a] }]));
+  let sign = o.sign ? { ...o.sign } : null, first = null, used = null, stopped = false;
+  const take = frame => {
+    if (stopped || !frame || (o.active && !o.active())) return;
+    const c = now(), v = {};
+    for (const a of axes) {
+      const k = (frame.controls && frame.controls[a]) || {}, raw = reading(k.real);
+      v[a] = { raw, curved: raw == null ? null : curve(raw, c[a]), game: reading(k.game), off: null, dead: raw != null && inDeadZone(raw, c[a]) };
+    }
+    const off = (o.off && o.off(v)) || {};
+    for (const a of axes) v[a].off = reading(off[a]);
+    if (!o.sign) sign = Object.fromEntries(axes.map(a => [a, (NATIVE[a] || 1) * (frame.controls && frame.controls[a] && frame.controls[a].invert ? -1 : 1)]));
+    used = pick(c);
+    if (first == null) first = JSON.stringify(used);
+    frames.push({ t: o.clock ? o.clock() : 0, v });
+  };
+  const unlisten = (o.listen || (fn => Studio.onEvent('flight-input', fn)))(take);
+  return {
+    frames,
+    stop: () => { if (!stopped) { stopped = true; unlisten(); } },
+    compact: () => compact(frames, axes, { through: o.through || 'curve', target: o.target, sign,
+      curves: used || pick(now()), changed: first != null && JSON.stringify(used) !== first }),
+  };
+}
+function compact(frames, axes, kept) {
+  const n = frames.length, m = Math.min(n, POINTS), to = (v, k) => (v == null ? null : Math.round(v * k) / k);
+  const mean = (from, end, get) => {
+    let sum = 0, count = 0;
+    for (let i = from; i < end; i++) { const x = get(frames[i]); if (x != null) { sum += x; count++; } }
+    return count ? sum / count : null;
+  };
+  const out = { frames: n, seconds: to(n ? frames[n - 1].t : 0, 100), ...kept, t: [], axes: {} };
+  for (const a of axes) out.axes[a] = { raw: [], curved: [], game: [], off: [], band: new Array(BINS).fill(0), dead: 0, none: 0 };
+  for (let j = 0; j < m; j++) {
+    const from = Math.floor(j * n / m), end = Math.floor((j + 1) * n / m);
+    out.t.push(to(mean(from, end, f => f.t), 100));
+    for (const a of axes) for (const key of ['raw', 'curved', 'game', 'off']) out.axes[a][key].push(to(mean(from, end, f => f.v[a][key]), 1000));
+  }
+  for (const f of frames) for (const a of axes) {
+    const x = f.v[a], A = out.axes[a];
+    if (x.raw == null) { A.none++; continue; }
+    A.band[Math.min(BINS - 1, Math.floor((clamp(x.raw, -1, 1) + 1) / 2 * BINS))]++;
+    if (x.dead) A.dead++;
+  }
+  for (const a of axes) {
+    const A = out.axes[a], share = k => to(k / Math.max(1, n), 10000);
+    Object.assign(A, { band: A.band.map(share), dead: share(A.dead), none: share(A.none) });
+  }
+  return out;
+}
+
+// A record's words for one axis: how much of the round the stick sat in the dead zone, and had no reading.
+const share = v => v >= 1 ? '100%' : v <= 0 ? '0%' : v < 0.005 ? 'under 1%' : Math.min(99, Math.round(100 * v)) + '%';
+const recordWords = (record, a) => 'In the dead zone ' + share(record.axes[a].dead) + ' of the time'
+  + (record.axes[a].none > 0 ? '; no reading of your stick ' + share(record.axes[a].none) : '');
+
+// "Over the round", one axis: the lines from -1 to 1, drawn the way the axis moves the mark or turns the ship (up the graph is
+// up, or right). stick: the stick before any curve; through: the dot game's mark (the curve's output over the most it gives,
+// the middle with no reading), else what the ship got (the curve's output, or the game's when flown as the game gets it);
+// target: the dot's place (the mark's plus how far the dot was from it), else how far off the target was, up to its edge.
+function recordSeries(record, a) {
+  const A = record.axes[a], sign = (record.sign && record.sign[a]) || 1, c = record.curves && record.curves[a];
+  const stick = A.raw.map(v => (v == null ? null : sign * v));
+  if (record.target && record.target.aim) {
+    const most = v => Math.abs(curve(v < 0 ? -1 : 1, c)) || 1;
+    const through = A.curved.map(v => (v == null ? 0 : sign * v / most(v)));
+    return { stick, through, target: A.off.map((v, i) => (v == null ? null : through[i] + v)) };
+  }
+  const edge = (record.target && record.target.edge) || 1;
+  return { stick, through: A.curved.map((v, i) => { const x = record.through === 'game' || v == null ? A.game[i] : v; return x == null ? null : sign * x; }),
+    target: A.off.map(v => (v == null ? null : clamp(v / edge, -1, 1))) };
+}
+
+// Flight.showRecord(box, record, o): the record's two views in box (an empty .record element over a game's field, which it
+// fills and keeps drawn at its size); with no record the box is emptied and hidden. o: { names: each axis in words ({ pitch:
+// 'Up and down' }), extra: what goes at the top right (what to press next, the trainer's attempts) }.
+//   "Your curve": for each axis the curve as flown, bars where the stick spent its time along its travel, the dead zone in grey.
+//   "Over the round": for each axis the stick, what the curve made of it and the dot or target, over the round's time.
+const RECORD_LOOK = `.record{position:absolute;inset:0;z-index:1;display:grid;grid-template-rows:auto minmax(0,1fr) auto auto minmax(0,1fr) auto;gap:4px;padding:10px 12px;background:#05070b;overflow:auto;cursor:default}
+:root[style*="--bg:"] .record{background:var(--bg)}
+.record-head{display:flex;align-items:center;flex-wrap:wrap;gap:2px 10px}
+.record-head h3{margin:0;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--text)}
+.record-head .extra{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.record-head .seg button{min-height:24px;padding:0 8px;font-size:12px;text-transform:none}
+.record-row,.record-notes{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:10px}
+.record-row{min-height:64px}
+.record-pane{position:relative;border:1px solid var(--line);border-radius:8px;min-height:64px}
+.record-pane canvas{position:absolute;inset:0;width:100%;height:100%}
+.record-notes,.record-key{font-size:12px;color:var(--muted)}
+.record-notes b{color:var(--text);font-weight:500}
+.record-key{display:flex;flex-wrap:wrap;gap:2px 14px}
+.record-key i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}`;
+const ENDS = { pitch: ['up', 'down'], yaw: ['right', 'left'], roll: ['roll right', 'roll left'] };   // the top and bottom of "Over the round"
+const shown = new WeakMap(), watched = new WeakSet();
+function showRecord(box, record, o = {}) {
+  if (!box) return;
+  box.hidden = !record;
+  if (!record) { box.replaceChildren(); shown.delete(box); return; }
+  const { h } = Studio;
+  if (!document.getElementById('record-look')) document.head.append(h('style', { id: 'record-look' }, RECORD_LOOK));
+  const axes = Object.keys(record.axes), names = { pitch: 'Pitch', yaw: 'Yaw', roll: 'Roll', ...o.names }, target = record.target || { name: 'the target' };
+  const panes = { curve: {}, round: {} };
+  const pane = (kind, a, label) => h('div', { class: 'record-pane' }, panes[kind][a] = h('canvas', { role: 'img', 'aria-label': label }));
+  const key = (colour, text) => h('span', null, h('i', { style: 'background:var(' + colour + ')' }), text);
+  const notes = [record.changed ? 'You changed the curve during this round: it is drawn as it was at the end.' : null,
+    record.through === 'game' ? 'You flew "As the game gets it": the ship got what Elite gets, through Joystick Gremlin\'s curve.' : null];
+  box.replaceChildren(
+    h('div', { class: 'record-head' }, h('h3', null, 'Your curve'),
+      h('span', { class: 'small muted' }, 'Bars: where your stick spent its time. Grey: the dead zone.', notes.filter(Boolean).map(n => ' ' + n)),
+      o.extra ? h('span', { class: 'extra' }, o.extra) : null),
+    h('div', { class: 'record-row' }, axes.map(a => pane('curve', a, names[a] + ': your curve, and where your stick spent its time'))),
+    h('div', { class: 'record-notes' }, axes.map(a => h('span', null, h('b', null, names[a]), ' · ' + recordWords(record, a)))),
+    h('div', { class: 'record-head' }, h('h3', null, 'Over the round'),
+      h('span', { class: 'small muted' }, record.frames.toLocaleString('en-GB') + ' readings of your stick in ' + record.seconds.toFixed(1) + ' s')),
+    h('div', { class: 'record-row' }, axes.map(a => pane('round', a, names[a] + ' over the round: your stick, what your curve made of it, and ' + target.name))),
+    h('div', { class: 'record-key' }, key('--muted', 'your stick'),
+      key('--accent', target.aim ? 'your mark: your stick through your curve' : record.through === 'game' ? 'what the game got' : 'what your curve made of it'),
+      key('--good', target.name)));
+  shown.set(box, { record, names, panes });
+  if (!watched.has(box)) { watched.add(box); new ResizeObserver(() => drawRecord(box)).observe(box); }
+  drawRecord(box);
+}
+function drawRecord(box) {
+  const now = shown.get(box);
+  if (!now || box.hidden) return;
+  const css = getComputedStyle(document.documentElement), v = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  const ink = { accent: v('--accent', '#ff7100'), muted: v('--muted', '#8a98ad'), good: v('--good', '#3ddc84'), text: v('--text', '#e2e8f0') };
+  for (const a of Object.keys(now.record.axes)) {
+    curvePane(now.panes.curve[a], now.record, a, now.names[a], ink);
+    roundPane(now.panes.round[a], now.record, a, now.names[a], ink);
+  }
+}
+function curvePane(canvas, record, a, name, ink) {
+  const { g, w, h } = fit(canvas);
+  g.clearRect(0, 0, w, h);
+  if (w < 60 || h < 40) return;
+  const c = record.curves[a] || {}, band = record.axes[a].band, L = 6, R = 6, T = 18, B = 6, pw = w - L - R, ph = h - T - B;
+  const X = v => L + (v + 1) / 2 * pw, Y = v => T + (1 - (v + 1) / 2) * ph;
+  // where the stick spent its time: a bar for each twentieth of its travel, the most used one the whole height
+  const most = Math.max(...band);
+  g.fillStyle = ink.accent;
+  g.globalAlpha = 0.35;
+  band.forEach((part, i) => { if (part > 0) { const x0 = X(-1 + 2 * i / BINS), x1 = X(-1 + 2 * (i + 1) / BINS), bar = ph * part / most; g.fillRect(x0 + 0.5, T + ph - bar, x1 - x0 - 1, bar); } });
+  g.globalAlpha = 1;
+  // the dead zone, the middle and the straight line for comparison, then the curve as flown
+  g.fillStyle = 'rgba(200,210,225,.2)';
+  g.fillRect(X(-(c.deadLow || 0) / 100), T, Math.max(1, X((c.deadHigh || 0) / 100) - X(-(c.deadLow || 0) / 100)), ph);
+  g.strokeStyle = 'rgba(255,255,255,.12)';
+  g.lineWidth = 1;
+  g.beginPath(); g.moveTo(L, Y(0)); g.lineTo(L + pw, Y(0)); g.moveTo(X(0), T); g.lineTo(X(0), T + ph); g.stroke();
+  g.setLineDash([3, 4]); g.strokeStyle = 'rgba(255,255,255,.25)';
+  g.beginPath(); g.moveTo(X(-1), Y(-1)); g.lineTo(X(1), Y(1)); g.stroke(); g.setLineDash([]);
+  g.strokeStyle = ink.accent;
+  g.lineWidth = 2;
+  g.beginPath();
+  for (let i = 0; i <= 120; i++) { const x = -1 + i / 60, y = curve(x, c); if (i === 0) g.moveTo(X(x), Y(y)); else g.lineTo(X(x), Y(y)); }
+  g.stroke();
+  g.fillStyle = ink.text;
+  g.font = '600 12px "Segoe UI",sans-serif';
+  g.fillText(name, L + 2, 13);
+}
+function roundPane(canvas, record, a, name, ink) {
+  const { g, w, h } = fit(canvas);
+  g.clearRect(0, 0, w, h);
+  if (w < 60 || h < 40) return;
+  const lines = recordSeries(record, a), times = record.t, end = Math.max(record.seconds, 1e-6), L = 6, R = 6, T = 18, B = 14, pw = w - L - R, ph = h - T - B;
+  const X = t => L + clamp(t / end, 0, 1) * pw, Y = v => T + (1 - (clamp(v, -1, 1) + 1) / 2) * ph;
+  g.strokeStyle = 'rgba(255,255,255,.12)';
+  g.lineWidth = 1;
+  g.beginPath(); g.moveTo(L, Y(0)); g.lineTo(L + pw, Y(0)); g.stroke();
+  const line = (list, colour, width, dash) => {
+    g.strokeStyle = colour;
+    g.lineWidth = width;
+    g.setLineDash(dash || []);
+    g.beginPath();
+    let open = false;   // no reading: a gap in the line
+    list.forEach((v, i) => { if (v == null) { open = false; return; } if (open) g.lineTo(X(times[i]), Y(v)); else g.moveTo(X(times[i]), Y(v)); open = true; });
+    g.stroke();
+    g.setLineDash([]);
+  };
+  line(lines.target, ink.good, 1.5, [5, 3]);
+  line(lines.stick, ink.muted, 1.2);
+  line(lines.through, ink.accent, 2);
+  g.font = '600 12px "Segoe UI",sans-serif';
+  g.fillStyle = ink.text;
+  g.fillText(name, L + 2, 13);
+  g.font = '10px "Segoe UI",sans-serif';
+  g.fillStyle = ink.muted;
+  g.textAlign = 'right';
+  const [top, bottom] = ENDS[a] || ['', ''];
+  g.fillText(top, L + pw - 2, 13);
+  g.fillText(bottom, L + pw - 2, T + ph - 3);
+  g.fillText(record.seconds.toFixed(0) + ' s', L + pw, h - 3);
+  g.textAlign = 'left';
+  g.fillText('0 s', L, h - 3);
+}
+
 // ---- the self-test (Flight.selftest(), from a page's console or a script): the hands picture puts the red dot where the
 // ship's stick is (the trainer with the FA Off curves: the real stick through them; Stick setup: what the game gets), the
 // trainer says when it cannot find the real stick, and the curve buttons change and send the curve set they were told, with
@@ -693,9 +920,112 @@ function selftest() {
   check('the notes after saving for Gremlin name a controller in words', () => devicesInWords(
     'Gremlin cannot switch modes on button 4 of 231D0200, which switches Flight Assist in the game: use button 2 of LogitechExtreme3DPro.', idBinds, idNames()),
     'Gremlin cannot switch modes on button 4 of Unnamed controller, which switches Flight Assist in the game: use button 2 of Logitech Extreme 3D Pro.');
+
+  // Q4: the round's record. A stand-in for the app's stream of readings (the recorder's own source), and readings of pitch,
+  // roll and yaw ("real": the stick before any curve; "game": what the game gets).
+  const source = () => {
+    const fns = [];
+    return { listen: fn => { fns.push(fn); return () => { const at = fns.indexOf(fn); if (at >= 0) fns.splice(at, 1); }; }, send: f => fns.slice().forEach(fn => fn(f)), listening: () => fns.length };
+  };
+  const reading = (time, pitch, yaw, more = {}) => ({ time, pressed: [], sticks: [{ device: '046D:C215', name: 'Logitech Extreme 3D' }], controls: {
+    pitch: { real: pitch, game: pitch, invert: false, ...more.pitch }, yaw: { real: yaw, game: yaw, invert: false, ...more.yaw }, roll: { real: 0, game: 0, invert: false, ...more.roll } } });
+  const flat = o => ({ deadLow: 0, deadHigh: 0, satX: 100, satY: 100, bend: 0, ...o });
+  const r3 = v => v == null ? v : Math.round(v * 1000) / 1000;
+  check('600 readings resting at 3% inside a 4% dead zone: the record says 100% of the time in the dead zone, and the curve gave 0 throughout', () => {
+    const src = source(), dz = flat({ deadLow: 4, deadHigh: 4 });
+    let t = 0;
+    const rec = recorder({ axes: ['pitch', 'yaw'], curves: { pitch: dz, yaw: dz }, target: { name: 'the dot', aim: true }, clock: () => t, listen: src.listen });
+    for (let i = 0; i < 600; i++) { t = i / 61; src.send(reading(5000 + i * 16, 0.03, -0.03)); }
+    rec.stop();
+    const r = rec.compact(), p = r.axes.pitch, y = r.axes.yaw;
+    return { frames: r.frames, dead: [p.dead, y.dead], words: recordWords(r, 'pitch'), curved: [...new Set(p.curved.concat(y.curved))], raw: [...new Set(p.raw), ...new Set(y.raw)],
+      band: [p.band[10], y.band[9]] };
+  }, { frames: 600, dead: [1, 1], words: 'In the dead zone 100% of the time', curved: [0], raw: [0.03, -0.03], band: [1, 1] });
+  check('every reading of the round is recorded once, however often the page draws (24 or 144 times a second, readings 61 a second); none while paused', () => {
+    const flown = fps => {
+      const src = source(), sent = [];
+      let clock = 0, paused = false, newest = null;
+      const rec = recorder({ axes: ['pitch', 'yaw'], curves: { pitch: flat(), yaw: flat() }, target: { name: 'the dot', aim: true }, off: () => ({ pitch: 0, yaw: 0 }),
+        clock: () => clock, active: () => !paused, listen: src.listen });
+      // The page: readings come every 1/61 s, whatever it does; it draws (and moves the round on) every 1/fps s. Halfway, a
+      // second's pause: its 61 readings are not the round's.
+      let draws = 0, i = 0, time = 0;
+      while (sent.length < 600) {
+        time += 1 / 61;
+        while ((draws + 1) / fps <= time) { draws++; if (!paused) clock = draws / fps; }
+        if (sent.length === 300 && i < 361) paused = true; else paused = false;
+        newest = reading(5000 + Math.round(time * 1000), (i % 500) / 1000, 0);
+        i++;
+        if (!paused) sent.push(newest.controls.pitch.real);
+        src.send(newest);
+      }
+      rec.stop();
+      const got = rec.frames.map(f => f.v.pitch.raw);
+      return { recorded: got.length, sameReadings: JSON.stringify(got) === JSON.stringify(sent), stillListening: src.listening() };
+    };
+    return [flown(24), flown(144)];
+  }, [{ recorded: 600, sameReadings: true, stillListening: 0 }, { recorded: 600, sameReadings: true, stillListening: 0 }]);
+  check('the record kept after a round stays under its cap: a 4-minute tunnel run (14,640 readings, three axes) keeps 300 points an axis and 20 bins an axis, under 32 KB', () => {
+    const src = source(), c = { pitch: flat({ deadLow: 3, deadHigh: 3 }), roll: flat(), yaw: flat({ bend: 40 }) };
+    let clock = 0;
+    const rec = recorder({ axes: ['pitch', 'yaw', 'roll'], curves: () => c, through: 'curve', target: { name: 'the middle of the tunnel', edge: 120 },
+      off: () => ({ pitch: -87.654321 + clock / 7, yaw: 104.123456 - clock / 3, roll: null }), clock: () => clock, listen: src.listen });
+    for (let i = 0; i < 14640; i++) { clock = i / 61; src.send(reading(5000 + i * 16, -0.987654321 + (i % 200) / 101, 0.123456789 - (i % 300) / 151)); }
+    rec.stop();
+    const r = rec.compact(), size = JSON.stringify(r).length;
+    return { frames: r.frames, seconds: r.seconds, times: r.t.length, axes: Object.values(r.axes).map(a => [a.raw.length, a.curved.length, a.game.length, a.off.length, a.band.length]),
+      under32KB: size < 32768 };
+  }, { frames: 14640, seconds: 239.98, times: 300, axes: [[300, 300, 300, 300, 20], [300, 300, 300, 300, 20], [300, 300, 300, 300, 20]], under32KB: true });
+  check('a stick Studio cannot read is kept as no reading (null), never as the middle (0), and the record says for how long', () => {
+    const src = source();
+    const rec = recorder({ axes: ['pitch', 'yaw'], curves: { pitch: flat({ deadLow: 4, deadHigh: 4 }), yaw: flat() }, target: { name: 'the dot', aim: true }, clock: () => 0, listen: src.listen });
+    for (let i = 0; i < 30; i++) src.send(reading(5000 + i * 16, null, 0.5, { pitch: { game: 0.2, realUnknown: true } }));
+    for (let i = 30; i < 60; i++) src.send(reading(5000 + i * 16, 0.5, 0.5));
+    rec.stop();
+    const r = rec.compact(), first = rec.frames[0].v.pitch;
+    return { first: [first.raw, first.curved, first.game], none: r.axes.pitch.none, inBand: r.axes.pitch.band.reduce((a, b) => a + b, 0), words: recordWords(r, 'pitch') };
+  }, { first: [null, null, 0.2], none: 0.5, inBand: 0.5, words: 'In the dead zone 0% of the time; no reading of your stick 50%' });
+  check('"Your curve": the band says where the stick spent its time along its travel, in 20 parts', () => {
+    const src = source();
+    const rec = recorder({ axes: ['yaw'], curves: { yaw: flat() }, target: { name: 'the dot', aim: true }, clock: () => 0, listen: src.listen });
+    for (let i = 0; i < 100; i++) src.send(reading(5000 + i * 16, 0, i % 2 ? 0.75 : -0.55));
+    rec.stop();
+    return rec.compact().axes.yaw.band.map((v, i) => v ? i + ': ' + v : null).filter(Boolean);
+  }, ['4: 0.5', '17: 0.5']);
+  check('"Over the round", the dot game: your stick, your mark and the dot drawn the way the mark moves, so on the dot the last two meet', () => {
+    const src = source(), c = flat({ satY: 60 });   // "Most it gives" 60: the mark still reaches the edge of the field
+    const rec = recorder({ axes: ['pitch', 'yaw'], curves: { pitch: c, yaw: c }, sign: { pitch: -1, yaw: 1 }, target: { name: 'the dot', aim: true },
+      off: v => ({ pitch: 0.4 - (-1) * v.pitch.raw, yaw: 0.25 - v.yaw.raw }), clock: () => 1, listen: src.listen });
+    src.send(reading(5000, 0.5, 0.25));
+    rec.stop();
+    const r = rec.compact(), p = recordSeries(r, 'pitch'), y = recordSeries(r, 'yaw');
+    return [p.stick[0], p.through[0], r3(p.target[0]), y.stick[0], y.through[0], r3(y.target[0])].map(r3);
+  }, [-0.5, -0.5, 0.4, 0.25, 0.25, 0.25]);
+  check('"Over the round", the trainer: what the ship got (the curve, or the game when flown as the game gets it), and the target up to its edge', () => {
+    const run = through => {
+      const src = source(), c = flat({ satY: 60 });
+      const rec = recorder({ axes: ['pitch', 'yaw'], curves: () => ({ pitch: c, yaw: c }), through, target: { name: 'the target', edge: 21 },
+        off: () => ({ pitch: 10.5, yaw: -50 }), clock: () => 1, listen: src.listen });
+      src.send(reading(5000, 0.5, 0.5, { pitch: { invert: true, game: 0.1 }, yaw: { game: 0.2 } }));
+      rec.stop();
+      const r = rec.compact(), p = recordSeries(r, 'pitch'), y = recordSeries(r, 'yaw');
+      return [r.sign, p.stick[0], p.through[0], p.target[0], y.through[0], y.target[0]].map(v => typeof v === 'number' ? r3(v) : v);
+    };
+    return [run('curve'), run('game')];
+  }, [[{ pitch: 1, yaw: 1 }, 0.5, 0.3, 0.5, 0.3, -1], [{ pitch: 1, yaw: 1 }, 0.5, 0.1, 0.5, 0.2, -1]]);
+  check('the trainer\'s curve changed during an attempt (its +/- buttons): the record says so, and keeps the curve as it was at the end', () => {
+    const src = source(), c = { pitch: flat({ bend: 20 }), yaw: flat() };
+    const rec = recorder({ axes: ['pitch', 'yaw'], curves: () => c, target: { name: 'the target', edge: 21 }, clock: () => 0, listen: src.listen });
+    src.send(reading(5000, 0.5, 0));
+    c.pitch = flat({ bend: 30 });
+    src.send(reading(5016, 0.5, 0));
+    rec.stop();
+    const r = rec.compact();
+    return [r.changed, r.curves.pitch.bend, rec.frames.map(f => r3(f.v.pitch.curved))];
+  }, [true, 30, [r3(curve(0.5, flat({ bend: 20 }))), r3(curve(0.5, flat({ bend: 30 })))]]);
   return checks;
 }
 
-return { curve, stream, reader, drawInputs, stickLost, olderLine, tuneBox, fit, keyText, buttonText, axisText, deviceText, stickName, deviceNames, idsText,
-  devicesInWords, clamp, look, selftest };
+return { curve, stream, reader, drawInputs, stickLost, olderLine, tuneBox, recorder, showRecord, fit, keyText, buttonText, axisText, deviceText, stickName,
+  deviceNames, idsText, devicesInWords, clamp, look, selftest };
 })();

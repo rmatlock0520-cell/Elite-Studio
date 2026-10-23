@@ -16,9 +16,8 @@
 //                                    summary when done }
 //   Chase.score(s)                   the share of the time so far on the dot, in whole percent
 //   Chase.summary(s)                 { level, set, pct, streak, miss, overshoots: { pitch, yaw }, peak: { pitch, yaw } }
-//   s.frames                         every step: { t, raw, curved, mark, dot } (the stick, what the curve made of it, each null
-//                                    for no reading, and where the mark and the dot were), for the round's record
 //   s.blind                          seconds on each axis in which a pass would be the dot's doing, not counted (watchPasses)
+//   (The round's record is Flight.recorder's, from every reading of the stick: chase.html, ChasePage.record.)
 //   Chase.markOf(x, c)               where the mark sits on one axis (-1 to 1) for a stick position, through curve c
 //   Chase.draw(g, w, h, s, accent, look, text)    the picture, on a canvas's 2D context
 //   Chase.selftest(rules)            the checks (chase.html?selftest); { ok, checks: [{ name, ok, got, want }] }
@@ -87,7 +86,6 @@ function start(level, curves, o) {
     onTime: 0, streak: 0, bestStreak: 0, missSum: 0, steps: 0,
     peak: { pitch: 0, yaw: 0 }, overshoots: { pitch: 0, yaw: 0 },
     passes: { pitch: 0, yaw: 0 }, dotWay: { pitch: 0, yaw: 0 }, turnedAt: { pitch: -Infinity, yaw: -Infinity }, blind: { pitch: 0, yaw: 0 },
-    frames: [],
   };
 }
 
@@ -96,7 +94,7 @@ function step(s, stick, dt) {
   if (!(dt > 0)) return { done: false };
   dt = Math.min(dt, LONGEST_STEP);
   const L = s.level, m = s.mark, d = s.dot, c = s.curves;
-  // No reading (a stick let go, lost or not found) is kept as null: the mark sits in the middle, and the record says so.
+  // No reading (a stick let go, lost or not found) is null: the mark sits in the middle.
   const reading = v => (v != null && isFinite(v) ? +v : null);
   const raw = { pitch: stick ? reading(stick.pitch) : null, yaw: stick ? reading(stick.yaw) : null };
   s.peak.pitch = Math.max(s.peak.pitch, Math.abs(raw.pitch || 0));
@@ -131,9 +129,6 @@ function step(s, stick, dt) {
   s.missSum += off;
   if (off <= L.r) { s.onTime += dt; s.streak += dt; s.bestStreak = Math.max(s.bestStreak, s.streak); } else s.streak = 0;
   watchPasses(s, off, dt);
-  const curved = (x, curve) => (x == null ? null : Flight.curve(x, curve));
-  s.frames.push({ t: s.t, raw, curved: { pitch: curved(raw.pitch, c.pitch), yaw: curved(raw.yaw, c.yaw) },
-    mark: { x: m.x, y: m.y }, dot: { x: d.x, y: d.y } });
   return s.t + 1e-9 >= s.len ? { done: true, result: summary(s) } : { done: false };
 }
 
@@ -391,14 +386,6 @@ function selftest(rules) {
     const a = path(7), b = path(7), c = path(8);
     return [{ seed7: a, again: b, seed8: c }, 'seed 7 the same twice, seed 8 elsewhere', JSON.stringify(a) === JSON.stringify(b) && JSON.stringify(a) !== JSON.stringify(c)];
   });
-  check('every step keeps the raw stick, what the curve made of it, the mark and the dot', () => {
-    const s = R.start('medium', both(usual), { seed: 1 });
-    for (let i = 0; i < 10; i++) R.step(s, { pitch: 0.5, yaw: -0.25 }, STEP);
-    const f = s.frames[s.frames.length - 1];
-    return [{ frames: s.frames.length, last: f }, '10 frames, the last one as the state is now',
-      s.frames.length === 10 && f.raw.pitch === 0.5 && f.raw.yaw === -0.25 && f.curved.pitch === Flight.curve(0.5, usual)
-      && f.curved.yaw === Flight.curve(-0.25, usual) && f.mark.x === s.mark.x && f.mark.y === s.mark.y && f.dot.x === s.dot.x && f.dot.y === s.dot.y];
-  });
   check('a round lasts 30 s, and its summary has the score, longest streak, mean miss, overshoots and peak stick', () => {
     const s = R.start('easy', both(usual), { seed: 3, set: 'faOn' });
     let out, steps = 0;
@@ -424,16 +411,16 @@ function selftest(rules) {
     }
     return [got, 'under 10 (percent of the time) on each axis, at each level', Object.values(got).every(a => a.pitch < 10 && a.yaw < 10)];
   });
-  check('(h) a stick lost or let go is kept as no reading (null) in the round\'s record, never as the middle (0)', () => {
+  // (The round's record keeps a lost stick as no reading, null: Flight.selftest, on Flight.recorder.)
+  check('(h) a stick lost on one axis puts the mark in the middle on that axis at once; the other axis still follows the stick', () => {
     const s = R.start('medium', both(usual), { seed: 1 });
-    R.step(s, null, STEP);
+    R.step(s, { pitch: 0.6, yaw: 0.4 }, STEP);
+    const held = round(s.mark.y, 4);
     R.step(s, { pitch: null, yaw: 0.4 }, STEP);
-    R.step(s, { pitch: NaN, yaw: 0 }, STEP);
-    const got = s.frames.map(f => ({ raw: f.raw, curved: f.curved }));
-    const want = [{ raw: { pitch: null, yaw: null }, curved: { pitch: null, yaw: null } },
-      { raw: { pitch: null, yaw: 0.4 }, curved: { pitch: null, yaw: Flight.curve(0.4, usual) } },
-      { raw: { pitch: null, yaw: 0 }, curved: { pitch: null, yaw: 0 } }];
-    return [got, want, JSON.stringify(got) === JSON.stringify(want) && s.mark.y === 0];
+    const lost = [s.mark.y, round(s.mark.x, 4)];
+    R.step(s, { pitch: NaN, yaw: 0.4 }, STEP);
+    const want = round(markOf(0.4, usual), 4);
+    return [{ held, lost, notANumber: s.mark.y }, { held: 'away from the middle', lost: [0, want], notANumber: 0 }, held !== 0 && lost[0] === 0 && lost[1] === want && s.mark.y === 0];
   });
   check('(h) one step moves the round on a tenth of a second at most, however long the page was hidden or paused', () => {
     const s = R.start('medium', both(usual), { seed: 1 });

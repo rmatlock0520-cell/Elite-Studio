@@ -13,7 +13,9 @@
   target and keep it on the nose, fly a tunnel with bends without touching the wall, keep the nose on a moving dot),
   the ship to fly like, how the picture is drawn and what the stick is read through. Right: the exercise itself with,
   beside it, +/- buttons for the Flight Assist off curves, the hands as the in-game flight overlay draws them, and
-  after each set what happened and what to change.
+  after each set what happened and what to change. After a set the exercise's place shows an attempt's record (every
+  reading of the stick while it was flown, Flight.recorder): "Your curve", with bars where the stick spent its time, and
+  "Over the round", the stick, what the curve made of it and how far off the target was; the attempt is picked above it.
   A set is five attempts; three good ones pass it and open the next exercise. The ship flies as Elite's do with
   Flight Assist off (sim.js); the app reads the stick and the keys (POST /api/flight/stream, "flight-input" events)
   and keeps the curves and the progress (GET /api/flight, POST .../settings, .../progress, and the "flight" event).
@@ -109,7 +111,7 @@
       <button class="btn primary" id="go">Start</button>
     </div>
     <div class="middle">
-      <div class="sky" id="sky-box"><canvas id="sky"></canvas></div>
+      <div class="sky" id="sky-box"><canvas id="sky"></canvas><div class="record" id="record" hidden></div></div>
       <section class="tune-box" aria-label="Curves"></section>
     </div>
     <div class="bottom">
@@ -131,7 +133,7 @@ if (!Studio.served) return;
 let info = null;          // GET /api/flight
 let frame = null;         // the newest reading of the sticks
 let chosen = Sim.FREE;    // the exercise on screen
-let run = null;           // the set being flown: { ex, results, a, phase, phaseAt, said }
+let run = null;           // the set being flown: { ex, results, a, phase, phaseAt, said, rec: the attempt's recorder while flown }
 let preview = null;       // the attempt shown before Start
 let paused = '';
 let view = 'dot';
@@ -262,6 +264,7 @@ function choose(ex) {
   newPreview();
   drawSide();
   drawTries();
+  showRecord();
   $('#report').replaceChildren(h('p', { class: 'muted' }, ex.what));
 }
 
@@ -281,10 +284,12 @@ function startSet() {
   document.activeElement && document.activeElement.blur();
   $('#sky').focus();
   drawSide();
+  showRecord();
 }
 
 function stopSet() {
   if (run.recorded) { endSet(); return; }   // decided already: Stop just skips the wait for the result
+  if (run.rec) { run.rec.stop(); run.rec = null; }
   run.phase = 'stopped';
   paused = '';
   $('#go').textContent = chosen === Sim.FREE ? 'Fly' : 'Start';
@@ -301,9 +306,19 @@ function nextAttempt() {
   drawTries();
 }
 
+// An attempt's record keeps every reading of the stick from the end of its 3-2-1 to its end, pauses left out (not in free flight).
+function fly() {
+  const set = run, a = run.a;
+  set.phase = 'fly';
+  set.left = 0;
+  if (set.ex !== Sim.FREE) set.rec = Sim.record(a, { curves: () => info.settings.faOff, through: info.settings.input === 'game' ? 'game' : 'curve',
+    active: () => run === set && set.a === a && set.phase === 'fly' && !paused });
+}
+
 function finishAttempt(out) {
-  const a = run.a;
-  run.results.push({ ok: out.ok, why: out.why, crossings: { ...a.crossings }, peak: { ...a.peak }, speedAtEnd: Sim.len(a.s.v), firstOn: a.firstOn, onTime: a.onTime });
+  const a = run.a, kept = run.rec ? run.rec.compact() : null;   // the attempt's record
+  if (run.rec) { run.rec.stop(); run.rec = null; }
+  run.results.push({ ok: out.ok, why: out.why, crossings: { ...a.crossings }, peak: { ...a.peak }, speedAtEnd: Sim.len(a.s.v), firstOn: a.firstOn, onTime: a.onTime, record: kept });
   run.said = out;
   run.phase = 'after';
   run.phaseAt = performance.now();
@@ -338,6 +353,18 @@ async function endSet() {
   drawReport();
   drawSide();
   drawTries();   // the set is over: no attempt is "now"
+  showRecord(run.results.length - 1);
+}
+
+// After a set, an attempt's record takes the exercise's place: "Your curve" and "Over the round", beside the tips; the last
+// attempt first, any other at a click. Otherwise the place is the exercise's.
+function showRecord(i) {
+  const kept = run && run.phase === 'done' ? run.results.map((r, k) => r.record ? k : -1).filter(k => k >= 0) : [];
+  const k = kept.includes(i) ? i : kept[kept.length - 1];
+  if (k == null) { Flight.showRecord($('#record'), null); return; }
+  const pick = h('span', { class: 'seg', role: 'group', 'aria-label': 'Attempt' }, kept.map(j => h('button', { class: j === k ? 'active' : '',
+    title: run.results[j].why, onclick: () => showRecord(j) }, (run.results[j].ok ? '✓ ' : '✗ ') + (j + 1))));
+  Flight.showRecord($('#record'), run.results[k].record, { extra: ['Attempt', pick] });
 }
 
 function drawTries() {
@@ -431,7 +458,7 @@ function frameOnce(now) {
     if (run.phase === 'count') {
       const left = 3 - (now - run.phaseAt) / 1000;
       text = left > 0 ? (run.ex === Sim.FREE ? 'Free flight' : 'Attempt ' + (run.results.length + 1) + ' of 5') + '\n' + 'Starting in ' + Math.ceil(left) : '';
-      if (left <= 0 && !paused) { run.phase = 'fly'; run.left = 0; }
+      if (left <= 0 && !paused) fly();
     } else if (run.phase === 'fly' && !paused) {
       run.left += dt;
       while (run.left >= STEP) {

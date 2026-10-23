@@ -16,7 +16,9 @@
   choice for this page only, never the switch in the game; kept for the length of a round), the best scores and the controls.
   Right: the game with, beside it, the +/- curve buttons for that curve (Flight.tuneBox, pitch and yaw only and no "Most it
   gives", locked while a round is flown); under it the hands as the in-game flight overlay draws them, and after a round the
-  score and tips, some with a one-click change naming its way. A narrow window shows it all in one column.
+  score and tips, some with a one-click change naming its way. After a round the field shows the round's record (every reading
+  of the stick while it was flown, Flight.recorder): "Your curve", with bars where the stick spent its time, and "Over the
+  round", the stick, the mark and the dot. A narrow window shows it all in one column.
   The level and the curve choice are kept in the page's own storage; the curves, the stick readings and the best scores are the
   app's: GET /api/flight and the "flight" event, "flight-input" events, POST /api/flight/settings (the curves) and
   POST /api/flight/score ({ game: 'dot2-medium-faOff', pct }, the best kept per level and curve set).
@@ -105,7 +107,7 @@
       <button class="btn primary" id="go">Start</button>
     </div>
     <div class="middle">
-      <div class="sky"><canvas id="sky"></canvas></div>
+      <div class="sky"><canvas id="sky"></canvas><div class="record" id="record" hidden></div></div>
       <section class="tune-box" aria-label="Curves"></section>
     </div>
     <div class="bottom">
@@ -209,6 +211,14 @@ function tipChange(tip, curves) {
 // A tip's button once it is taken (not offered again): it still names its way.
 const taken = tip => WAY[tip.axis] + ': done';
 
+// A round's record (Flight.recorder): every reading while the round is flown, through the round's curves, with how far the dot
+// was from the mark that reading puts (in the field's units, its edge 1), on the round's clock. o: { active } (and listen, for a test).
+function record(round, o) {
+  const s = round.s, mark = (v, axis) => s.sign[axis] * Chase.markOf(v[axis].raw, s.curves[axis]);
+  return Flight.recorder({ axes: ['pitch', 'yaw'], curves: s.curves, sign: s.sign, target: { name: 'the dot', aim: true },
+    off: v => ({ pitch: s.dot.y - mark(v, 'pitch'), yaw: s.dot.x - mark(v, 'yaw') }), clock: () => s.t, ...o });
+}
+
 // ---- the self-test: [{ name, ok, got, want }], as Flight.selftest() answers
 function selftest() {
   const checks = [];
@@ -301,10 +311,22 @@ function selftest() {
   check('behind the dot, and no overshoots: aim where it is going', () => advise(result({ pct: 40 }), off).map(t => t.id), ['late']);
   check('a strong round: the next level', () => advise(result({ pct: 75 }), off).map(t => [t.id, t.text]), [['good', 'A strong round. Try Hard next.']]);
   check('a tip whose curve is at its end gives no button', () => tipChange({ axis: 'yaw', field: 'bend', step: 10, min: 0, max: 100 }, { yaw: curve({ bend: 100 }) }), null);
+  // Q4: a round's record (Flight.recorder): every reading of the round, with how far the dot was from the mark that reading puts.
+  check('a round\'s record: pitch and yaw through the round\'s curves, the mark\'s way, how far the dot was from the mark, on the round\'s clock', () => {
+    const now = info(), round = begin('medium', 'faOff', now, { controls: { pitch: { invert: false }, yaw: { invert: false } } }, 3), fns = [];
+    const rec = record(round, { active: () => true, listen: fn => { fns.push(fn); return () => {}; } });
+    Object.assign(round.s.dot, { x: 0.3, y: -0.2 });
+    round.s.t = 2.5;
+    now.settings.faOff.yaw.bend = 90;   // a change on the page: not this round's
+    fns.forEach(fn => fn({ time: 1, pressed: [], controls: { pitch: { real: 0.4, game: 0.1 }, yaw: { real: -0.25, game: 0.1 } } }));
+    const r = rec.compact(), r3 = v => Math.round(v * 1000) / 1000;
+    return [Object.keys(r.axes), r.sign, r.target.aim, r.seconds, r.curves.yaw.bend, [r3(r.axes.pitch.off[0]), r3(r.axes.yaw.off[0])]];
+  }, [['pitch', 'yaw'], { pitch: -1, yaw: 1 }, true, 2.5, 40,
+    [Math.round((-0.2 + Chase.markOf(0.4, curve({ satY: 100, bend: 35 }))) * 1000) / 1000, Math.round((0.3 - Chase.markOf(-0.25, curve({ satY: 100, bend: 40 }))) * 1000) / 1000]]);
   return checks;
 }
 
-return { CHOICES, GOOD, setFor, gameId, begin, stickOf, lostLine, advise, tipChange, taken, selftest };
+return { CHOICES, GOOD, setFor, gameId, begin, stickOf, lostLine, advise, tipChange, taken, record, selftest };
 })();
 
 (() => {
@@ -315,7 +337,8 @@ if (!Studio.served) return;
 
 let info = null;          // GET /api/flight
 let frame = null;         // the newest reading of the sticks
-let run = null;           // the round on screen: ChasePage.begin's, with { phase, phaseAt, left, pausedAt, result, best, fresh, tips, applied }
+let run = null;           // the round on screen: ChasePage.begin's, with { phase, phaseAt, left, pausedAt, result, best, fresh, tips, applied,
+                          //   rec: its recorder while flown, record: what it kept }
 let preview = null;       // the field shown before Start
 let paused = '';
 const read = Flight.reader();
@@ -396,6 +419,7 @@ function pick(change) {
   $('#report').replaceChildren(h('p', { class: 'muted' }, 'Press Start (or Enter). Keep the mark on the dot for the whole round. Esc pauses.'));
   newPreview();
   drawSide();
+  showRecord();
 }
 
 // ============================================================ a round
@@ -410,15 +434,30 @@ function startRound() {
   document.activeElement && document.activeElement.blur();
   $('#report').replaceChildren(h('p', { class: 'muted' }, 'Get onto the dot before it moves: the mark follows your stick already.'));
   drawSide();
+  showRecord();
 }
 function stopRound() {
+  if (run && run.rec) run.rec.stop();
   run = null;
   paused = '';
   $('#report').replaceChildren(h('p', { class: 'muted' }, 'Stopped. Press Start (or Enter) to go again.'));
   newPreview();
   drawSide();
+  showRecord();
 }
+// The round's record keeps every reading of the stick from the end of the 3-2-1 to the end of the round, pauses left out.
+function fly() {
+  const round = run;
+  round.phase = 'fly';
+  round.left = 0;
+  round.rec = ChasePage.record(round, { active: () => run === round && round.phase === 'fly' && !paused });
+}
+// After a round its record takes the field's place: "Your curve" and "Over the round", beside the tips.
+const showRecord = () => Flight.showRecord($('#record'), run && run.phase === 'done' ? run.record : null,
+  { names: { pitch: 'Up and down', yaw: 'Left and right' }, extra: 'Press Enter to fly again.' });
 function finish(out) {
+  run.rec.stop();
+  run.record = run.rec.compact();
   run.phase = 'done';
   run.result = out.result;
   const was = info.settings.scores && info.settings.scores[run.id];
@@ -429,6 +468,7 @@ function finish(out) {
   call('POST', '/api/flight/score', { game: run.id, pct: out.result.pct }).catch(e => toast(e.message, true));
   drawSide();
   drawReport();
+  showRecord();
 }
 
 function redrawTips() { if (run && run.phase === 'done') drawReport(); }
@@ -512,7 +552,7 @@ function frameOnce(now) {
       shown = { ...s, mark: { x: s.sign.yaw * Chase.markOf(stick && stick.yaw, s.curves.yaw), y: s.sign.pitch * Chase.markOf(stick && stick.pitch, s.curves.pitch) } };
       const left = 3 - (now - run.phaseAt) / 1000;
       text = left > 0 ? Chase.LEVELS.find(l => l.id === run.level).name + '\nStarting in ' + Math.ceil(left) : '';
-      if (left <= 0 && !paused) { run.phase = 'fly'; run.left = 0; }
+      if (left <= 0 && !paused) fly();
     } else if (run.phase === 'fly' && !paused) {
       run.left += dt;
       while (run.left >= STEP) {
