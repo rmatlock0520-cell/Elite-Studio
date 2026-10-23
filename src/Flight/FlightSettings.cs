@@ -74,7 +74,7 @@ public sealed record FlightSettings
         ["yawRight"] = "Key_Numpad_6", ["rollLeft"] = "Key_Numpad_7", ["rollRight"] = "Key_Numpad_9",
     };
 
-    static readonly Regex DeviceAxis = new(@"^[0-9A-F]{4}:[0-9A-F]{4}(#\d{1,2})? (X|Y|Z|RX|RY|RZ|U|V)$");
+    static readonly Regex DeviceAxis = new(@"^[0-9A-F]{4}:[0-9A-F]{4}(#\d{1,2})? (X|Y|Z|RX|RY|RZ|U|V|[LR]Stick[XY])$");
     static readonly Regex Exercise = new(@"^(chase|tunnel|track)-[1-3]$");
     static readonly Regex DotGame = new(@"^dot2-(easy|medium|hard)-(faOff|faOn)$");
 

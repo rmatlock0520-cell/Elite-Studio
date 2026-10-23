@@ -1379,6 +1379,83 @@ public sealed class FlightTests : IDisposable
         Assert.Empty(rig.Gimbalyn.Requests);
     }
 
+    // ------------------------------------------------------------ a game pad instead of a stick
+
+    /// <summary>Elite's Xbox preset as far as flight goes (the game's own ConsoleX360): the pad is Device="GamePad" and its sticks "GamePad_LStickX" and so on; a trigger on an axis; Flight Assist on a bumper.</summary>
+    static FlightBinds PadBinds() => FlightBinds.Read("ConsoleX360", "ConsoleX360.binds", XElement.Parse("""
+        <Root>
+          <YawAxisRaw><Binding Device="GamePad" Key="GamePad_RStickX" /><Inverted Value="0" /><Deadzone Value="DefaultPlatformDeadzone" /></YawAxisRaw>
+          <RollAxisRaw><Binding Device="GamePad" Key="GamePad_LStickX" /><Inverted Value="0" /><Deadzone Value="DefaultPlatformDeadzone" /></RollAxisRaw>
+          <PitchAxisRaw><Binding Device="GamePad" Key="GamePad_LStickY" /><Inverted Value="1" /><Deadzone Value="0.15" /></PitchAxisRaw>
+          <VerticalThrustRaw><Binding Device="GamePad" Key="GamePad_RStickY" /><Inverted Value="0" /><Deadzone Value="DefaultPlatformDeadzone" /></VerticalThrustRaw>
+          <ThrottleAxis><Binding Device="GamePad" Key="GamePad_RTrigger" /><Inverted Value="0" /><Deadzone Value="0.0" /></ThrottleAxis>
+          <ToggleFlightAssist><Primary Device="GamePad" Key="GamePad_RBumper"><Modifier Device="GamePad" Key="GamePad_FaceRight" /></Primary><Secondary Device="{NoDevice}" Key="" /><ToggleOn Value="1" /></ToggleFlightAssist>
+        </Root>
+        """), deviceList: null);
+
+    [Fact]
+    public void A_game_pads_sticks_are_flight_axes_in_the_bindings()
+    {
+        FlightBinds binds = PadBinds();
+
+        Assert.Equal(new FlightAxis("GamePad", "LStickY", true, 0.15), binds.Axes["pitch"]);
+        Assert.Equal(new FlightAxis("GamePad", "LStickX", false, 0), binds.Axes["roll"]);
+        Assert.Equal(new FlightAxis("GamePad", "RStickX", false, 0), binds.Axes["yaw"]);
+        Assert.Equal("RStickY", binds.Axes["vertical"].Axis);
+        Assert.DoesNotContain("throttle", binds.Axes.Keys);   // a trigger is no stick axis (its reading is one for both triggers)
+        Assert.Equal(["045E:028E"], binds.Devices["GamePad"]);
+        // the older Xbox 360 preset names them "Pad_LStickX", on a device it calls "XB360 Pad"
+        FlightBinds older = FlightBinds.Read("ControlPad", "ControlPad.binds",
+            XElement.Parse("""<Root><RollAxisRaw><Binding Device="XB360 Pad" Key="Pad_LStickX" /><Inverted Value="0" /><Deadzone Value="0.15" /></RollAxisRaw></Root>"""), deviceList: null);
+        Assert.Equal(new FlightAxis("XB360 Pad", "LStickX", false, 0.15), older.Axes["roll"]);
+    }
+
+    [Fact]
+    public void A_game_pads_sticks_are_read_as_pitch_roll_and_yaw_by_Windows_letters()
+    {
+        StickState pad = Stick("045E:028E", "Controller (XBOX 360 For Windows)", 0, ("X", 0.2), ("Y", -0.4), ("Z", 0), ("R", 0.6), ("U", -0.7));
+        StickState logitech = Stick("046D:C215", "Logitech Extreme 3D", 0, ("X", 0.9), ("Y", 0.9), ("Z", 0.9), ("R", 0.9));
+        var controls = new FlightControls(PadBinds(), [], new FlightSettings());
+
+        ControlsFrame now = controls.Take(new FlightFrame(1, [logitech, pad], []));
+
+        // left stick: X and Y; the right stick sideways is U and up and down is R; the pad is what the game reads, so it is the real stick too
+        Assert.Equal(new ControlValue(-0.4, -0.4, true), now.Controls["pitch"]);
+        Assert.Equal(new ControlValue(0.2, 0.2, false), now.Controls["roll"]);
+        Assert.Equal(new ControlValue(-0.7, -0.7, false), now.Controls["yaw"]);
+        Assert.Equal(0.6, now.Controls["vertical"].Game);
+        Assert.False(AsSent(now.Controls["yaw"]).GetProperty("realUnknown").GetBoolean());
+        // the player's fix, as Detect makes it (it names the game's axis): the right stick sideways is Windows' Z on this pad
+        var fixedOne = new FlightControls(PadBinds(), [], new FlightSettings { AxisFix = new() { ["045E:028E RStickX"] = "Z" } }.Cleaned());
+        Assert.Equal(0, fixedOne.Take(new FlightFrame(2, [pad], [])).Controls["yaw"].Real);
+        Assert.Equal(("045E:028E", "Z"), fixedOne.RealSource("yaw", [pad]));
+    }
+
+    [Fact]
+    public void A_pad_alone_is_found_though_the_game_s_list_of_pads_is_out_of_reach()
+    {
+        // an Xbox Series pad: its numbers are in the game's own list, which Studio has not got here, and not in Studio's short one
+        StickState pad = Stick("045E:0B12", "Controller (Xbox Series X)", 0, ("X", 0.2), ("Y", -0.4), ("Z", 0), ("R", 0.6), ("U", -0.7));
+
+        ControlsFrame now = new FlightControls(PadBinds(), [], new FlightSettings()).Take(new FlightFrame(1, [pad], []));
+
+        Assert.Equal(-0.7, now.Controls["yaw"].Real);
+        Assert.Equal(-0.4, now.Controls["pitch"].Real);
+    }
+
+    [Fact]
+    public void A_correction_of_a_pad_stick_is_kept_in_the_settings()
+    {
+        FlightSettings clean = new FlightSettings
+        {
+            AxisFix = new() { ["045E:028E RStickX"] = "Z", ["045E:028E Nonsense"] = "Z" },
+            Sources = new() { ["yaw"] = "045E:028E RStickX", ["pitch"] = "045E:028E Nonsense" },
+        }.Cleaned();
+
+        Assert.Equal(new Dictionary<string, string> { ["045E:028E RStickX"] = "Z" }, clean.AxisFix);
+        Assert.Equal(new Dictionary<string, string> { ["yaw"] = "045E:028E RStickX" }, clean.Sources);
+    }
+
     [Fact]
     public async Task A_Gremlin_profile_saved_with_switching_off_has_no_FA_Off_mode_and_is_not_called_old()
     {
@@ -1509,5 +1586,50 @@ public sealed class FlightTests : IDisposable
         GremlinAxis own = studios.First(a => a.Mode == Gremlin.FaOffMode) with { Studios = false };
         IReadOnlyList<GremlinAxis> theirs = [.. studios.Where(a => a.Mode != Gremlin.FaOffMode), own];
         Assert.False(FlightApi.Older(theirs, binds, null, off, theirs, switching: false).Off);
+    }
+
+    [Fact]
+    public void A_flight_stick_alone_is_not_taken_for_a_pad_that_is_not_plugged_in()
+    {
+        StickState logitech = Stick("046D:C215", "Logitech Extreme 3D", 0, ("X", 0.9), ("Y", 0.9), ("Z", 0.9), ("R", 0.9));
+        StickState vjoy = Stick("1234:BEAD", "vJoy Device", 0, ("X", 0), ("Y", 0), ("Z", 0), ("R", 0));
+        var controls = new FlightControls(PadBinds(), [], new FlightSettings());
+
+        // vertical thrust is on the pad's right stick: with the pad gone it reads nothing, not the flight stick's twist
+        ControlsFrame now = controls.Take(new FlightFrame(1, [logitech, vjoy], []));
+        Assert.Null(now.Controls["vertical"].Game);
+        Assert.Null(now.Controls["pitch"].Real);
+        // a pad that is there alone, whatever its numbers, is still found
+        StickState pad = Stick("045E:0B12", "Controller (Xbox Series X)", 0, ("X", 0.2), ("Y", -0.4), ("Z", 0), ("R", 0.6), ("U", -0.7));
+        Assert.Equal(0.6, controls.Take(new FlightFrame(2, [pad, vjoy], [])).Controls["vertical"].Game);
+    }
+
+    [Fact]
+    public void A_pad_beside_another_stick_that_the_game_s_list_does_not_name_is_found_once_Detect_names_it()
+    {
+        // an Xbox Series pad (not in the list of pads Studio has), and a flight stick beside it: nothing says which is the game's
+        StickState pad = Stick("045E:0B12", "Controller (Xbox Series X)", 0, ("X", 0.2), ("Y", -0.4), ("Z", 0), ("R", 0.6), ("U", -0.7));
+        StickState logitech = Stick("046D:C215", "Logitech Extreme 3D", 0, ("X", 0.9), ("Y", 0.9), ("Z", 0.9), ("R", 0.9));
+        ControlsFrame lost = new FlightControls(PadBinds(), [], new FlightSettings()).Take(new FlightFrame(1, [logitech, pad], []));
+        Assert.Null(lost.Controls["yaw"].Game);
+        Assert.Null(lost.Controls["yaw"].Real);
+
+        // Detect names the pad for yaw (the page writes its source and the letter it moved): the game gets what that pad does
+        var named = new FlightSettings { Sources = new() { ["yaw"] = "045E:0B12 RStickX" } }.Cleaned();
+        ControlsFrame found = new FlightControls(PadBinds(), [], named).Take(new FlightFrame(2, [logitech, pad], []));
+
+        Assert.Equal(new ControlValue(-0.7, -0.7, false), found.Controls["yaw"]);
+        Assert.Null(found.Controls["pitch"].Real);   // (only the one named)
+    }
+
+    [Fact]
+    public void A_stick_Detect_has_named_for_a_pad_control_does_not_follow_the_binding_unless_the_pad_was_not_found()
+    {
+        // (The page writes the source only when Studio could not read the control: see setup.html's Detect. What Studio does with
+        // one that exists: it is the stick the player named, by the letter named.)
+        StickState pad = Stick("045E:0B12", "Controller (Xbox Series X)", 0, ("X", 0.2), ("Y", -0.4), ("Z", 0), ("R", 0.6), ("U", -0.7));
+        StickState logitech = Stick("046D:C215", "Logitech Extreme 3D", 0, ("X", 0.9), ("Y", 0.9), ("Z", 0.9), ("R", 0.9));
+        var named = new FlightSettings { Sources = new() { ["yaw"] = "045E:0B12 RStickX" } }.Cleaned();
+        Assert.Equal(-0.7, new FlightControls(PadBinds(), [], named).Take(new FlightFrame(1, [logitech, pad], [])).Controls["yaw"].Real);
     }
 }

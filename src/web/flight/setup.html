@@ -504,7 +504,9 @@ function drawSources() {
 }
 function detect(control) {
   if (!frame) return;
-  detecting = { control, base: frame.sticks.map(s => ({ device: s.device, axes: { ...s.axes } })), until: performance.now() + 6000, peaks: {}, realAt: 0 };
+  // (found: Studio already reads this control's stick, so it needs no name of its own and follows the game's binding as before)
+  const reading = frame.controls[control];
+  detecting = { control, base: frame.sticks.map(s => ({ device: s.device, axes: { ...s.axes } })), until: performance.now() + 6000, peaks: {}, realAt: 0, found: !!(reading && reading.real != null) };
 }
 // The Gremlin axis behind a vJoy axis the game reads: on vJoy device 1 when the profile feeds several (as the app picks it).
 function throughFor(bound) {
@@ -532,7 +534,7 @@ async function detectStep() {
   if (real && !detecting.realAt) detecting.realAt = now;
   // Done when the real stick has moved and vJoy has followed it (or had a second and a half to), or when time is up.
   if (now < detecting.until && !(real && (game || now - detecting.realAt > 1500))) return;
-  const control = detecting.control;
+  const control = detecting.control, foundBefore = detecting.found;
   detecting = null;
   if (!real && !game) { toast('Nothing moved far enough. Click Detect again and move the control all the way.', true); return; }
   // A fix names the device and the game's letter for the axis (Gremlin's, for the real stick behind it), and gives Windows' letter.
@@ -544,7 +546,9 @@ async function detectStep() {
     fix[real.device + ' ' + letter] = real.letter;
     // The stick itself is named when nothing else would find it, or when it is the second of two alike (Gremlin knows a
     // stick only by a name both share, and the game's own binding by numbers both share).
-    if (real.device.includes('#') || (!through && !(bound && bound.device !== 'vJoy'))) changes.sources = { ...info.settings.sources, [control]: real.device + ' ' + letter };
+    // A game pad Studio did not find (the game's list of pads has none of the numbers plugged in: an Xbox One or Series pad is
+    // not in it, and beside a second stick nothing else would find it) is named here too.
+    if (real.device.includes('#') || (!through && !(bound && bound.device !== 'vJoy')) || (bound && /Stick[XY]$/.test(bound.axis) && !foundBefore)) changes.sources = { ...info.settings.sources, [control]: real.device + ' ' + letter };
   }
   if (game && bound && bound.device === 'vJoy') fix[game.device + ' ' + bound.axis] = game.letter;
   try {
