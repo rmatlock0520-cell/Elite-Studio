@@ -141,6 +141,9 @@ public sealed class FlightApi : IDisposable
         if (overlay is not null)
         {
             _ = new FlightOverlay(overlay, reader, () => controls, game);
+            // "Overlay on/off" off: the flight box never shows, by its key, a page or Flight Assist; one left showing goes now.
+            overlay.MayShow = box => box != OverlaySettings.ShowOnly || Current.ShowWhenFaOff;
+            if (overlay.Settings.Box(OverlaySettings.ShowOnly).On && !Current.ShowWhenFaOff) overlay.Apply(overlay.Settings);
             // The player showed or hid the flight box with its key: from now on it is theirs, not Flight Assist's.
             overlay.KeyPressed += action => { if (action == OverlaySettings.ShowOnly && Current.ShownForFaOff) Save(Current with { ShownForFaOff = false }); };
             // Switching Flight Assist changes only a flag in Status.json, which is no change of the game's state to the rest
@@ -696,11 +699,29 @@ public sealed class FlightApi : IDisposable
 
     void Save(FlightSettings changed)
     {
+        bool overlaySwitched = changed.ShowWhenFaOff != Current.ShowWhenFaOff;
         Current = changed.Cleaned();
         file.Set(Section, Current);
         Rebuild();
+        if (overlaySwitched) FollowOverlaySwitch();
         web.Send(Section, Answer());
         LookAtShaper();   // a switch turned, or a curve changed: the shaper hears of it now, not at the next tick
+    }
+
+    /// <summary>
+    /// "Overlay on/off" was turned. Off: the flight box goes, and it no longer came up by itself. On: it may show again, and
+    /// comes up at once when Flight Assist is off now, as it would have when Flight Assist went off. The pages are told.
+    /// </summary>
+    void FollowOverlaySwitch()
+    {
+        if (overlay is null) return;
+        if (!Current.ShowWhenFaOff && Current.ShownForFaOff)
+        {
+            Current = Current with { ShownForFaOff = false };
+            file.Set(Section, Current);
+        }
+        overlay.Apply(overlay.Settings);   // through MayShow again
+        if (Current.ShowWhenFaOff && faOff == true) ShowForFlightAssist(true);
     }
 
     /// <summary>

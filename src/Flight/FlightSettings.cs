@@ -28,7 +28,10 @@ public sealed record FlightSettings
     public FlightCurves? FaOff { get; init; }
     /// <summary>The ship the trainer flies like, by coriolis-data's name ("cobra_mk_iii"); empty for the ship the player is flying.</summary>
     public string Ship { get; init; } = "";
-    /// <summary>Show the flight overlay by itself while Flight Assist is off, and hide it again when it comes back on.</summary>
+    /// <summary>
+    /// "Overlay on/off" on the Stick setup page. On: the flight overlay shows by itself while Flight Assist is off, and goes
+    /// again when it comes back on. Off: it never shows, not with its key nor from a page (see <see cref="Overlay.OverlayHost.MayShow"/>).
+    /// </summary>
     public bool ShowWhenFaOff { get; init; } = true;
     /// <summary>
     /// Switch the curves with the game's Flight Assist: the game gets the Flight Assist on curves, and the off ones while Flight

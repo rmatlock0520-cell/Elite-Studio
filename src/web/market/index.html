@@ -55,6 +55,7 @@
 .cap{display:block;margin-bottom:4px;font:500 12.5px var(--hud);letter-spacing:.03em;color:var(--label)}
 .sec .field .btn{padding:0 11px}
 .check{display:flex;align-items:center;gap:8px;font-size:13.5px}
+.check:has(input:disabled){opacity:.45;cursor:not-allowed}
 .check input,.slide input{accent-color:var(--accent)}
 .slide{display:block;font:500 12.5px var(--hud);letter-spacing:.03em;color:var(--label)}
 .slide output{float:right;color:var(--frost);font-variant-numeric:tabular-nums}
@@ -669,6 +670,11 @@ function readouts() {
 function drawOverlay() {
   const s = ov.settings;
   for (const el of all('[data-ov]')) put(el, s[el.dataset.ov]);
+  // The flight inputs cannot be shown from here while Studio Flight's "Overlay on/off" is off.
+  const flightShow = $('[data-ov=flightOn]'), flightOff = (ov.keptHidden || []).includes('flight');
+  flightShow.disabled = flightOff;
+  if (flightOff) flightShow.parentElement.title = 'Off in Studio Flight: Stick setup, "Overlay on/off".';
+  else flightShow.parentElement.removeAttribute('title');   // the box's own title shows again
   for (const el of all('[data-key]')) put(el, s[el.dataset.key]);
   for (const el of all('[data-pad]')) {
     const pad = ov.keys.find(k => k.padSetting === el.dataset.pad).pad;   // in words: "Button 7 on <controller>", or '' for none

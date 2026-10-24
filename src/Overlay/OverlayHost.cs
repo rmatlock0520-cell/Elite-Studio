@@ -281,6 +281,12 @@ public sealed class OverlayHost : IDisposable
     /// <summary>The settings in use now. Change them with <see cref="Apply"/>.</summary>
     public OverlaySettings Settings { get; private set; }
 
+    /// <summary>
+    /// Asked of a box before it is shown: false keeps it hidden, whether its key, a page or a studio would show it (Studio
+    /// Flight's "Overlay on/off" is one). When the answer changes, <see cref="Apply"/> the <see cref="Settings"/> again.
+    /// </summary>
+    public Func<string, bool> MayShow { get; set; } = _ => true;
+
     /// <summary>One box's window by its name in <see cref="OverlaySettings.Boxes"/>; null in a run without windows.</summary>
     public OverlayWindow? Box(string name) => boxes.GetValueOrDefault(name);
 
@@ -299,9 +305,17 @@ public sealed class OverlayHost : IDisposable
     /// <summary>Saves changed settings and takes them into use at once: the overlay's look, place and visibility, and the keys.</summary>
     public void Apply(OverlaySettings changed)
     {
-        Settings = changed.Cleaned();
+        Settings = Allowed(changed.Cleaned());
         file.Set(Section, Settings);
         Use();
+    }
+
+    /// <summary>The settings with every box <see cref="MayShow"/> keeps hidden hidden.</summary>
+    OverlaySettings Allowed(OverlaySettings settings)
+    {
+        foreach (string name in OverlaySettings.Boxes)
+            if (settings.Box(name).On && !MayShow(name)) settings = settings.With(name, settings.Box(name) with { On = false });
+        return settings;
     }
 
     /// <summary>
@@ -440,13 +454,15 @@ public sealed class OverlayHost : IDisposable
     /// came to the front (registered; null while not tried with this key), what the game itself does
     /// on that key (gameActions), and the action's controller button: the setting that holds it
     /// (padSetting) and how to show it to the player (pad; empty for none); the game's display mode,
-    /// because no overlay can show over a game in exclusive "fullscreen"; and, from the first run until
+    /// because no overlay can show over a game in exclusive "fullscreen"; the boxes <see cref="MayShow"/>
+    /// keeps hidden (keptHidden), so a page can grey out their "show" switch; and, from the first run until
     /// POST /api/overlay/old-tool-read, the Elite Haul Overlay's settings file the look was copied
     /// from (copiedFrom).
     /// </summary>
     object Answer() => new
     {
         settings = Settings,
+        keptHidden = OverlaySettings.Boxes.Where(name => !MayShow(name)),
         copiedFrom = Settings.CopiedFrom,
         keys = Settings.Hotkeys().Zip(Settings.PadButtons(), (hotkey, pad) => new
         {

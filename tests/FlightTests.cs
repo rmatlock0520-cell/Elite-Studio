@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Xml.Linq;
@@ -387,6 +388,95 @@ public sealed class FlightTests : IDisposable
             Assert.False(overlay.Settings.FlightOn);
             Assert.False(flight.Current.ShownForFaOff);
         }
+    });
+
+    [Fact]
+    public void With_Overlay_on_off_off_the_flight_box_never_shows_by_its_key_a_page_or_Flight_Assist() => OverlayTests.OnWindowThread(() =>
+    {
+        using var game = new PracticeGame();
+        string status = Path.Combine(game.JournalDir, "Status.json");
+        // (the two differ in length as well, so the watcher sees the second however soon it comes)
+        void Fa(bool off) => game.Write(status, "{ \"timestamp\":\"2026-10-19T12:00:00Z\", \"event\":\"Status\", \"Flags\":" + ((1 << 24) | (off ? 1 << 5 : 0)) + (off ? ", \"Cargo\":1.0" : "") + " }\r\n");
+        using GameWatcher watcher = game.Watch();
+        using var web = new WebServer(temp);
+        var settings = new Settings(Path.Combine(temp, "settings.json"));
+        using var overlay = new Overlay.OverlayHost(web, settings, watcher.State, headless: true);
+        using var flight = new FlightApi(web, settings, watcher.State, overlay, game.BindingsDir, null, gremlinProfile: () => null, sticks: _ => [], held: _ => false);
+        // (the routes answer at once: no wait on the window thread)
+        JsonElement Ask(string method, string route, string body = "") => JsonDocument.Parse(web.Handle(new WebRequest(method, route, new Dictionary<string, string>(), body)).GetAwaiter().GetResult().Body).RootElement;
+        void FlightAssist(bool off) { Fa(off); watcher.Poll(); flight.CheckFlightAssist(); }
+        // A page hears what is kept hidden only from the live "overlay" event: the real server, listened to as a page listens.
+        // Started off the window thread, so that its own work never waits for this one.
+        Assert.True(Task.Run(() => web.Start(47870)).GetAwaiter().GetResult());
+        using var http = new HttpClient(new SocketsHttpHandler { UseProxy = false });
+        using var events = new StreamReader(Task.Run(() => http.GetStreamAsync($"http://127.0.0.1:{web.Port}/api/events?t={web.Token}")).GetAwaiter().GetResult());
+        // Reads the stream until an "overlay" event names these boxes as kept hidden; ten seconds without one fails.
+        void PagesHear(params string[] keptHidden) => Task.Run(async () =>
+        {
+            string name = "";
+            while (true)
+            {
+                string? line = await events.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.NotNull(line);   // null: the stream ended
+                if (line.StartsWith("event: ", StringComparison.Ordinal)) name = line[7..];
+                else if (line.StartsWith("data: ", StringComparison.Ordinal) && name == "overlay"
+                    && JsonDocument.Parse(line[6..]).RootElement.GetProperty("keptHidden").EnumerateArray().Select(box => box.GetString()).SequenceEqual(keptHidden)) return;
+            }
+        }).GetAwaiter().GetResult();
+
+        overlay.Press("flight");   // its key works while the switch is on
+        Assert.True(overlay.Settings.FlightOn);
+        PagesHear();
+        overlay.Press("flight");
+        FlightAssist(off: true);   // and the box comes up by itself
+        Assert.True(overlay.Settings.FlightOn);
+        Assert.True(flight.Current.ShownForFaOff);
+        // switched off: the box goes at once, no longer as one that came by itself, and the pages hear it is kept hidden
+        Ask("POST", "/api/flight/settings", "{\"showWhenFaOff\":false}");
+        Assert.False(overlay.Settings.FlightOn);
+        Assert.False(flight.Current.ShownForFaOff);
+        PagesHear("flight");
+        // nothing brings it back: its key, a page's "Show it now", Flight Assist going off again
+        overlay.Press("flight");
+        Assert.False(overlay.Settings.FlightOn);
+        Ask("POST", "/api/overlay/settings", "{\"flightOn\":true}");
+        Assert.False(overlay.Settings.FlightOn);
+        FlightAssist(off: false);
+        FlightAssist(off: true);
+        Assert.False(overlay.Settings.FlightOn);
+        Assert.False(flight.Current.ShownForFaOff);
+        // the other boxes are not held back
+        overlay.Press("haul");
+        Assert.True(overlay.Settings.HaulOn);
+        // turned while Flight Assist is on and the box hidden: nothing shows, but the pages hear of each turn
+        FlightAssist(off: false);
+        Ask("POST", "/api/flight/settings", "{\"showWhenFaOff\":true}");
+        Assert.False(overlay.Settings.FlightOn);
+        PagesHear();
+        Ask("POST", "/api/flight/settings", "{\"showWhenFaOff\":false}");
+        PagesHear("flight");
+        // switched on while Flight Assist is off: the box comes up, as it would have when Flight Assist went off
+        FlightAssist(off: true);
+        Ask("POST", "/api/flight/settings", "{\"showWhenFaOff\":true}");
+        Assert.True(overlay.Settings.FlightOn);
+        Assert.True(flight.Current.ShownForFaOff);
+        PagesHear();
+    });
+
+    [Fact]
+    public void A_flight_box_left_showing_is_hidden_at_the_start_when_Overlay_on_off_is_off() => OverlayTests.OnWindowThread(() =>
+    {
+        using var game = new PracticeGame();
+        using GameWatcher watcher = game.Watch();
+        using var web = new WebServer(temp);
+        string file = Path.Combine(temp, "settings.json");
+        var settings = new Settings(file);
+        settings.Set("overlay", new Overlay.OverlaySettings { FlightOn = true });   // as a hand-edited file could have it
+        settings.Set("flight", new FlightSettings { ShowWhenFaOff = false });
+        using var overlay = new Overlay.OverlayHost(web, settings, watcher.State, headless: true);
+        using var flight = new FlightApi(web, settings, watcher.State, overlay, game.BindingsDir, null, gremlinProfile: () => null, sticks: _ => [], held: _ => false);
+        Assert.False(overlay.Settings.FlightOn);
+        Assert.False(new Settings(file).Get<Overlay.OverlaySettings>("overlay").FlightOn);   // and saved so
     });
 
     [Fact]

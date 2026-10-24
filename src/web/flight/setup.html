@@ -48,6 +48,7 @@ table.binds td:first-child{color:var(--muted);white-space:nowrap;width:150px}
 .notes li{margin:4px 0}
 .path{font-family:var(--mono);font-size:12.5px;word-break:break-all}
 .check{display:flex;gap:8px;align-items:center;font-size:13.5px;margin:6px 0}
+.check:has(input:disabled){opacity:.45;cursor:not-allowed}
 /* the stick check: the device's axes as bars, the step on screen with its timer, and what it found */
 .check-top .field{flex:1;min-width:0}
 #check-id{margin:6px 0 0}
@@ -177,7 +178,8 @@ table.binds td:first-child{color:var(--muted);white-space:nowrap;width:150px}
     <section class="card">
       <h2>Flight inputs overlay</h2>
       <p class="small muted">The throttle hand and the stick hand drawn over the game, like the picture above. It never takes the mouse, so you fly with it up. Elite must be in Borderless (Options › Graphics › Display).</p>
-      <label class="check"><input type="checkbox" id="auto">Show it by itself while Flight Assist is off</label>
+      <label class="check"><input type="checkbox" id="auto">Overlay on/off</label>
+      <p class="small muted">On: it comes up by itself when Flight Assist goes off, and goes when Flight Assist comes back on. Off: it never comes on screen, not even with its key.</p>
       <label class="check"><input type="checkbox" data-ov="flightOn">Show it now</label>
       <p class="small">Its key: <b id="ov-key">F6</b> <span class="muted" id="ov-pad"></span> · <span id="ov-change"></span></p>
       <div class="sl"><span>Size</span><input type="range" data-ov="flightScale" min="0.7" max="2" step="0.01"><output></output></div>
@@ -415,6 +417,7 @@ function drawOverlay() {
   for (const el of document.querySelectorAll('[data-ov]')) {
     if (el.type === 'checkbox') el.checked = !!s[el.dataset.ov];
     else if (document.activeElement !== el) el.value = s[el.dataset.ov];
+    if (el.dataset.ov === 'flightOn') el.disabled = (ov.keptHidden || []).includes('flight');   // "Overlay on/off" is off
     const out = el.nextElementSibling;
     if (out && out.tagName === 'OUTPUT') out.textContent = Math.round(el.value * (/[XY]$/.test(el.dataset.ov) ? 1 : 100)) + '%';
   }
