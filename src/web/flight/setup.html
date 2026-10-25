@@ -17,9 +17,10 @@
   and leaves each axis its own dead zones and travel, which the check measured for that axis). Right column: the player's
   Elite bindings for flight with what in them matters for Flight Assist off (a controller Elite knows only by Windows' id
   named in words, the id in small print under the table); Joystick Gremlin, with the button that
-  writes the profile with an "FA Off" mode; the flight overlay's switches.
+  writes the profile with an "FA Off" mode.
+  The switches (Studio's stick shaper, curves that follow Flight Assist, the flight overlay) and vJoy are on Options.
   GET /api/flight and the "flight" event carry everything; POST /api/flight/settings saves curves and fixes,
-  POST /api/flight/gremlin writes the profile; the overlay's own settings go through /api/overlay/settings.
+  POST /api/flight/gremlin writes the profile.
 -->
 <style>
 .page{flex:1;min-height:0;overflow:auto;padding:16px}
@@ -48,7 +49,6 @@ table.binds td:first-child{color:var(--muted);white-space:nowrap;width:150px}
 .notes li{margin:4px 0}
 .path{font-family:var(--mono);font-size:12.5px;word-break:break-all}
 .check{display:flex;gap:8px;align-items:center;font-size:13.5px;margin:6px 0}
-.check:has(input:disabled){opacity:.45;cursor:not-allowed}
 /* the stick check: the device's axes as bars, the step on screen with its timer, and what it found */
 .check-top .field{flex:1;min-width:0}
 #check-id{margin:6px 0 0}
@@ -76,34 +76,12 @@ table.binds td:first-child{color:var(--muted);white-space:nowrap;width:150px}
 .check-history>summary{cursor:pointer;font-family:var(--hud);font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .check-earlier{margin:10px 0 14px}
 .check-earlier p{margin:4px 0}
-/* vJoy (vjoy.js): one line when all is well, the way to get it ready when not */
-#vjoy-card h2 .small{font-family:inherit;letter-spacing:0;text-transform:none}
-.vjoy-status{font-weight:600;margin:4px 0 6px}
-.vjoy-status.good{color:var(--good)}
-.vjoy-status.warn{color:var(--warn)}
-#vjoy-card.vjoy-todo{border-color:var(--warn)}
-#vjoy-body p{margin:4px 0 8px}
-.vjoy-get{margin:4px 0 10px;padding-left:18px}
-.vjoy-get li{margin:2px 0}
-.vjoy-get a{color:var(--link,var(--accent))}
-/* the stick shaper (Gimbalyn): one line of how it is */
-.shaper-status{font-weight:600;margin:8px 0 6px}
-.shaper-status.good{color:var(--good)}
-.shaper-status.warn{color:var(--warn)}
-.shaper-status.bad{color:var(--bad,var(--warn))}
-.shaper-status.muted{font-weight:400}
 </style>
 </head>
 <body>
-<nav class="subtabs"><a href="./"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-flight"/></svg>Trainer</a><a href="chase.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-scan"/></svg>Chase the dot</a><a class="active" href="setup.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-pad"/></svg>Stick setup</a></nav>
+<nav class="subtabs"><a href="./"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-flight"/></svg>Trainer</a><a href="chase.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-scan"/></svg>Chase the dot</a><a class="active" href="setup.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-pad"/></svg>Stick setup</a><a href="options.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-wrench"/></svg>Options</a></nav>
 <div class="page"><div class="grid">
   <div>
-    <section class="card" id="vjoy-card">
-      <h2>vJoy <span class="small muted">the virtual joystick your curves reach the game through</span></h2>
-      <p class="vjoy-status" id="vjoy-status">Looking for vJoy…</p>
-      <div id="vjoy-body"></div>
-    </section>
-
     <section class="card" id="check-card">
       <h2>Stick check <span class="small muted">guided, about 2½ minutes</span></h2>
       <p class="small muted">With Flight Assist off, anything the stick gives at rest keeps turning the ship faster and faster, and an old stick seldom comes back to exactly the middle. This check finds where yours rests, by itself and with your hand resting on it as in flight, and how far it reaches, then sets your Flight Assist off dead zones to match (and, for a worn stick that never reaches its end, how far it travels), with a button to put back the ones before. The trainer's exercises are then for tuning the curves. Pick the device, press Start, and follow the steps on screen: each moves on by itself.</p>
@@ -145,18 +123,7 @@ table.binds td:first-child{color:var(--muted);white-space:nowrap;width:150px}
       <div class="row"><button class="btn small" id="copy-all" title="Copies this curve's shape (Most it gives and Softer middle) to pitch, roll and yaw; each keeps its own dead zones and how far its stick travels">Copy to all three</button><button class="btn small" id="reset" title="Puts pitch, roll and yaw of these curves back to Studio's suggestion; a Put back button follows">Back to the suggestion</button><span class="small muted" id="saved"></span></div>
       <p class="small" id="reset-note" hidden></p>
       <p class="small muted" id="mode-note"></p>
-      <label class="check"><input type="checkbox" id="switch">Switch the curves when Flight Assist changes in the game</label>
       <p class="small muted" id="switch-note"></p>
-    </section>
-
-    <section class="card" id="shaper-card">
-      <h2>Studio's stick shaper <span class="small muted">Gimbalyn, Studio's own stick shaper</span></h2>
-      <p class="small muted">Studio can shape your stick itself, as Joystick Gremlin does: it reads your real stick, applies the curves above and feeds vJoy, which Elite reads. It follows Flight Assist by itself, so there is no Gremlin profile to set up. It is off until you turn it on, and Studio never takes vJoy before that.</p>
-      <label class="check"><input type="checkbox" id="shaper">Let Studio shape my stick</label>
-      <p class="shaper-status" id="shaper-status"></p>
-      <p class="small warn" id="shaper-hint" hidden></p>
-      <ul class="notes" id="shaper-notes"></ul>
-      <p class="small muted">Both Studio and Joystick Gremlin write to vJoy, and only one can. Turn Gremlin's profile off while Studio shapes the stick. In Elite, set the dead zone of pitch, roll and yaw to 0: the curves above already have one.</p>
     </section>
   </div>
 
@@ -174,32 +141,19 @@ table.binds td:first-child{color:var(--muted);white-space:nowrap;width:150px}
       <div class="row" style="margin-top:10px"><button class="btn primary" id="export">Save the FA Off profile for Gremlin</button></div>
       <div id="export-result" class="small" style="margin-top:8px"></div>
     </section>
-
-    <section class="card">
-      <h2>Flight inputs overlay</h2>
-      <p class="small muted">The throttle hand and the stick hand drawn over the game, like the picture above. It never takes the mouse, so you fly with it up. Elite must be in Borderless (Options › Graphics › Display).</p>
-      <label class="check"><input type="checkbox" id="auto">Overlay on/off</label>
-      <p class="small muted">On: it comes up by itself when Flight Assist goes off, and goes when Flight Assist comes back on. Off: it never comes on screen, not even with its key.</p>
-      <label class="check"><input type="checkbox" data-ov="flightOn">Show it now</label>
-      <p class="small">Its key: <b id="ov-key">F6</b> <span class="muted" id="ov-pad"></span> · <span id="ov-change"></span></p>
-      <div class="sl"><span>Size</span><input type="range" data-ov="flightScale" min="0.7" max="2" step="0.01"><output></output></div>
-      <div class="sl"><span>Left to right</span><input type="range" data-ov="flightX" min="0" max="100" step="0.5"><output></output></div>
-      <div class="sl"><span>Top to bottom</span><input type="range" data-ov="flightY" min="0" max="100" step="0.5"><output></output></div>
-    </section>
   </div>
 </div></div>
 
 <script src="../studio.js"></script>
 <script src="flight.js"></script>
 <script src="check.js"></script>
-<script src="vjoy.js"></script>
 <script>
 (() => {
 'use strict';
 const { $, h, toast } = Studio;
 if (!Studio.served) return;
 
-let info = null, frame = null, ov = null;
+let info = null, frame = null;
 let mode = 'faOff', axis = 'pitch';
 const read = Flight.reader();
 const NAMES = { pitch: 'Pitch', roll: 'Roll', yaw: 'Yaw' };
@@ -210,12 +164,8 @@ const call = Studio.follow('flight', '/api/flight', answer => {
   if (pending) info.settings[pending.mode] = JSON.parse(JSON.stringify(pending.curves));   // not sent yet: still the player's
   draw();
 });
-const overlay = Studio.follow('overlay', '/api/overlay/settings', answer => { ov = answer; drawOverlay(); });
 Flight.stream(f => { frame = f; });
 FlightCheck.init({ getInfo: () => info, getFrame: () => frame, call, toast, flush });
-// Looks for vJoy now, as the page opens (never at Studio's start). Its answers are not the flight data, so it calls Studio
-// directly (Studio.api), not through "call", which would take every answer for that data.
-FlightVJoy.init({ call: Studio.api, toast });
 const accent = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ff7100';
 
 // ============================================================ drawing what the app says
@@ -228,33 +178,13 @@ function draw() {
     ? (info.saved.faOff ? 'Your own Flight Assist off curves.' : 'A starting point made from your FA on curves: full stick for full thrust, and a softer middle. The trainer flies with these.')
     + ' The trainer reads your real stick through them.'
     : (info.saved.faOn ? 'Your own Flight Assist on curves.' : 'Read from your Gremlin profile (its Default mode).') + ' Gremlin uses these while Flight Assist is on.';
-  $('#auto').checked = info.settings.showWhenFaOff;
-  $('#switch').checked = info.settings.switchCurvesWithFa;
-  $('#switch-note').textContent = info.settings.switchCurvesWithFa
-    ? 'On: the game gets your Flight Assist on curves, and your Flight Assist off curves while Flight Assist is off. This goes for Studio\'s stick shaper below and for the profile saved for Gremlin. It is separate from the overlay, which only draws your sticks.'
-    : 'Off: the game always gets your Flight Assist on curves, whether Flight Assist is on or off. The Flight Assist off curves are then for the trainer only.';
-  drawShaper();
+  // The switch itself is on Options; here, a line saying which curves the game gets, with the way there.
+  const options = h('a', { href: 'options.html' }, 'Options');
+  $('#switch-note').replaceChildren(...(info.settings.switchCurvesWithFa
+    ? ['The game gets your Flight Assist off curves while Flight Assist is off, and your Flight Assist on curves while it is on. To change that, see ', options, '.']
+    : ['The game always gets your Flight Assist on curves, whether Flight Assist is on or off; the Flight Assist off curves are for the trainer only. To have them switch with Flight Assist, see ', options, '.']));
   drawBinds();
   drawGremlin();
-}
-
-// ---- Studio's stick shaper (Gimbalyn): the two switches, and one line of how it is
-function drawShaper() {
-  const s = info.shaper;
-  $('#shaper').checked = s.on;
-  let line, how;
-  if (s.practice) [line, how] = ['This is a practice copy of Studio. It never starts the shaper: only your own Studio does.', 'muted'];
-  else if (!s.on) [line, how] = ['Off. Studio does not touch your stick.', 'muted'];
-  else if (s.running) [line, how] = ['Running: Studio is shaping your stick' + (s.switching && s.mode ? ', with the Flight Assist ' + (s.mode === 'FA Off' ? 'off' : 'on') + ' curves now.' : ', with the Flight Assist on curves.'), 'good'];
-  else if (s.problem) [line, how] = [s.problem, s.state === 'busy' ? 'warn' : 'bad'];
-  else [line, how] = ['Starting…', 'muted'];
-  const status = $('#shaper-status');
-  status.className = 'shaper-status ' + how;
-  status.textContent = line;
-  const busy = s.on && !s.running && s.state === 'busy';
-  $('#shaper-hint').hidden = !busy;
-  $('#shaper-hint').textContent = busy ? 'Another program holds vJoy, most likely Joystick Gremlin. Turn its profile off (its activate button): Studio takes vJoy by itself a few seconds after.' : '';
-  $('#shaper-notes').replaceChildren(...(s.on ? s.notes : []).map(n => h('li', null, n)));
 }
 
 // A change is sent a moment after the slider stops. Until then it waits in "pending" with the curves it belongs to (FA off
@@ -358,12 +288,14 @@ function drawBinds() {
       + alt.map(axisText).join('; ') + '.' + (worst > 0.2 ? ` Those dead zones (up to ${Math.round(worst * 100)}%) make half the stick do nothing, and they skip Gremlin. Pressed by mistake in flight, Flight Assist off becomes nearly impossible. Clear that key, or the alternate dead zones, in Elite's controls.` : '')));
   }
   if (!b.axes.throttle) notes.push(h('li', null, 'No throttle axis: your throttle is the speed keys. With Flight Assist off the throttle is forward thrust, so a slider or a throttle axis makes speed much easier to hold.'));
-  if (b.toggles && b.toggles.fa === false) notes.push(h('li', null, 'Flight Assist is set to "hold" in Elite: it is off only while the key is held. Gremlin\'s FA Off mode follows that.'));
+  // (Gremlin's profile has an FA Off mode only while the curves switch with Flight Assist: the switch on Options)
+  const switching = info.settings.switchCurvesWithFa;
+  if (b.toggles && b.toggles.fa === false) notes.push(h('li', null, 'Flight Assist is set to "hold" in Elite: it is off only while the key is held.' + (switching ? ' Gremlin\'s FA Off mode follows that.' : '')));
   const yawRoll = b.values.YawToRollMode_FAOff;
   if (yawRoll) notes.push(h('li', null, 'Yaw into roll with Flight Assist off: ' + yawRoll.replace('Bindings_YawIntoRoll', '').replace(/([a-z])([A-Z])/g, '$1 $2') + '. With "Time", holding yaw turns into roll after a moment; many FA off pilots set it to "None" so yaw stays yaw.'));
   const gameDead = ['pitch', 'roll', 'yaw'].map(n => b.axes[n]).filter(a => a && a.device === 'vJoy' && a.deadzone > 0.01);
   if (gameDead.length) notes.push(h('li', null, 'Elite adds its own dead zone on top of Gremlin\'s for ' + gameDead.map(a => a.axis).join(', ') + '. Set those to 0 in Elite: Gremlin already has one.'));
-  if (!b.buttons.fa) notes.push(h('li', { class: 'warn' }, 'Flight Assist has no key in Elite. Bind one: Gremlin\'s FA Off mode switches on the same key.'));
+  if (!b.buttons.fa) notes.push(h('li', { class: 'warn' }, 'Flight Assist has no key in Elite. Bind one' + (switching ? ': Gremlin\'s FA Off mode switches on the same key.' : ', so you can turn it off in flight.')));
   $('#bind-notes').replaceChildren(...notes);
 }
 
@@ -383,7 +315,7 @@ function drawGremlin() {
     parts.push(h('p', { class: 'small muted' }, (g.axes.length ? g.axes.length + ' axes go to vJoy' : 'No axes go to vJoy') + ' · modes: ' + (modes.join(', ') || 'Default')));
     const follows = info.settings.switchCurvesWithFa;
     parts.push(h('p', { class: 'small muted' }, 'Saving writes a new copy of your profile, ending "-fa-off", '
-      + (follows ? 'with a second mode "FA Off" that has your Flight Assist off curves. ' : 'without an FA Off mode, because the curves are set not to follow Flight Assist (see Curves). ')
+      + (follows ? 'with a second mode "FA Off" that has your Flight Assist off curves. ' : 'without an FA Off mode, because the curves are set not to follow Flight Assist (see Options). ')
       + (info.saved.faOn ? 'Its Default mode gets the Flight Assist on curves you saved here. ' : 'Its Default mode keeps your own Gremlin curves exactly as they are. ')
       + (follows ? 'Your Flight Assist key switches Gremlin\'s mode as it switches the game: Gremlin hears the key and still lets Elite have it. ' : '')
       + 'Your own profile is never changed, and nothing reaches Gremlin until you press the button.'));
@@ -409,31 +341,6 @@ $('#export').addEventListener('click', async () => {
         Flight.devicesInWords(n, info && info.binds, Flight.deviceNames(info && info.binds, frame && frame.sticks))))) : null));
   } catch (e) { $('#export-result').replaceChildren(h('p', { class: 'bad' }, e.message)); }
 });
-
-// ---- the overlay's switches
-function drawOverlay() {
-  if (!ov) return;
-  const s = ov.settings;
-  for (const el of document.querySelectorAll('[data-ov]')) {
-    if (el.type === 'checkbox') el.checked = !!s[el.dataset.ov];
-    else if (document.activeElement !== el) el.value = s[el.dataset.ov];
-    if (el.dataset.ov === 'flightOn') el.disabled = (ov.keptHidden || []).includes('flight');   // "Overlay on/off" is off
-    const out = el.nextElementSibling;
-    if (out && out.tagName === 'OUTPUT') out.textContent = Math.round(el.value * (/[XY]$/.test(el.dataset.ov) ? 1 : 100)) + '%';
-  }
-  const key = ov.keys.find(k => k.action === 'flight');
-  $('#ov-key').textContent = key ? key.key : 'F6';
-  $('#ov-pad').textContent = key && key.pad ? 'or ' + key.pad : '';
-  $('#ov-change').replaceChildren(Studio.go('Change the key', 'Opens Studio Market\'s overlay settings, where every overlay key is set', 'market', ''));
-}
-for (const el of document.querySelectorAll('[data-ov]')) {
-  const send = () => overlay('POST', '/api/overlay/settings', { [el.dataset.ov]: el.type === 'checkbox' ? el.checked : +el.value }).catch(e => toast(e.message, true));
-  el.addEventListener('change', send);
-  if (el.type !== 'checkbox') el.addEventListener('input', () => { el.nextElementSibling.textContent = Math.round(el.value * (/[XY]$/.test(el.dataset.ov) ? 1 : 100)) + '%'; });
-}
-$('#auto').addEventListener('change', () => call('POST', '/api/flight/settings', { showWhenFaOff: $('#auto').checked }).catch(e => toast(e.message, true)));
-$('#switch').addEventListener('change', () => call('POST', '/api/flight/settings', { switchCurvesWithFa: $('#switch').checked }).catch(e => toast(e.message, true)));
-$('#shaper').addEventListener('change', () => call('POST', '/api/flight/settings', { shaperOn: $('#shaper').checked }).catch(e => toast(e.message, true)));
 
 // ============================================================ every frame: the hands, the curve, where each control is read from
 function fit(canvas) {

@@ -222,7 +222,8 @@ public static class Gremlin
         foreach ((FlightButton way, _) in usable.Where(u => u.At is null))
             notes.Add($"Gremlin cannot switch modes on {Say(way.Press)}, which switches Flight Assist in the game: that one will switch the game but not Gremlin.");
         var bound = usable.Where(u => u.At is not null).Take(faToggles ? 1 : int.MaxValue).ToList();
-        if (!switching) notes.Add("The curves are not set to follow Flight Assist, so the profile has no FA Off mode: the game gets your Flight Assist on curves.");
+        if (!switching) notes.Add("The curves are not set to follow Flight Assist, so the profile has no FA Off mode: the game gets your Flight Assist on curves. "
+            + "To have them switch, tick \"Switch the curves when Flight Assist changes in the game\" on Studio Flight's Options, then save again.");
         else if (faSwitches.Count == 0) notes.Add("Flight Assist has no key or button in the game, so Gremlin's FA Off mode has no switch. Bind Flight Assist in the game, then save this again.");
         else if (bound.Count == 0) notes.Add("Bind Flight Assist in the game to a keyboard key (or to a button of the stick this profile uses), then save this again, so that Gremlin's mode switches with it.");
         foreach ((FlightButton way, _) in usable.Where(u => u.At is not null).Skip(bound.Count))

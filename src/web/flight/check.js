@@ -543,10 +543,12 @@ async function change(values) {
 
 const travelText = satX => 'how far the stick travels ' + satX + '%';
 const zonesText = values => Object.entries(values).map(([c, s]) => `${NAMES[c]} ${s.deadLow}% / ${s.deadHigh}%` + (s.satX ? ` (${travelText(s.satX)})` : '')).join(', ');
-// What the check says once it has set the dead zones, and how they reach Elite today.
-const setText = (suggest, before) => 'Set: your Flight Assist off dead zones are now ' + zonesText(suggest) + ' (they were ' + zonesText(before) + '). '
+// What the check says once it has set the dead zones, and how they reach Elite today: only while the curves switch with
+// Flight Assist (switching, the switch on Options) does the game get the Flight Assist off curves at all.
+const setText = (suggest, before, switching) => 'Set: your Flight Assist off dead zones are now ' + zonesText(suggest) + ' (they were ' + zonesText(before) + '). '
   + 'Next, fly the trainer\'s exercises: they are for tuning the curves. '
-  + 'Your new dead zones reach Elite through Joystick Gremlin: press "Save the FA Off profile for Gremlin" on this page, then open that profile in Gremlin.';
+  + (switching ? 'Your new dead zones reach Elite through Joystick Gremlin: press "Save the FA Off profile for Gremlin" on this page, then open that profile in Gremlin.'
+    : 'Your new dead zones reach Elite only once "Switch the curves when Flight Assist changes in the game" is ticked on Options: then press "Save the FA Off profile for Gremlin" on this page, and open that profile in Gremlin.');
 
 async function setDeadZones(suggest, status, record) {
   const say = (cls, text, ...buttons) => status.replaceChildren(h('p', { class: cls }, text), ...buttons);
@@ -562,7 +564,7 @@ async function setDeadZones(suggest, status, record) {
   }
   record.state = 'set';
   remember(record);
-  say('good', setText(suggest, before),
+  say('good', setText(suggest, before, env.getInfo().settings.switchCurvesWithFa),
     h('button', { class: 'btn', onclick: async e => {
       e.target.disabled = true;
       try {
@@ -620,12 +622,16 @@ function selftest() {
     checks.push({ name, ok: JSON.stringify(value) === JSON.stringify(want), got: value, want });
   };
   check('the "Set" message says it is the new dead zones that reach Elite through Gremlin (never an unclear "They")', () => {
-    const said = setText({ pitch: { deadLow: 3, deadHigh: 4 } }, { pitch: { deadLow: 2, deadHigh: 2 } });
+    const said = setText({ pitch: { deadLow: 3, deadHigh: 4 } }, { pitch: { deadLow: 2, deadHigh: 2 } }, true);
     return { newZones: /Your new dead zones reach Elite through Joystick Gremlin/.test(said), they: /\bThey\b/.test(said), save: /Save the FA Off profile for Gremlin/.test(said) };
   }, { newZones: true, they: false, save: true });
+  check('with the curves not switching with Flight Assist (as at first), the "Set" message sends the player to Options first', () => {
+    const said = setText({ pitch: { deadLow: 3, deadHigh: 4 } }, { pitch: { deadLow: 2, deadHigh: 2 } }, false);
+    return { through: /reach Elite through Joystick Gremlin/.test(said), options: /ticked on Options/.test(said), save: /Save the FA Off profile for Gremlin/.test(said) };
+  }, { through: false, options: true, save: true });
   // Q2: plain names, and Windows' hex ids only in small print.
   check('the "Set" message says how far the stick travels in plain words', () => {
-    const said = setText({ pitch: { deadLow: 3, deadHigh: 4, satX: 90 } }, { pitch: { deadLow: 2, deadHigh: 2, satX: 100 } });
+    const said = setText({ pitch: { deadLow: 3, deadHigh: 4, satX: 90 } }, { pitch: { deadLow: 2, deadHigh: 2, satX: 100 } }, true);
     return [/how far the stick travels 90%/.test(said), /\btravel \d/.test(said)];
   }, [true, false]);
   check('the device list: plain names, no hex id, no two the same; the id is for the small print under it', () => {

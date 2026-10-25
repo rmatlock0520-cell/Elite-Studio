@@ -29,19 +29,21 @@ public sealed record FlightSettings
     /// <summary>The ship the trainer flies like, by coriolis-data's name ("cobra_mk_iii"); empty for the ship the player is flying.</summary>
     public string Ship { get; init; } = "";
     /// <summary>
-    /// "Overlay on/off" on the Stick setup page. On: the flight overlay shows by itself while Flight Assist is off, and goes
-    /// again when it comes back on. Off: it never shows, not with its key nor from a page (see <see cref="Overlay.OverlayHost.MayShow"/>).
+    /// "Overlay on/off" on Studio Flight's Options page. On: the flight overlay shows by itself while Flight Assist is off, and
+    /// goes again when it comes back on. Off (until the player turns it on): it never shows, not with its key nor from a page
+    /// (see <see cref="Overlay.OverlayHost.MayShow"/>).
     /// </summary>
-    public bool ShowWhenFaOff { get; init; } = true;
+    public bool ShowWhenFaOff { get; init; }
     /// <summary>
     /// Switch the curves with the game's Flight Assist: the game gets the Flight Assist on curves, and the off ones while Flight
-    /// Assist is off. Off: it always gets the on curves. Separate from <see cref="ShowWhenFaOff"/>, which is only the overlay.
+    /// Assist is off. Off (until the player turns it on, on Options): it always gets the on curves. Separate from
+    /// <see cref="ShowWhenFaOff"/>, which is only the overlay.
     /// It is for whoever shapes the stick: Studio's own shaper (<see cref="ShaperOn"/>) and the Gremlin profile Studio writes.
     /// </summary>
-    public bool SwitchCurvesWithFa { get; init; } = true;
+    public bool SwitchCurvesWithFa { get; init; }
     /// <summary>
     /// Studio shapes the stick itself, with Gimbalyn, its own program (instead of Joystick Gremlin): it reads the real stick, applies
-    /// the curves and feeds vJoy. Off until the player turns it on, so Studio never takes vJoy unasked.
+    /// the curves and feeds vJoy. Off until the player turns it on (on Options), so Studio never takes vJoy unasked.
     /// </summary>
     public bool ShaperOn { get; init; }
     /// <summary>What the trainer reads: "stick", the real stick with the FA off curves applied by Studio; "game", what the game itself gets (Gremlin's vJoy).</summary>

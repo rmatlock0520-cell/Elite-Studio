@@ -10,7 +10,7 @@ namespace EliteStudio.Flight;
 // vJoy, the virtual joystick a stick shaper feeds (Joystick Gremlin today; Gimbalyn, Studio's own, next). Elite has no
 // curves for sticks, only one dead zone per axis, so a stick's movement can only reach the game reshaped through a
 // virtual stick. vJoy is a driver the player installs themselves: Studio never installs it, and looks for it only when
-// the Stick setup page asks (a player with no stick never loads any of it).
+// Studio Flight's Options page asks (a player with no stick never loads any of it).
 //
 // The search has two halves. VJoyFinder reads only what Windows keeps (its list of installed programs, the vJoy folder,
 // the driver's service and the device's state) and never loads vJoy's library. VJoyProbe loads that library and asks
@@ -67,7 +67,7 @@ public sealed record VJoyProbeResult
     public int[] Devices { get; init; } = [];
 }
 
-/// <summary>The verdict the Stick setup page shows: a state, and what it was made from.</summary>
+/// <summary>The verdict the Options page shows: a state, and what it was made from.</summary>
 /// <param name="State">
 /// "ready"; "notFound" (also when only leftovers of an old vJoy remain: <paramref name="Leftovers"/>); "broken" (installed,
 /// library missing); "reboot"; "disabled" (Windows problem 22); "blocked" (52, driver not signed for this Windows);

@@ -1,9 +1,9 @@
-// STUDIO FLIGHT, VJOY: the card at the top of Stick setup that says whether vJoy is there and ready. Elite has no curves
+// STUDIO FLIGHT, VJOY: the card on Options that says whether vJoy is there and ready. Elite has no curves
 // for sticks, only one dead zone per axis, so flying with Studio's curves needs a stick shaper (Joystick Gremlin today;
 // Gimbalyn, Studio's own, next) that hands the reshaped stick to the game through vJoy, a free virtual joystick the
 // player installs themselves. Studio never installs it, and looks for it only when this page opens or the player asks
 // (GET /api/flight/vjoy): a player with no stick never loads any of it. The trainer, the stick check and the flight overlay
-// work without vJoy, and the card says so. Loaded by setup.html after ../studio.js; setup.html calls FlightVJoy.init.
+// work without vJoy, and the card says so. Loaded by options.html after ../studio.js; options.html calls FlightVJoy.init.
 var FlightVJoy = (() => {
 'use strict';
 const { $, h } = Studio;
@@ -13,11 +13,11 @@ const GREMLINS = { href: 'https://github.com/jshafer817/vJoy/releases/tag/v2.1.9
 // The stick shapers: a program of these holding vJoy is how it should be; any other is in the way.
 const SHAPERS = { joystick_gremlin: 'Joystick Gremlin', gimbalyn: 'Gimbalyn' };
 const AXIS = { X: 'X', Y: 'Y', Z: 'Z', RX: 'Rx', RY: 'Ry', RZ: 'Rz', U: 'Slider', V: 'Slider 2 (dial)' };
-const WHY = 'Elite has no curves for sticks, only one dead zone per axis. To fly with the curves and dead zones you set here, a stick '
+const WHY = 'Elite has no curves for sticks, only one dead zone per axis. To fly with the curves and dead zones you set on Stick setup, a stick '
   + 'shaper reshapes your stick and hands it to the game through vJoy, a free virtual joystick: Joystick Gremlin works this way, and '
   + 'so will Gimbalyn, Studio\'s own. Only that needs vJoy. The trainer, the stick check and the flight overlay work without it.';
 
-let env = null;      // { call: Studio.api (its answers are not the flight data), toast } from setup.html
+let env = null;      // { call: Studio.api (its answers are not the flight data), toast } from options.html
 let busy = false;    // a search is under way
 let last = null;     // the last answer
 

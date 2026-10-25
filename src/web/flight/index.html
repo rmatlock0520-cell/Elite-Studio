@@ -89,7 +89,7 @@
 </style>
 </head>
 <body>
-<nav class="subtabs"><a class="active" href="./"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-flight"/></svg>Trainer</a><a href="chase.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-scan"/></svg>Chase the dot</a><a href="setup.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-pad"/></svg>Stick setup</a></nav>
+<nav class="subtabs"><a class="active" href="./"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-flight"/></svg>Trainer</a><a href="chase.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-scan"/></svg>Chase the dot</a><a href="setup.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-pad"/></svg>Stick setup</a><a href="options.html"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-wrench"/></svg>Options</a></nav>
 <div class="layout">
   <aside class="side">
     <div class="rank"><div class="emblem" id="emblem">0</div><div><span class="small muted">Your rank</span><b id="rank">Cadet</b><span class="small muted" id="rank-note"></span></div></div>
@@ -428,7 +428,9 @@ function drawReport() {
     // only changes the numbers on a tip's button, worked out from the curve as it is now.
     if (!run.tips) run.tips = Sim.advise(run.ex, run.results, info.settings.faOff, shipSpec());
     const game = info.settings.input === 'game';
-    const feel = game ? ' You fly "As the game gets it": save it to Gremlin on Stick setup to feel it.' : ' Fly the set again to feel it.';
+    // (the game gets the Flight Assist off curves only while they switch with Flight Assist: the switch on Options)
+    const feel = !game ? ' Fly the set again to feel it.' : info.settings.switchCurvesWithFa ? ' You fly "As the game gets it": save it to Gremlin on Stick setup to feel it.'
+      : ' You fly "As the game gets it": tick "Switch the curves when Flight Assist changes in the game" on Options, then save it to Gremlin on Stick setup to feel it.';
     for (const tip of run.tips) {
       const now = Sim.change(tip, info.settings.faOff);
       const button = !tip.field ? null
@@ -451,7 +453,8 @@ async function apply(tip) {
     await tune.change(tip.axis, now.change);   // "Put back" undoes this too
     set.applied.add(tip.id);
     redrawTips();
-    toast('Your FA Off curve for ' + tip.axis + ' changed. Save it to Gremlin on the Stick setup page when it feels right.');
+    toast('Your FA Off curve for ' + tip.axis + ' changed. ' + (info.settings.switchCurvesWithFa ? 'Save it to Gremlin on the Stick setup page when it feels right.'
+      : 'For the game to get it, tick "Switch the curves when Flight Assist changes in the game" on Options, then save it to Gremlin on Stick setup when it feels right.'));
   } catch (e) { toast(e.message, true); }
 }
 

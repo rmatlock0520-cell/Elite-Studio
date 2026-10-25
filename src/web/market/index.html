@@ -183,7 +183,7 @@ td.dest{color:var(--muted)}
     <details class="sec card" data-sec="overlay">
       <summary><b class="ctag"><svg class="glyph" aria-hidden="true"><use href="../glyphs.svg#g-overlay"/></svg>OVERLAYS AND KEYS</b><span id="sum-overlay"></span><span class="chev" aria-hidden="true"><svg class="glyph"><use href="../glyphs.svg#g-chev"/></svg></span></summary>
       <div class="body keys">
-        <p class="small muted">Five overlays, each with its own key. In the game, the key shows that overlay and gives you the mouse on it; press it again to hide it, and the game has the mouse back once none is showing. On the overlay itself: hold its top strip to move it, and use "smaller" and "bigger" for its size. The Flight inputs overlay is the exception: it never takes the mouse, so you can fly with it up. Move and size it here or in Studio Flight.</p>
+        <p class="small muted">Five overlays, each with its own key. In the game, the key shows that overlay and gives you the mouse on it; press it again to hide it, and the game has the mouse back once none is showing. On the overlay itself: hold its top strip to move it, and use "smaller" and "bigger" for its size. The Flight inputs overlay is the exception: it never takes the mouse, so you can fly with it up, and it shows only once "Overlay on/off" is ticked on Options in Studio Flight. Move and size it here or there.</p>
         <div class="ovbox" title="Shows the trade to fly, with its buttons: next trade, copy system, accept, sell my cargo, trades and settings.">
           <span class="cap">Hauling overlay: its key  (click, then press the keys)</span>
           <div class="field"><input readonly data-key="hotHaul" aria-label="Hauling overlay key"><input readonly data-pad="padHaul" aria-label="Hauling overlay controller button" placeholder="controller: none"></div>
@@ -673,7 +673,7 @@ function drawOverlay() {
   // The flight inputs cannot be shown from here while Studio Flight's "Overlay on/off" is off.
   const flightShow = $('[data-ov=flightOn]'), flightOff = (ov.keptHidden || []).includes('flight');
   flightShow.disabled = flightOff;
-  if (flightOff) flightShow.parentElement.title = 'Off in Studio Flight: Stick setup, "Overlay on/off".';
+  if (flightOff) flightShow.parentElement.title = 'Off in Studio Flight: Options, "Overlay on/off".';
   else flightShow.parentElement.removeAttribute('title');   // the box's own title shows again
   for (const el of all('[data-key]')) put(el, s[el.dataset.key]);
   for (const el of all('[data-pad]')) {

@@ -24,6 +24,9 @@ public sealed class Settings
     /// <summary>True once a section has been saved, whatever it holds: how a studio tells its very first run.</summary>
     public bool Has(string section) => root[section] is not null;
 
+    /// <summary>True when a section has a value of that name saved (in any case, as sections are read): for a setting newer than the file.</summary>
+    public bool Has(string section, string name) => root[section] is JsonObject saved && saved.Any(p => p.Key.Equals(name, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>
     /// A studio's section, or a fresh one with that class's defaults. A value of the wrong kind typed
     /// into the file by hand ("overlayOn": "yes") costs that section its saved values, never the start-up.

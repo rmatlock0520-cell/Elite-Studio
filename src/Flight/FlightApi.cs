@@ -102,7 +102,7 @@ public sealed class FlightApi : IDisposable
         roundsFile = dataDir is null ? null : Path.Combine(Path.GetFullPath(dataDir), RoundsFile);
         try
         {
-            Current = settings.Get<FlightSettings>(Section).Cleaned();
+            Current = KeptOn(settings.Get<FlightSettings>(Section)).Cleaned();
         }
         catch (Exception problem)   // a hand-edited section must never stop Studio from starting
         {
@@ -131,7 +131,7 @@ public sealed class FlightApi : IDisposable
             return WebResponse.Json(new { ok = true });
         });
         web.Map("POST", "/api/flight/gremlin", _ => SaveGremlin());
-        // vJoy: looked for only when the Stick setup page asks (never at start-up, so a player with no stick never loads any of it).
+        // vJoy: looked for only when the Options page asks (never at start-up, so a player with no stick never loads any of it).
         web.Map("GET", "/api/flight/vjoy", async _ => WebResponse.Json(await CheckVJoy()));
         web.Map("POST", "/api/flight/vjoy/folder", _ => PickVJoyFolder());
         web.Map("POST", "/api/flight/vjoy/forget", _ => ForgetVJoyFolder());
@@ -295,7 +295,7 @@ public sealed class FlightApi : IDisposable
             foreach (string control in (string[])["pitch", "roll", "yaw"])
                 if (binds?.Axes.GetValueOrDefault(control) is { } bound && bound.Device.Equals("vJoy", StringComparison.OrdinalIgnoreCase)
                     && Gremlin.Through(gremlin.Axes, bound.Axis) is { CurveUnread: true })
-                    notes.Add($"Your Gremlin curve for {control} is not one Studio can read, so Studio's shaper would use its default: save your own Flight Assist on curve here.");
+                    notes.Add($"Your Gremlin curve for {control} is not one Studio can read, so Studio's shaper would use its default: save your own Flight Assist on curve on Stick setup.");
         return notes;
     }
 
@@ -396,6 +396,36 @@ public sealed class FlightApi : IDisposable
             inShip = game.Status.InMainShip || game.Status.InFighter,
             gameRunning = now.GameRunning,
         };
+    }
+
+    /// <summary>
+    /// The switches a player of an earlier Studio already had on, kept on: those Studios had them on by themselves, and only a
+    /// fresh Studio starts with them off. For the curves: a flight section saved without "switchCurvesWithFa" (1.9.2 to 1.9.5,
+    /// before that switch), or Studio's FA Off copy of the Gremlin profile with its FA Off mode (saving it saves no flight
+    /// settings). For "Overlay on/off": the flight box left up (its key saves no flight settings either). A switch saved either
+    /// way stays as saved.
+    /// </summary>
+    FlightSettings KeptOn(FlightSettings saved)
+    {
+        if (!file.Has(Section, "switchCurvesWithFa") && (file.Has(Section) || SwitchedForGremlin()))
+            saved = saved with { SwitchCurvesWithFa = true };
+        if (!file.Has(Section, "showWhenFaOff") && overlay?.Settings.Box(OverlaySettings.ShowOnly).On == true)
+            saved = saved with { ShowWhenFaOff = true };
+        return saved;
+    }
+
+    /// <summary>Studio's FA Off copy of the player's Gremlin profile is there, with its FA Off mode.</summary>
+    bool SwitchedForGremlin()
+    {
+        try
+        {
+            return gremlinProfile() is { } profile && Gremlin.TargetFor(profile) is var copy && File.Exists(copy)
+                && SavedAxes(copy)?.Any(axis => axis.Mode == Gremlin.FaOffMode && axis.Studios) == true;
+        }
+        catch (Exception problem) when (problem is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return false;   // nothing to go by: as a fresh Studio
+        }
     }
 
     /// <summary>The axes of a profile Studio saved for Gremlin; null when it cannot be read just now.</summary>

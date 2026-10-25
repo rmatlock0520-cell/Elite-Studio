@@ -367,6 +367,7 @@ public sealed class FlightTests : IDisposable
         string file = Path.Combine(temp, "settings.json");
         using var web = new WebServer(temp);
         var settings = new Settings(file);   // one for both, as in the app: two would each write their own copy of the file
+        settings.Set("flight", new FlightSettings { ShowWhenFaOff = true });   // "Overlay on/off" turned on: a fresh Studio has it off
         using (var overlay = new Overlay.OverlayHost(web, settings, watcher.State, headless: true))
         using (var flight = new FlightApi(web, settings, watcher.State, overlay, game.BindingsDir, null, gremlinProfile: () => null, sticks: _ => [], held: _ => false))
         {
@@ -400,6 +401,7 @@ public sealed class FlightTests : IDisposable
         using GameWatcher watcher = game.Watch();
         using var web = new WebServer(temp);
         var settings = new Settings(Path.Combine(temp, "settings.json"));
+        settings.Set("flight", new FlightSettings { ShowWhenFaOff = true });   // turned on, as a fresh Studio has it off
         using var overlay = new Overlay.OverlayHost(web, settings, watcher.State, headless: true);
         using var flight = new FlightApi(web, settings, watcher.State, overlay, game.BindingsDir, null, gremlinProfile: () => null, sticks: _ => [], held: _ => false);
         // (the routes answer at once: no wait on the window thread)
@@ -477,6 +479,35 @@ public sealed class FlightTests : IDisposable
         using var flight = new FlightApi(web, settings, watcher.State, overlay, game.BindingsDir, null, gremlinProfile: () => null, sticks: _ => [], held: _ => false);
         Assert.False(overlay.Settings.FlightOn);
         Assert.False(new Settings(file).Get<Overlay.OverlaySettings>("overlay").FlightOn);   // and saved so
+    });
+
+    // A fresh Studio (no settings file): the flight box stays hidden by its key, a page and Flight Assist going off, and the
+    // pages are told the switches are off.
+    [Fact]
+    public void A_fresh_Studio_never_shows_the_flight_box_until_Overlay_on_off_is_turned_on() => OverlayTests.OnWindowThread(() =>
+    {
+        using var game = new PracticeGame();
+        string status = Path.Combine(game.JournalDir, "Status.json");
+        using GameWatcher watcher = game.Watch();
+        using var web = new WebServer(temp);
+        var settings = new Settings(Path.Combine(temp, "settings.json"));
+        using var overlay = new Overlay.OverlayHost(web, settings, watcher.State, headless: true);
+        using var flight = new FlightApi(web, settings, watcher.State, overlay, game.BindingsDir, null, gremlinProfile: () => null, sticks: _ => [], held: _ => false);
+        JsonElement Ask(string method, string route, string body = "") => JsonDocument.Parse(web.Handle(new WebRequest(method, route, new Dictionary<string, string>(), body)).GetAwaiter().GetResult().Body).RootElement;
+        JsonElement shown = Ask("GET", "/api/flight").GetProperty("settings");
+        Assert.Equal((false, false, false), (shown.GetProperty("showWhenFaOff").GetBoolean(), shown.GetProperty("switchCurvesWithFa").GetBoolean(), shown.GetProperty("shaperOn").GetBoolean()));
+        overlay.Press("flight");
+        Assert.False(overlay.Settings.FlightOn);
+        Ask("POST", "/api/overlay/settings", "{\"flightOn\":true}");
+        Assert.False(overlay.Settings.FlightOn);
+        game.Write(status, "{ \"timestamp\":\"2026-10-19T12:00:00Z\", \"event\":\"Status\", \"Flags\":" + ((1 << 24) | (1 << 5)) + ", \"Cargo\":1.0 }\r\n");
+        watcher.Poll();
+        flight.CheckFlightAssist();
+        Assert.False(overlay.Settings.FlightOn);
+        Assert.Contains("flight", Ask("GET", "/api/overlay/settings").GetProperty("keptHidden").EnumerateArray().Select(box => box.GetString()));
+        // turned on (Options): Flight Assist is off now, so it comes up
+        Ask("POST", "/api/flight/settings", "{\"showWhenFaOff\":true}");
+        Assert.True(overlay.Settings.FlightOn);
     });
 
     [Fact]
@@ -626,11 +657,11 @@ public sealed class FlightTests : IDisposable
         (status, _) = await Ask(web, "POST", "/progress", "{\"exercise\":\"spin-1\",\"successes\":3,\"attempts\":5}");
         Assert.Equal(400, status);
 
-        // settings: named ones change, the progress cannot be sent this way, and it is all saved
-        (status, json) = await Ask(web, "POST", "/settings", "{\"ship\":\"eagle\",\"progress\":{},\"showWhenFaOff\":false}");
+        // settings: named ones change, the progress cannot be sent this way, and it is all saved (the two switches start off)
+        (status, json) = await Ask(web, "POST", "/settings", "{\"ship\":\"eagle\",\"progress\":{},\"showWhenFaOff\":true,\"switchCurvesWithFa\":true}");
         Assert.Equal(200, status);
         FlightSettings saved = new Settings(file).Get<FlightSettings>("flight");
-        Assert.Equal(("eagle", false, 1), (saved.Ship, saved.ShowWhenFaOff, saved.Progress.Count));
+        Assert.Equal(("eagle", true, true, 1), (saved.Ship, saved.ShowWhenFaOff, saved.SwitchCurvesWithFa, saved.Progress.Count));
         (status, _) = await Ask(web, "POST", "/settings", "[1]");
         Assert.Equal(400, status);
 
@@ -696,7 +727,9 @@ public sealed class FlightTests : IDisposable
         File.WriteAllText(own, ProfileText());
         string running = own;   // the profile Gremlin opens
         using var web = new WebServer(temp);
-        using var flight = new FlightApi(web, new Settings(Path.Combine(temp, "settings.json")), watcher.State, null, game.BindingsDir, null,
+        var settings = new Settings(Path.Combine(temp, "settings.json"));
+        settings.Set("flight", new FlightSettings { SwitchCurvesWithFa = true });   // curves that switch with Flight Assist: a fresh Studio has it off
+        using var flight = new FlightApi(web, settings, watcher.State, null, game.BindingsDir, null,
             gremlinProfile: () => running, sticks: _ => [], held: _ => false);
         async Task<(bool HasFaOff, bool OutOfDate)> Told()
         {
@@ -757,7 +790,9 @@ public sealed class FlightTests : IDisposable
             Running = Path.Combine(temp, "gremlin.xml");
             File.WriteAllText(Running, ProfileText());
             Web = new WebServer(temp);
-            flight = new FlightApi(Web, new Settings(Path.Combine(temp, "settings.json")), watcher.State, null, game.BindingsDir, null,
+            var settings = new Settings(Path.Combine(temp, "settings.json"));
+            settings.Set("flight", new FlightSettings { SwitchCurvesWithFa = true });   // curves that switch with Flight Assist: a fresh Studio has it off
+            flight = new FlightApi(Web, settings, watcher.State, null, game.BindingsDir, null,
                 gremlinProfile: () => Running, sticks: _ => [], held: _ => false);
         }
 
@@ -1274,16 +1309,90 @@ public sealed class FlightTests : IDisposable
 
     // ------------------------------------------------------------ the stick shaper: Flight Assist's two curves through Gimbalyn
 
+    // Studio Flight's three switches on Options start off: the shaper (in place of Gremlin), curves that switch with Flight
+    // Assist, and "Overlay on/off".
     [Fact]
-    public void The_stick_shaper_is_off_until_turned_on_and_the_curves_follow_Flight_Assist_by_default()
+    public void The_stick_shaper_the_curves_following_Flight_Assist_and_the_overlay_are_all_off_until_turned_on()
     {
         var fresh = new FlightSettings();
-        Assert.Equal((false, true), (fresh.ShaperOn, fresh.SwitchCurvesWithFa));
+        Assert.Equal((false, false, false), (fresh.ShaperOn, fresh.SwitchCurvesWithFa, fresh.ShowWhenFaOff));
         JsonElement asSent = JsonSerializer.SerializeToElement(fresh, Settings.Json);
-        Assert.Equal((false, true), (asSent.GetProperty("shaperOn").GetBoolean(), asSent.GetProperty("switchCurvesWithFa").GetBoolean()));
+        Assert.Equal((false, false, false), (asSent.GetProperty("shaperOn").GetBoolean(), asSent.GetProperty("switchCurvesWithFa").GetBoolean(), asSent.GetProperty("showWhenFaOff").GetBoolean()));
         FlightSettings kept = new Settings(Path.Combine(temp, "settings.json")).Get<FlightSettings>("flight");   // a file with none of it
-        Assert.Equal((false, true), (kept.ShaperOn, kept.SwitchCurvesWithFa));
+        Assert.Equal((false, false, false), (kept.ShaperOn, kept.SwitchCurvesWithFa, kept.ShowWhenFaOff));
     }
+
+    // Settings saved by Studio 1.9.2 to 1.9.5 have no "switchCurvesWithFa" (it came with 1.9.6): those versions always switched
+    // the curves with Flight Assist, and the Gremlin profiles they saved have the FA Off mode, so such a player keeps it on.
+    // A switch saved either way stays as saved, and a fresh Studio starts with it off.
+    [Fact]
+    public void A_player_from_before_the_curve_switch_keeps_the_curves_switching_with_Flight_Assist()
+    {
+        using var game = new PracticeGame();
+        using GameWatcher watcher = game.Watch();
+        using var web = new WebServer(temp);
+        string file = Path.Combine(temp, "settings.json");
+        bool Switching(string? flight)
+        {
+            File.Delete(file);
+            if (flight is not null) File.WriteAllText(file, "{ \"flight\": " + flight + " }");
+            using var api = new FlightApi(web, new Settings(file), watcher.State, null, game.BindingsDir, null, gremlinProfile: () => null, sticks: _ => [], held: _ => false);
+            return api.Current.SwitchCurvesWithFa;
+        }
+        Assert.True(Switching("{ \"ship\": \"eagle\", \"showWhenFaOff\": true }"));   // as 1.9.5 saved it
+        Assert.False(Switching("{ \"ship\": \"eagle\", \"switchCurvesWithFa\": false }"));
+        Assert.False(Switching("{ \"SwitchCurvesWithFa\": false }"));   // typed in by hand
+        Assert.True(Switching("{ \"switchCurvesWithFa\": true }"));
+        Assert.False(Switching(null));   // a fresh Studio
+    }
+
+    // Saving the FA Off profile for Gremlin saves no flight settings, so a player of an earlier Studio may have Studio's copy of
+    // their Gremlin profile, with its FA Off mode, and no flight settings at all: their curves switched, so they keep it on.
+    // A copy saved with the switch off has no FA Off mode, so it says nothing of the kind.
+    [Fact]
+    public async Task A_player_with_Studios_FA_Off_profile_keeps_the_curves_switching_though_no_flight_settings_were_saved()
+    {
+        using var game = new PracticeGame();
+        game.Copy("Custom.4.2.binds", game.BindingsDir);
+        game.Copy("StartPreset.4.start", game.BindingsDir);
+        using GameWatcher watcher = game.Watch();
+        watcher.Poll();
+        string profile = Path.Combine(temp, "gremlin.xml");
+        File.WriteAllText(profile, ProfileText());
+        string file = Path.Combine(temp, "settings.json");
+        using var web = new WebServer(temp);
+        FlightApi Start() => new(web, new Settings(file), watcher.State, null, game.BindingsDir, null, gremlinProfile: () => profile, sticks: _ => [], held: _ => false);
+
+        new Settings(file).Set("flight", new FlightSettings { SwitchCurvesWithFa = true });   // saved as earlier Studios saved it
+        using (Start()) Assert.Equal(200, (await Ask(web, "POST", "/gremlin")).Status);
+        File.Delete(file);
+        using (FlightApi api = Start()) Assert.True(api.Current.SwitchCurvesWithFa);
+
+        new Settings(file).Set("flight", new FlightSettings { SwitchCurvesWithFa = false });
+        using (Start()) Assert.Equal(200, (await Ask(web, "POST", "/gremlin")).Status);   // the same copy, without its FA Off mode
+        File.Delete(file);
+        using (FlightApi api = Start()) Assert.False(api.Current.SwitchCurvesWithFa);
+    }
+
+    // Showing the flight box with its key saves no flight settings either: a player of an earlier Studio who kept it up that way
+    // keeps it up, and its key working. With the box hidden there is nothing to go by, and the switch starts off.
+    [Fact]
+    public void A_player_who_kept_the_flight_box_up_keeps_Overlay_on_off_though_no_flight_settings_were_saved() => OverlayTests.OnWindowThread(() =>
+    {
+        using var game = new PracticeGame();
+        using GameWatcher watcher = game.Watch();
+        using var web = new WebServer(temp);
+        string file = Path.Combine(temp, "settings.json");
+        foreach (bool up in (bool[])[true, false])
+        {
+            File.Delete(file);
+            var settings = new Settings(file);
+            settings.Set("overlay", new Overlay.OverlaySettings { FlightOn = up });
+            using var overlay = new Overlay.OverlayHost(web, settings, watcher.State, headless: true);
+            using var flight = new FlightApi(web, settings, watcher.State, overlay, game.BindingsDir, null, gremlinProfile: () => null, sticks: _ => [], held: _ => false);
+            Assert.Equal((up, up), (flight.Current.ShowWhenFaOff, overlay.Settings.FlightOn));
+        }
+    });
 
     [Fact]
     public void The_stick_behind_a_turning_control_is_found_for_Gimbalyn_by_its_numbers_and_Windows_letters()
@@ -1387,6 +1496,7 @@ public sealed class FlightTests : IDisposable
     public async Task Turned_on_the_shaper_starts_Gimbalyn_with_both_curve_sets_and_follows_Flight_Assist_until_turned_off()
     {
         using var rig = new ShaperRig(temp);
+        Assert.Equal(200, (await Ask(rig.Web, "POST", "/settings", "{\"switchCurvesWithFa\":true}")).Status);   // a fresh Studio has it off
         await rig.Settle();
         Assert.Empty(rig.Gimbalyn.Requests);   // off: Gimbalyn is never started or spoken to
         Assert.Equal(0, rig.Gimbalyn.Launches);
@@ -1768,7 +1878,8 @@ public sealed class FlightTests : IDisposable
         Assert.All(Gremlin.Axes(written), axis => Assert.Equal("Default", axis.Mode));
         Assert.DoesNotContain(written.Root!.Element("modes")!.Elements("mode"), mode => mode.Value.Trim() == Gremlin.FaOffMode);
         Assert.DoesNotContain(written.Descendants("action"), action => (string?)action.Attribute("type") == "change-mode");   // nothing to switch the mode
-        Assert.Contains(saved.GetProperty("notes").EnumerateArray(), note => note.GetString()!.Contains("not set to follow Flight Assist"));
+        // (and where to turn it on: a fresh Studio has it off)
+        Assert.Contains(saved.GetProperty("notes").EnumerateArray(), note => note.GetString()!.Contains("not set to follow Flight Assist") && note.GetString()!.Contains("on Studio Flight's Options"));
         Assert.False((await Ask(web, "GET", "")).Json.GetProperty("gremlin").GetProperty("outOfDate").GetBoolean());
 
         // Switching on again and saving again: the FA Off mode is back
@@ -1792,7 +1903,9 @@ public sealed class FlightTests : IDisposable
         using var flight = new FlightApi(web, new Settings(Path.Combine(temp, "settings.json")), watcher.State, null, game.BindingsDir, null,
             gremlinProfile: () => profile, sticks: _ => [], held: _ => false);
 
-        // Saved with the switch (the default), and the player's Default curves untouched: Studio's file has only the FA Off mode in it
+        // Saved with the switch turned on (a fresh Studio has it off), and the player's Default curves untouched: Studio's file has
+        // only the FA Off mode in it
+        Assert.Equal(200, (await Ask(web, "POST", "/settings", "{\"switchCurvesWithFa\":true}")).Status);
         (int status, JsonElement saved) = await Ask(web, "POST", "/gremlin");
         Assert.Equal(200, status);
         string path = saved.GetProperty("path").GetString()!;
