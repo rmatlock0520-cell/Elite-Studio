@@ -84,7 +84,7 @@ jobs:
           - os: ubuntu-22.04
             window: false
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4   # the recorded journals and the picture script
       - uses: actions/download-artifact@v4
@@ -94,14 +94,19 @@ jobs:
       # No window manager: the window opens where Studio puts it, and clicks reach it all the same.
       # Where the window cannot start (22.04) only the screen is needed: the web engine there is a large download
       # that once took the mirror long enough to cancel the run.
+      # Ubuntu's mirror for GitHub's machines sometimes slows to a crawl: a try that has not finished in four minutes
+      # is stopped and tried again, keeping what it had already downloaded.
       - name: Install the window's web engine and the test screen
         run: |
           sudo apt-get update
-          if [ "${{ matrix.window }}" = true ]; then
-            sudo apt-get install -y -o Acquire::Retries=3 libwebkit2gtk-4.1-0 libnotify4 xvfb xdotool imagemagick
-          else
-            sudo apt-get install -y -o Acquire::Retries=3 xvfb
-          fi
+          if [ "${{ matrix.window }}" = true ]; then wanted="libwebkit2gtk-4.1-0 libnotify4 xvfb xdotool imagemagick"
+          else wanted="xvfb"; fi
+          for try in 1 2 3; do
+            sudo timeout 240 apt-get install -y -o Acquire::Retries=3 $wanted && exit 0
+            echo "::warning::Installing took too long or failed (try $try of 3)."
+            sudo dpkg --configure -a || true
+          done
+          exit 1
       - name: Unpack the player's copy
         run: tar -xzf elite-studio-linux-x64.tar.gz -C "$RUNNER_TEMP"
       - name: List libraries this Ubuntu lacks

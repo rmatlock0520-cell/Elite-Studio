@@ -44,23 +44,29 @@ Studio uses your choice from its next start.
 
 
 HUD COLOURS ON LINUX
-- After saving a theme, press F11 in the game to load the new colours. (On Windows Studio presses it for you.)
+- After Save to game in Studio UI (or each change, with Auto-save on), press F11 in the game to load the new colours.
+  (On Windows Studio presses it for you.)
+- Studio does not install the HUD mod by itself on Linux: press "Install the HUD mod now" on Studio UI's Setup tab.
 - The HUD mod does not work with Proton 11 yet. In Steam, open Elite's Properties, then Compatibility, and choose
   Proton 10.
+- To remove the HUD mod, close Elite and delete its files from the game folder: d3d11.dll, d3dcompiler_47.dll,
+  d3dx.ini and EDHM-Uninstall.bat, and the EDHM-ini, ShaderFixes and ShaderCache folders.
 
 
 STEAM DECK
 - Use Studio in Desktop Mode. In Game Mode the Deck shows one app at a time.
-- SteamOS does not carry WebKitGTK 4.1, so Studio opens in your web browser. If you have no browser yet, install
-  Firefox or Chrome from Discover.
+- Use the Flatpak version (see "The Flatpak version"): the Deck has Flatpak and Flathub already, and the Flatpak
+  brings the library Studio's window needs. SteamOS does not carry WebKitGTK 4.1, so the tar.gz version opens in
+  your web browser instead (if you have no browser yet, install Firefox or Chrome from Discover).
 
 
 IN THE WEB BROWSER
 Studio opens in your web browser when its window cannot start (a library it needs is missing, the Linux is older
 than it needs, or there is no desktop to show it on), or when you ask for it: start it with  elite-studio --browser
-(or set ELITE_STUDIO_BROWSER=1). Everything works the same there. Closing the browser tab leaves Studio running, so
-starting Elite Studio again opens it in a new tab. It stops when you log out, or with Ctrl+C in the terminal it was
-started from.
+(or set ELITE_STUDIO_BROWSER=1). Everything works the same there, except that choosing a folder uses your desktop's
+own folder picker (KDE's kdialog or GNOME's zenity): with neither, the buttons that choose a folder do nothing.
+Closing the browser tab leaves Studio running, so starting Elite Studio again opens it in a new tab. It stops when
+you log out, or with Ctrl+C in the terminal it was started from.
 
 
 IF THE WINDOW STAYS BLANK OR BLACK
@@ -74,10 +80,13 @@ which draws without the graphics card. The 3D map in Studio Nav then shows only 
 
 THE FLATPAK VERSION
 elite-studio.flatpak is the same Studio with the newer libraries its window needs (from GNOME, through Flathub),
-for a Linux too old for the window. Flatpak and Flathub must be set up first: Mint has both, for others see
-https://flathub.org/setup. Install it with  flatpak install --user elite-studio.flatpak  and start it from your
-desktop's menu. It runs closed off from the rest of the PC and sees only these places: your home folder,
-/run/media, /media and /mnt (where other drives and SD cards are), and the folders of the Flatpak version of Steam.
+for the Steam Deck and for a Linux too old for the window. Flatpak and Flathub must be set up first: the Steam Deck
+and Mint have both, for others see https://flathub.org/setup. Install it with
+  flatpak install --user elite-studio.flatpak
+(say yes if it asks to add Flathub or to install GNOME's runtime) and start it from your desktop's menu. To start it
+in the web browser instead:  flatpak run io.github.rmatlock0520_cell.EliteStudio --browser
+It runs closed off from the rest of the PC and sees only these places: your home folder, /run/media, /media and
+/mnt (where other drives and SD cards are), and the folders of the Flatpak version of Steam.
 A Steam library anywhere else stays hidden from it, and its "Choose another folder" cannot reach it either. Then
 use the tar.gz version, or let the Flatpak see that place:
   flatpak override --user --filesystem=/path/to/the/library io.github.rmatlock0520_cell.EliteStudio
@@ -88,6 +97,9 @@ WHAT THE LINUX VERSION LEAVES OUT
 - Studio Flight.
 - The boxes shown over the game (Hauling F2, Find F3, Route F4, Loadouts F5), their keys and controller buttons.
 - Nav scan, which reads system names from your screenshots.
+- The icon near the clock: closing the window ends Studio, and the Sniffer with it.
+- Installing the HUD mod by itself and pressing F11 for you (see "HUD colours on Linux").
+- Finding the game outside Steam (see "Finding the game").
 Everything else is the same as on Windows.
 
 

@@ -54,10 +54,10 @@ Studio keeps its settings, saved builds, themes and logs in `%LOCALAPPDATA%\Elit
 **Elite Studio for Linux** has its own release on the **Releases** page, for Elite Dangerous played through Steam (Proton) on a Linux PC or a Steam Deck in Desktop Mode. It has Studio UI, Studio Market, Studio Nav and Studio Loadouts; Studio Flight, the overlays in the game and Nav scan are Windows only for now.
 
 1. Download **elite-studio-linux-x64.tar.gz** and unpack it.
-2. In the **elite-studio** folder it makes, run `./install.sh` (no password needed). It says whether your PC has what Studio's own window needs, and if not, the command that adds it.
+2. In the **elite-studio** folder it makes, run `./install.sh` (no password needed). If Studio's own window cannot start on your PC, it says why: for a missing library it shows the command that adds it, and for an older Linux it points you to the Flatpak.
 3. Start **Elite Studio** from your desktop's menu.
 
-Studio's own window needs Ubuntu 24.04, Mint 22, Debian 13, Fedora 39 or newer, with WebKitGTK 4.1. Elsewhere, and on the Steam Deck, Studio opens in your web browser instead and works the same there; on an older Linux the **elite-studio.flatpak** download gives the window too. The README.txt in the download has the rest: finding the game, HUD colours on Linux (press F11 in the game after saving a theme; the HUD mod needs Proton 10, not 11) and where Studio keeps its files.
+With the tar.gz, Studio's own window needs a Linux as new as Ubuntu 24.04, Mint 22, Debian 13 or Fedora 39 (glibc 2.38 or newer), with WebKitGTK 4.1 and libnotify. Where the window cannot start, Studio opens in your web browser instead and works the same there. For the **Steam Deck** (in Desktop Mode) and for an older Linux, the **elite-studio.flatpak** download brings the window's libraries with it. The README.txt in the download has the rest: finding the game, HUD colours on Linux (press F11 in the game after Save to game; the HUD mod needs Proton 10, not 11) and where Studio keeps its files.
 
 ## Where the data comes from
 
@@ -85,7 +85,7 @@ This runs the checks, builds Studio with .NET inside it, and makes `Elite Studio
 
 To run the checks alone: `dotnet test EliteStudio.slnx`.
 
-The Linux version is `linux/EliteStudio.Linux.csproj` (`dotnet publish linux/EliteStudio.Linux.csproj -c Release -r linux-x64 --self-contained true`), with its checks in `linux/tests`. GitHub builds it, runs its checks and packs both downloads on every push to the `linux` branch (`.github/workflows/linux.yml`).
+The Linux version is `linux/EliteStudio.Linux.csproj` (`dotnet publish linux/EliteStudio.Linux.csproj -c Release -r linux-x64 --self-contained true`), with its checks' project in `linux/tests` (the shared checks in `tests`, less the Windows-only ones). GitHub builds it, runs its checks, packs both downloads and starts each on every push to the `linux` branch (`.github/workflows/linux.yml`).
 
 ## Credits
 
