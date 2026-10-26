@@ -405,7 +405,8 @@ public sealed class HeatmapSurveyTests : IDisposable
         SurveyAnswer refused = await survey.Survey(Sphuedu, go: false);
 
         Assert.Equal(
-            "Studio allows itself 200 requests to Spansh for the 3D map each time it runs, and they are used up. Everything that came back is kept. To ask for more, exit Studio (right-click its icon near the clock and choose Exit) and start it again.",
+            "Studio allows itself 200 requests to Spansh for the 3D map each time it runs, and they are used up. Everything that came back is kept. To ask for more, "
+                + (EliteStudio.App.Program.Features.TrayIcon ?"exit Studio (right-click its icon near the clock and choose Exit) and start it again." : "close Studio and start it again."),
             cut.Problem);
         Assert.Equal(cut.Problem, refused.Problem);
         Assert.Equal(8, cut.Cubes.Count);   // three counted now, five kept from before

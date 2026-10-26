@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Media;
 using EliteStudio.App;
 using EliteStudio.Core;
 using static System.FormattableString;
@@ -357,18 +356,13 @@ sealed class Sniffer
 /// <summary>The sniffer's alert: two rising notes, made here so no sound file has to ship with Studio.</summary>
 static class Chime
 {
-    static SoundPlayer? playing;   // kept, so it is not cleared away while it still sounds
-
     /// <summary>Plays it at a volume of 0 to 100 and returns at once. A PC without a sound device stays silent.</summary>
     public static void Play(int volume)
     {
         if (volume <= 0) return;
         try
         {
-            SoundPlayer? before = playing;
-            playing = new SoundPlayer(Wave(volume / 100.0));
-            playing.Play();
-            before?.Dispose();
+            Sound.Play(Wave(volume / 100.0).ToArray());
         }
         catch (Exception problem) when (problem is InvalidOperationException or IOException or TimeoutException)
         {

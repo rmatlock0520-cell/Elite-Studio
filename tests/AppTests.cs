@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using EliteStudio.App;
 using EliteStudio.Core;
@@ -205,17 +206,26 @@ public sealed class AppTests : IDisposable
             name => Assert.False(Paths.IsFileName(name)));
     }
 
+    [Fact]
+    public void The_characters_kept_out_of_file_names_are_Windows_own_on_every_system()
+    {
+        // So a theme or a build named on Linux can be used on Windows too, and the other way round.
+        Assert.Equal(41, Paths.NotForFileNames.Length);
+        Assert.All(new[] { '<', '>', ':', '"', '/', '\\', '|', '?', '*', '\0', '\t', '\n', '\u001f' }, c => Assert.Contains(c, Paths.NotForFileNames));
+        if (OperatingSystem.IsWindows()) Assert.Equal(Path.GetInvalidFileNameChars().Order(), Paths.NotForFileNames.Order());
+    }
+
     // ---- the folder picker's search rule ----
 
     [Theory]
     [InlineData("")]
-    [InlineData(@"Products\elite-dangerous-odyssey-64")]
+    [InlineData("Products/elite-dangerous-odyssey-64")]
     [InlineData("elite-dangerous-odyssey-64")]
-    [InlineData(@"EDLaunch\Products\elite-dangerous-odyssey-64")]
+    [InlineData("EDLaunch/Products/elite-dangerous-odyssey-64")]
     public void Picked_folder_leads_to_the_folder_that_holds_the_game(string place)
     {
         string picked = Path.Combine(temp, "Elite Dangerous");
-        string game = Path.Combine(picked, place);
+        string game = Path.Combine(picked, place.Replace('/', Path.DirectorySeparatorChar));   // real folders on every system
         Directory.CreateDirectory(game);
         File.WriteAllText(Path.Combine(game, "EliteDangerous64.exe"), "");
 
@@ -280,6 +290,45 @@ public sealed class AppTests : IDisposable
         Assert.True((await Ask("POST", "/api/app/log", "{\"message\":\"from a test\"}")).GetProperty("ok").GetBoolean());
         Assert.True((await Ask("POST", "/api/app/show")).GetProperty("ok").GetBoolean());
         // POST /api/app/quit is left out on purpose: it ends the program, so only a real --headless run can check it.
+
+        // Only links to websites are opened in the browser. (A real one is not tried: it would open the browser.)
+        foreach (string link in new[] { "", "file:///C:/Windows/win.ini", "javascript:alert(1)", @"C:\Windows\notepad.exe", "ftp://example.com/" })
+        {
+            WebResponse refused = await web.Handle(new WebRequest("POST", "/api/app/open", new Dictionary<string, string>(), JsonSerializer.Serialize(new { url = link })));
+            Assert.Equal(400, refused.Status);
+            Assert.Equal("Only links to websites can be opened.", JsonDocument.Parse(refused.Body).RootElement.GetProperty("error").GetString());
+        }
+
+        // The journal folder Studio reads, and whether it is there.
+        JsonElement journal = await Ask("GET", "/api/app/journal");
+        Assert.Equal(Paths.JournalDir, journal.GetProperty("path").GetString());
+        Assert.Equal(Directory.Exists(Paths.JournalDir), journal.GetProperty("found").GetBoolean());
+        // No window: the journal picker answers as if cancelled, and nothing is saved.
+        Assert.Equal(JsonValueKind.Null, (await Ask("POST", "/api/app/pick-journal")).GetProperty("path").ValueKind);
+    }
+
+    [Fact]
+    public void The_journal_folder_is_the_one_asked_for_then_the_one_found_then_the_systems_own()
+    {
+        string asked = Path.Combine(temp, "asked"), found = Path.Combine(temp, "found");
+        try
+        {
+            Paths.Init(new Dictionary<string, string> { ["data-dir"] = temp, ["journal-dir"] = asked, ["bindings-dir"] = asked }, found, found);
+            Assert.Equal((asked, asked), (Paths.JournalDir, Paths.BindingsDir));
+
+            Paths.Init(new Dictionary<string, string> { ["data-dir"] = temp }, found, found);
+            Assert.Equal((found, found), (Paths.JournalDir, Paths.BindingsDir));
+
+            Paths.Init(new Dictionary<string, string> { ["data-dir"] = temp });
+            if (OperatingSystem.IsWindows())
+                Assert.EndsWith(Path.Combine("Saved Games", "Frontier Developments", "Elite Dangerous"), Paths.JournalDir);
+            else   // no game found: Studio's own empty folders, until the player chooses one
+                Assert.Equal((Path.Combine(temp, "no-game-found", "Journal"), Path.Combine(temp, "no-game-found", "Bindings")), (Paths.JournalDir, Paths.BindingsDir));
+        }
+        finally
+        {
+            Paths.Init(new Dictionary<string, string> { ["data-dir"] = temp });
+        }
     }
 
     // ---- reports and zoom ----
@@ -300,8 +349,22 @@ public sealed class AppTests : IDisposable
         Assert.Matches(@"^\d+\.\d+\.\d+$", Program.Version);   // three numbers, as everywhere Studio names its version
         Assert.Contains($"Version: {Program.Version}{Environment.NewLine}", report);
         Assert.Contains("Theme: Firefly Grove\nGame folder: not found", report);
-        Assert.Contains("Windows: " + Environment.OSVersion.VersionString, report);
+        // Windows is named by its version, as before; elsewhere by the system's own name.
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Contains("Windows: " + Environment.OSVersion.VersionString, report);
+            Assert.Contains($"WebView2: not found{Environment.NewLine}", report);   // no window, no engine to name
+        }
+        else
+        {
+            Assert.Contains("System: " + RuntimeInformation.OSDescription, report);
+            Assert.Contains($"Web engine: no window{Environment.NewLine}", report);
+        }
         Assert.Contains("Data folder: " + temp, report);
+
+        // With a window, its web engine is named.
+        string withWindow = File.ReadAllText(AppApi.SaveReport(Path.Combine(temp, "second"), "", "131.0.2903.70"));
+        Assert.Contains((OperatingSystem.IsWindows() ? "WebView2: " : "Web engine: ") + "131.0.2903.70", withWindow);
     }
 
     [Theory]
@@ -312,5 +375,5 @@ public sealed class AppTests : IDisposable
     [InlineData(840, 0.6)]
     [InlineData(500, 0.6)]     // never below 60%
     public void Window_zoom_follows_the_old_rule(double width, double expected) =>
-        Assert.Equal(expected, MainWindow.ZoomFor(width));
+        Assert.Equal(expected, IStudioWindow.ZoomFor(width));
 }

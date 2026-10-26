@@ -22,6 +22,8 @@
   (a stick check, a route) keeps running. They work by clicking only: the shell adds no keyboard shortcuts, so it never
   takes a key the player flies with. The look the player picks is kept as "studio.appearance.*" in localStorage, and
   studio.js puts it on every page.
+  A copy of Studio that lacks a part (Studio.features: the Linux one has no Studio Flight, no in-game overlay, no Nav
+  scan, no F11 press and no icon near the clock) loses its tab, keys, help and tour steps here, never shows them dead.
 -->
 <style>
 /* ---------------------------------------------------------------- the bar on top: one grid that folds into one row */
@@ -294,6 +296,11 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('studio.appearance.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('studio.appearance.' + k, JSON.stringify(v)); } catch (e) {} },
 };
+// What this copy of Studio has (Studio.features). Empty until the app has said, which reads as everything: the shell is
+// drawn as the Windows app has it, and what the app then says it lacks is taken away (start-up, at the end).
+let has = {};
+const lacks = part => has[part] === false;
+const linux = () => has.system === 'linux';
 
 // ============================================================ tabs and frames
 const tabs = $$('button[data-studio]').map(button =>
@@ -328,6 +335,15 @@ function showTab(tab, page) {
 }
 // Hands the keyboard back to the studio being shown (after the menu, a panel or the tour closes).
 function backToStudio() { if (current && current.frame) current.frame.contentWindow.focus(); }
+// Takes away the tab of a studio this copy of Studio does not have, with its frame; the first tab shows if it was in front.
+function dropTab(id) {
+  const tab = tabs.find(t => t.id === id);
+  if (!tab) return;
+  tabs.splice(tabs.indexOf(tab), 1);
+  tab.button.remove();
+  if (tab.frame) tab.frame.remove();
+  if (current === tab) showTab(tabs[0]);
+}
 
 // ============================================================ unsaved changes
 // A page reports its own count with window.parent.postMessage({ studio: 'dirty', count: n }, location.origin).
@@ -465,6 +481,8 @@ const KEY_WORDS = { haul: ['Hauling box', 'Your trade: what to buy and sell, the
   flight: ['Flight inputs box', 'What your stick, throttle and buttons are doing. It never takes the mouse'] };
 const KEYBAR_NAMES = { haul: 'Hauling', market: 'Find', nav: 'Route', loadouts: 'Loadouts', flight: 'Flight' };
 let overlayKeys = [['haul', 'F2'], ['market', 'F3'], ['nav', 'F4'], ['loadouts', 'F5'], ['flight', 'F6']].map(([action, key]) => ({ action, key, valid: true, gameActions: [], pad: '' }));
+// The boxes' keys this copy of Studio has: none without the overlay, and no Flight inputs box without Studio Flight.
+const keysShown = keys => lacks('overlay') ? [] : keys.filter(k => k.action !== 'flight' || !lacks('flight'));
 // What is wrong with an overlay key, if anything: none set, not a usable key, the same as another box's, held by another
 // program (registered false; null = not tried yet), or also one of Elite's own keys.
 function keyState(k, i) {
@@ -478,9 +496,12 @@ function drawKeybar() {
     onclick: e => openDrawer('keys', e.currentTarget, 'overlay') }, keycap(k.key || '—'), h('span', { class: 'nm' }, KEYBAR_NAMES[k.action] || k.action))));
 }
 async function loadOverlayKeys() {
-  try { const r = await Studio.api('GET', '/api/overlay/settings'); if (Array.isArray(r.keys) && r.keys.length) { overlayKeys = r.keys; drawKeybar(); } } catch (e) {}
+  try { const r = await Studio.api('GET', '/api/overlay/settings'); if (Array.isArray(r.keys) && r.keys.length) { overlayKeys = keysShown(r.keys); drawKeybar(); } } catch (e) {}
 }
-const KEYS_STATIC = {
+// F11, which Studio UI's saves reload the HUD colours with: pressed by Studio in the game, or by the player where this
+// copy of Studio cannot press it (the Linux one).
+const F11_ROWS = [{ k: ['F11'], what: 'Reload HUD colours', sub: 'After Studio UI saves your colours, if Elite is running. If not, they load when you start the game' }];
+const keysStatic = () => ({
   pages: { name: 'Pages', note: 'Each key works only on the page named under it. These keys are fixed.', rows: [
     { k: ['Ctrl+S'], what: 'Save to game', sub: 'Studio UI: works even while you type in a box' },
     { k: ['Ctrl+Z'], what: 'Undo', sub: 'Studio UI: when you are not typing in a box' },
@@ -497,14 +518,15 @@ const KEYS_STATIC = {
     { k: ['Esc'], what: 'Close, or go back one sheet', sub: 'Any studio: closes a question box or a name menu, and goes back one station or system sheet' },
     { k: ['Enter', 'Tab'], what: 'Accept, or move to the next button', sub: 'Question boxes: Enter accepts what you typed, Tab moves between the buttons without leaving the box' },
   ] },
-  elite: { name: 'To Elite', note: 'Elite Studio presses this key inside the game for you. It is kept free, so it cannot be an overlay key.', rows: [
-    { k: ['F11'], what: 'Reload HUD colours', sub: 'After Studio UI saves your colours, if Elite is running. If not, they load when you start the game' },
-  ] },
+  elite: lacks('reloadKey') ? { name: 'In Elite', note: 'Press this key in the game yourself after Studio UI saves your colours.', rows: F11_ROWS }
+    : { name: 'To Elite', note: 'Elite Studio presses this key inside the game for you. It is kept free, so it cannot be an overlay key.', rows: F11_ROWS },
   app: { name: 'Window', note: 'Elite Studio adds no shortcuts of its own for the menu, help or profiles. Everything there works by clicking, so it never takes a key you fly with.', rows: [
-    { k: ['F5', 'Ctrl+R'], what: 'Reload the window', sub: 'Reloads every studio. Only Studio UI asks first about unsaved changes. With Elite in front, F5 is the Loadouts box key by default' },
-    { k: ['Ctrl+Mouse wheel'], what: 'Zoom the page', sub: 'Lasts until you resize the window' },
+    { k: ['F5', 'Ctrl+R'], what: 'Reload the window', sub: lacks('overlay') ? 'Reloads every studio. Only Studio UI asks first about unsaved changes'
+      : 'Reloads every studio. Only Studio UI asks first about unsaved changes. With Elite in front, F5 is the Loadouts box key by default' },
+    // The Linux window zooms only with its size (Help, Display).
+    ...(linux() ? [] : [{ k: ['Ctrl+Mouse wheel'], what: 'Zoom the page', sub: 'Lasts until you resize the window' }]),
   ] },
-};
+});
 let flightKeys = null;   // from Studio Flight: its trainer-only keys, worded by flight/flight.js (one place for the wording)
 async function loadFlightKeys() {
   try {
@@ -519,26 +541,35 @@ async function loadFlightKeys() {
 }
 
 // ============================================================ help guide and tour
-const HELP = [
+// Both are drawn from what this copy of Studio has: a part it lacks has no item and no step, and no words name it.
+// Where an item names such a part, the words beside it are the Windows app's own while it is there.
+const help = () => [
   { id: 'shell', g: 'g-display', t: 'Getting around', items: [
     ["Elite running light", "Top left. It turns green and reads 'Elite running' while Elite Dangerous is open, and reads 'Elite closed' when it is not."],
-    ["Studio tabs", "One tab for each studio: Studio UI and Studio Market on the left, Studio Nav, Studio Loadouts and Studio Flight on the right. Click a tab to open that studio. Each studio keeps its place while you look at another, and Studio reopens the tab you used last."],
+    ["Studio tabs", lacks('flight') ? "One tab for each studio: Studio UI and Studio Market on the left, Studio Nav and Studio Loadouts on the right. Click a tab to open that studio. Each studio keeps its place while you look at another, and Studio reopens the tab you used last."
+      : "One tab for each studio: Studio UI and Studio Market on the left, Studio Nav, Studio Loadouts and Studio Flight on the right. Click a tab to open that studio. Each studio keeps its place while you look at another, and Studio reopens the tab you used last."],
     ["Unsaved changes", "A small dot after Studio UI's tab means you changed HUD colours and have not saved them to the game. If you exit Studio with unsaved colours, it asks you first."],
     ["Profile", "The left of the two buttons between the tabs. It shows the name of the look you are using. Click it to save, load or share a look."],
     ["Help", "The right of the two buttons between the tabs. It opens this guide. Type in the search box to find a part, or press Tour for a quick walk round the screen."],
     ["Menu", "Top right. It holds Keybindings, Appearance profiles, Display, Help guide, Take the tour and About Elite Studio. Most choices open a panel on the right of the window, and the cross at the top of the panel closes it."],
     ["Status strip", "The line under the tabs. Your commander, ship and cargo are on the left. Your star system, your station when you are docked, and the jumps left on your route are on the right. It updates by itself while Elite runs."],
     ["Studio pages and cards", "Each studio shows its work in cards, with the card's name on a tag at its top. Studios with more than one page show a button for each page; click one to switch. A filled row is the one you picked."],
-    ["Key bar", "The strip along the bottom of the window. It holds the overlay keys, the spacing and the profile switcher. It hides itself on short or narrow windows, and you can change that in Display."],
-    ["Overlay keys", "The left of the key bar shows the key for each in-game overlay box: Hauling, Find, Route, Loadouts and Flight. Press a key in the game to show that box; Flight's works once 'Overlay on/off' is ticked on Options in Studio Flight. Click one here to see every key."],
+    ["Key bar", lacks('overlay') ? "The strip along the bottom of the window. It holds the spacing and the profile switcher. It hides itself on short or narrow windows, and you can change that in Display."
+      : "The strip along the bottom of the window. It holds the overlay keys, the spacing and the profile switcher. It hides itself on short or narrow windows, and you can change that in Display."],
+    !lacks('overlay') && ["Overlay keys", lacks('flight') ? "The left of the key bar shows the key for each in-game overlay box: Hauling, Find, Route and Loadouts. Press a key in the game to show that box. Click one here to see every key."
+      : "The left of the key bar shows the key for each in-game overlay box: Hauling, Find, Route, Loadouts and Flight. Press a key in the game to show that box; Flight's works once 'Overlay on/off' is ticked on Options in Studio Flight. Click one here to see every key."],
     ["Spacing", "The middle of the key bar. Comfortable leaves room around cards and rows; Compact fits more on a small screen."],
     ["Profile switcher", "The right of the key bar. The arrows step through your looks, and the name between them is the one in use; a dot after it means you changed the look and have not saved it. The last button opens Appearance profiles."],
-    ["Closing the window", "Closing the window only hides it, because Studio keeps running for the in-game overlay and the Sniffer. Double-click Studio's icon near the clock, or start Studio again, to bring the window back. To quit, right-click that icon and choose Exit."],
+    ["Closing the window", lacks('trayIcon') ? "Closing the window ends Studio, and the Sniffer with it. Start Studio again to come back."
+      : "Closing the window only hides it, because Studio keeps running for the in-game overlay and the Sniffer. Double-click Studio's icon near the clock, or start Studio again, to bring the window back. To quit, right-click that icon and choose Exit."],
     ["Red connection bar", "A red bar saying 'Can't reach Elite Studio' or 'Elite Studio was restarted' means the page has lost touch with the app. Start Studio, or press Reload on the bar."],
+    linux() && ["Where Studio reads your game", "Studio finds Elite's journal folder in Steam's Proton folders by itself. Studio UI's Setup tab shows the folder it reads, and lets you choose another."],
   ] },
   { id: 'ui', g: 'g-ui', t: 'Studio UI', items: [
     ["What it does", "Studio UI changes the colours of your cockpit HUD and shows the result live. It works through the free EDHM HUD mod, which Studio downloads (about 4 MB) once Elite is closed. On first start, confirm the game folder Studio found, or browse to yours."],
-    ["Three steps", "Pick colours on Quick Theme, or click any part of the HUD picture, then press Save to game (Ctrl+S). Studio presses F11 in Elite to reload the HUD, or tells you to press it. Nothing reaches the game until you save, unless Auto-save is on."],
+    ["Three steps", lacks('reloadKey') ? "Pick colours on Quick Theme, or click any part of the HUD picture, then press Save to game (Ctrl+S). Then press F11 in Elite to reload the HUD. Nothing reaches the game until you save, unless Auto-save is on."
+      : "Pick colours on Quick Theme, or click any part of the HUD picture, then press Save to game (Ctrl+S). Studio presses F11 in Elite to reload the HUD, or tells you to press it. Nothing reaches the game until you save, unless Auto-save is on."],
+    linux() && ["Proton version", "The HUD mod does not work with Proton 11 yet. In Steam, set Elite to use Proton 10."],
     ["Top bar", "Undo (Ctrl+Z) and Redo (Ctrl+Y) step through your edits, and Auto-save writes each change to the game about a second later. Discard puts back what is in the game, and can itself be undone. The number on Save to game counts the settings you changed."],
     ["HUD picture", "Point at any part of the picture to see which setting colours it, and click it to jump to that setting. The buttons under it switch between Cockpit (your theme), Station menu, Galaxy map, On foot, Scanner, Nav panel (1) and Systems panel (4). Hold 'Hold to compare' to see the colours in the game now."],
     ["Quick Theme", "Start from one of ten palettes, or set the eight colour roles: Main HUD, Accent, Text, Shields, Holograms, Hostile & warnings, Friendly & wing and Cabin lights. Each role shows how many HUD parts it colours. Tick boxes below bring parts still in Elite's orange over to your colours."],
@@ -548,11 +579,16 @@ const HELP = [
     ["Backups and Setup", "Studio backs up your colour files the first time you save in each session, and 'Make a backup now' adds one. Setup shows your game folder, whether the colour files were found and whether Elite is running. It also installs the HUD mod again, gives graphics tips and saves a diagnostic report to send when you ask for help."],
   ] },
   { id: 'market', g: 'g-market', t: 'Studio Market', items: [
-    ["Three pages", "Trades plans hauling runs and drives the in-game Hauling overlay. Find by name finds the nearest place for a commodity, module, ship, station or sector. Sniffer watches commodity prices for you while Studio runs."],
-    ["Trades settings", "The left column holds BASIC, STATION DETAILS, PRESETS, POWERPLAY and OVERLAYS AND KEYS. Each folds to a one-line summary, and Studio remembers which you left open. BASIC sets where trades start, distances, cargo, jump ranges, price age, round trip or one way, and whether to rank by profit per hour or per trip."],
-    ["Trade list", "Click a row to show that trade in the Hauling overlay. Tick its box to accept it, and the overlay stays on it until you finish or drop it. Click a column title to sort: once for smallest first, again for biggest first, and a third time for the search's own order."],
-    ["Trade buttons", "Search again runs the search, and Accept trade and Drop accepted trade lock and unlock the overlay. Copy next stop copies the next system for the galaxy map. 'Where can I sell' finds buyers for My cargo or for one commodity, and Back to trades returns to the list."],
-    ["Presets", "A preset is a named copy of your search settings. Type a name and press Save, then Use or Delete it later. A tick marks the preset in use, and you can switch presets from the Hauling overlay without leaving the game."],
+    ["Three pages", lacks('overlay') ? "Trades plans hauling runs. Find by name finds the nearest place for a commodity, module, ship, station or sector. Sniffer watches commodity prices for you while Studio runs."
+      : "Trades plans hauling runs and drives the in-game Hauling overlay. Find by name finds the nearest place for a commodity, module, ship, station or sector. Sniffer watches commodity prices for you while Studio runs."],
+    ["Trades settings", lacks('overlay') ? "The left column holds BASIC, STATION DETAILS, PRESETS and POWERPLAY. Each folds to a one-line summary, and Studio remembers which you left open. BASIC sets where trades start, distances, cargo, jump ranges, price age, round trip or one way, and whether to rank by profit per hour or per trip."
+      : "The left column holds BASIC, STATION DETAILS, PRESETS, POWERPLAY and OVERLAYS AND KEYS. Each folds to a one-line summary, and Studio remembers which you left open. BASIC sets where trades start, distances, cargo, jump ranges, price age, round trip or one way, and whether to rank by profit per hour or per trip."],
+    ["Trade list", lacks('overlay') ? "Click a row to pick that trade: the Next stop line and Copy next stop follow it. Tick its box to accept it, and Studio stays on it until you finish or drop it. Click a column title to sort: once for smallest first, again for biggest first, and a third time for the search's own order."
+      : "Click a row to show that trade in the Hauling overlay. Tick its box to accept it, and the overlay stays on it until you finish or drop it. Click a column title to sort: once for smallest first, again for biggest first, and a third time for the search's own order."],
+    ["Trade buttons", lacks('overlay') ? "Search again runs the search, and Accept trade and Drop accepted trade keep Studio on one trade or let it go. Copy next stop copies the next system for the galaxy map. 'Where can I sell' finds buyers for My cargo or for one commodity, and Back to trades returns to the list."
+      : "Search again runs the search, and Accept trade and Drop accepted trade lock and unlock the overlay. Copy next stop copies the next system for the galaxy map. 'Where can I sell' finds buyers for My cargo or for one commodity, and Back to trades returns to the list."],
+    ["Presets", lacks('overlay') ? "A preset is a named copy of your search settings. Type a name and press Save, then Use or Delete it later. A tick marks the preset in use."
+      : "A preset is a named copy of your search settings. Type a name and press Save, then Use or Delete it later. A tick marks the preset in use, and you can switch presets from the Hauling overlay without leaving the game."],
     ["Find by name", "Choose Commodity, Module, Ship, Station or Sector, type a few letters and pick a name. From follows your system until you type another, and Here hands it back to the game. Press Find or Enter; places come nearest first, and Show more looks farther out."],
     ["Filters and Nearest buttons", "The filters start from your Trades settings, and changes count only on this page. The Nearest buttons find the closest material trader, technology broker, Interstellar Factors, black market, shipyard, outfitting or repair in one click. Save to Sniffer keeps a commodity search for the Sniffer."],
     ["Station price list", "Look up a station by name to see what it sells and what it buys, side by side. Type to narrow both lists, or choose 'Only what pays' to see what makes money between it and the station you are docked at."],
@@ -563,24 +599,26 @@ const HELP = [
     ["Neutron or Exact", "Neutron takes a few long legs from neutron star to neutron star, each plotted in the galaxy map. Exact lists every jump, with stars to scoop fuel at, worked out for your ship as it is now. Spansh takes about a minute for an Exact route."],
     ["Plotting", "From follows the system you are in, Here hands it back to the game, and To suggests names after three letters. Jump range follows your ship until you type your own, and Efficiency trades a straight line against detours to neutron stars (Spansh suggests 60). Press Plot route, or Cancel while you wait."],
     ["Following a route", "The NEXT card shows the next system in large letters, with Copy name, how far it is, and whether to supercharge or scoop there. In the table, stops behind you turn grey, the next stop is lit and 'You are here' marks your stop. Clear route removes the route."],
-    ["Trips and the Route overlay", "A shopping trip sent from Studio Loadouts becomes your route, with HERE and THERE notes saying what to buy at each stop. The Route overlay (F4 by default) shows the next stop over the game."],
+    lacks('overlay') ? ["Trips", "A shopping trip sent from Studio Loadouts becomes your route, with HERE and THERE notes saying what to buy at each stop."]
+      : ["Trips and the Route overlay", "A shopping trip sent from Studio Loadouts becomes your route, with HERE and THERE notes saying what to buy at each stop. The Route overlay (F4 by default) shows the next stop over the game."],
     ["This trip", "Unexplored counts systems visited, new systems, and bodies you were first to discover and first to map. The game itself says whether anyone was there before, so these counts are certain. Selling your exploration data or losing your ship starts a new trip, and Reset starts one now."],
     ["Where few have been", "Press 'Get the map from EDAstro' once (about 1.5 MB, kept for a week). The flat map shows the galaxy from above, with thinly known squares in the highlight colour and you as a white dot. Click it to look that way, then 'Suggest a waypoint' names a system to copy or route to."],
     ["3D map", "Open it with the Flat map / 3D map switch. Left-drag turns, right-drag slides and the wheel zooms, while W A S D move, R and F go up and down, and Shift doubles the speed. Click a sector, cube or star to choose it; the arrow keys move the highlight and C centres on it."],
-    ["Route check and the panel", "Route check marks each stop of the route you plot in the game as recorded or not recorded yet, and keeps unrecorded ones in Your finds. Under the map, Within reach lists systems one jump away, and Nav scan reads names from your screenshots of the Navigation panel. 'How to read this' explains the rest."],
+    ["Route check and the panel", lacks('navScan') ? "Route check marks each stop of the route you plot in the game as recorded or not recorded yet, and keeps unrecorded ones in Your finds. Under the map, Within reach lists systems one jump away. 'How to read this' explains the rest."
+      : "Route check marks each stop of the route you plot in the game as recorded or not recorded yet, and keeps unrecorded ones in Your finds. Under the map, Within reach lists systems one jump away, and Nav scan reads names from your screenshots of the Navigation panel. 'How to read this' explains the rest."],
   ] },
   { id: 'loadouts', g: 'g-ship', t: 'Studio Loadouts', items: [
     ["Four pages", "My ship, Designer, Engineering and Guardian. Everything updates by itself from the game: a ship swap, a module change, materials picked up, an engineer unlocked or a jump."],
     ["My ship", "Current ship is always first and follows the game live, with your saved builds below it. 'Save current ship as…' keeps a named copy. Click a build to see its jump ranges, cargo, fuel, weight, value, rebuy and modules, laid out as on the outfitting screen."],
     ["Modules and engineering", "The diamonds show a module's engineering grade. Click an engineering line to see each changed number, in green where it helps and red where it hurts. An engineer's work shows up the next time the game reports your ship."],
-    ["Build buttons", "Open in Designer puts the build on the bench, and Open in EDSY and Open in Coriolis open it in your web browser. Copy SLEF copies it as text that Inara, EDSY, Coriolis and Spansh accept. Rename and Delete are for saved builds, and Delete moves the build to the Recycle Bin."],
+    ["Build buttons", "Open in Designer puts the build on the bench, and Open in EDSY and Open in Coriolis open it in your web browser. Copy SLEF copies it as text that Inara, EDSY, Coriolis and Spansh accept. Rename and Delete are for saved builds, and Delete moves the build to " + (linux() ? "the Trash." : "the Recycle Bin.")],
     ["From your ship to this build", "For a saved build, Studio lists what your current ship still lacks. 'Find where to buy it' looks for the fewest stops near you. 'Send the trip to Studio Nav' makes those stops your route, and 'Pin the engineering in the planner' adds the build's blueprints to Engineering."],
     ["Designer", "Put a build on the bench: your current ship, a saved build or an empty hull. Click a slot to change its module, switch it on or off, empty it or set its engineering. Red strips mean the build cannot work, amber strips mean it works with a catch, and 'Save as build…' adds it to My ship."],
     ["Engineering", "Choose a module, a blueprint, the grade to reach and an optional experimental effect, then press Pin it. Studio adds up the materials for every pin, shows what you still lack, suggests a material trader swap and lists the engineers who can do the work. Start Elite once so Studio sees your materials."],
     ["Guardian checklist", "Every Guardian module, weapon and fighter with its recipe. Green-edged parts are covered and red-edged parts are short, and each item says Unlocked, Ready to unlock or Locked. The left side shows the blueprint segments you still need, the nearest sites and a button for the nearest Guardian technology broker."],
     ["Guardian sites", "Every known Guardian site, nearest to your ship first. Filter by what you need: weapon, module or fighter blueprints, Ancient Keys, Guardian materials or Obelisk data. A note says what to do at that kind of site, and Show all lists more than the first 25."],
   ] },
-  { id: 'flight', g: 'g-flight', t: 'Studio Flight', items: [
+  !lacks('flight') && { id: 'flight', g: 'g-flight', t: 'Studio Flight', items: [
     ["Four pages", "Studio Flight teaches flying with Flight Assist off, away from the game. Trainer is where you practise. Chase the dot tries out a curve by aiming at a moving dot. Stick setup checks your stick and sets its curves. Options holds Studio Flight's switches."],
     ["Exercises and rank", "Nine exercises run in a fixed order: Chase the target, Tunnel run and Track the target, three levels each, plus Free flight with no score. Beside them, +/- buttons change your Flight Assist off curves as you fly. Each opens once the one before is passed, and each pass raises your rank from Cadet towards Elite. A set is five attempts, and three good ones pass it."],
     ["Ship, Picture and Stick", "Fly like your own ship or pick any ship. 'Dot in the middle' keeps the target still, and 'Nose in the middle' keeps your nose still, as in the cockpit. 'With my FA Off curves' reads your stick through your Stick setup curves; 'As the game gets it' reads exactly what Elite receives."],
@@ -602,25 +640,32 @@ const HELP = [
     ["Links to other studios", "Some links in a line of text open another studio with something already filled in, such as a route to a system. Links to websites, such as Inara, open in your normal web browser."],
     ["Messages", "Short messages slide up at the bottom of the window and go away by themselves. A red edge means a problem."],
     ["Question boxes", "Questions appear in a box over the page. Enter accepts. Escape, Cancel or a click outside the box cancels, and Tab moves between the box's buttons."],
-    ["Deleting", "Deleting a saved build or a HUD theme moves it to the Windows Recycle Bin, so you can get it back."],
+    ["Deleting", linux() ? "Deleting a saved build or a HUD theme moves it to the Trash, so you can get it back."
+      : "Deleting a saved build or a HUD theme moves it to the Windows Recycle Bin, so you can get it back."],
   ] },
-  { id: 'overlay', g: 'g-overlay', t: 'The in-game overlay', items: [
-    ["What the boxes are", "Five boxes can show over the game. Hauling shows the trade to fly, Find by name the nearest places from your last search, Route the next stop of your Studio Nav route, Loadouts the ship you fly, and Flight inputs your stick, throttle and buttons as you fly."],
-    ["Showing a box", "By default F2 shows Hauling, F3 Find by name, F4 Route, F5 Loadouts and F6 Flight inputs (once 'Overlay on/off' is ticked on Options in Studio Flight). Press the key once to show the box and get the mouse on it, and again to hide it. The game gets the mouse back once no box is showing."],
+  !lacks('overlay') && { id: 'overlay', g: 'g-overlay', t: 'The in-game overlay', items: [
+    ["What the boxes are", lacks('flight') ? "Four boxes can show over the game. Hauling shows the trade to fly, Find by name the nearest places from your last search, Route the next stop of your Studio Nav route, and Loadouts the ship you fly."
+      : "Five boxes can show over the game. Hauling shows the trade to fly, Find by name the nearest places from your last search, Route the next stop of your Studio Nav route, Loadouts the ship you fly, and Flight inputs your stick, throttle and buttons as you fly."],
+    ["Showing a box", lacks('flight') ? "By default F2 shows Hauling, F3 Find by name, F4 Route and F5 Loadouts. Press the key once to show the box and get the mouse on it, and again to hide it. The game gets the mouse back once no box is showing."
+      : "By default F2 shows Hauling, F3 Find by name, F4 Route, F5 Loadouts and F6 Flight inputs (once 'Overlay on/off' is ticked on Options in Studio Flight). Press the key once to show the box and get the mouse on it, and again to hide it. The game gets the mouse back once no box is showing."],
     ["When the keys work", "The keys work only while Elite is the active window, so in other programs they do their normal job. Elite must run in Borderless (Options > Graphics > Display > Window mode), because no box can show over Fullscreen."],
     ["Moving and sizing", "Hold a box's top strip and drag to move it. Its smaller and bigger buttons change its size, and ✕ hide closes it. You can also set each box's size, place and opacity with the sliders in Studio Market."],
-    ["Flight inputs box", "The Flight inputs box never takes the mouse, so you can keep flying with it up. It stays hidden, even from its key, until you tick 'Overlay on/off' on Options in Studio Flight; then it shows itself whenever Flight Assist goes off. Its size and place are set there too."],
+    !lacks('flight') && ["Flight inputs box", "The Flight inputs box never takes the mouse, so you can keep flying with it up. It stays hidden, even from its key, until you tick 'Overlay on/off' on Options in Studio Flight; then it shows itself whenever Flight Assist goes off. Its size and place are set there too."],
     ["Changing keys", "In Studio Market, open Trades, then OVERLAYS AND KEYS, click a box's key field and press the keys you want. A key on its own must be F1 to F24, and any other key needs Ctrl, Alt or Shift. F11 is not allowed, because it reloads your HUD colours in Elite."],
     ["Controller buttons", "Click a box's controller field, then within 10 seconds press a stick, HOTAS or gamepad button, or hold one button and press another; a pair leaves every single button free for the game. Click the field again to clear it. Studio only listens, so the game still gets the button."],
     ["Key warnings", "Studio warns under the key fields if a key cannot be used, if two boxes share a key, if another program holds it, or if Elite itself uses it."],
     ["Overlay keys in this window", "The key bar at the bottom of this window shows each box's key. Click one to open the full list in Keybindings."],
   ] },
   { id: 'keys', g: 'g-keys', t: 'Keybindings', items: [
-    ["Where to find them", "Open the Menu and choose Keybindings, or click a key in the key bar. The list is grouped by where each key works, such as the in-game overlay, the flight trainer and Studio's own pages."],
-    ["Read live", "The overlay keys and the trainer's flight keys are read live from Elite Studio and your Elite bindings, so the list shows your own keys. Change overlay keys in Studio Market and flight keys in Elite's own controls."],
+    ["Where to find them", lacks('overlay') || lacks('flight') ? "Open the Menu and choose Keybindings. The list is grouped by where each key works, such as Studio's own pages."
+      : "Open the Menu and choose Keybindings, or click a key in the key bar. The list is grouped by where each key works, such as the in-game overlay, the flight trainer and Studio's own pages."],
+    !lacks('overlay') && !lacks('flight') && ["Read live", "The overlay keys and the trainer's flight keys are read live from Elite Studio and your Elite bindings, so the list shows your own keys. Change overlay keys in Studio Market and flight keys in Elite's own controls."],
     ["Studio UI keys", "Ctrl+S saves to the game, Ctrl+Z undoes, and Ctrl+Y or Ctrl+Shift+Z redoes. Undo and redo wait while you type in a text box. Studio hands the keyboard to the studio you switch to, so these work straight away."],
-    ["Sent to Elite", "After Studio UI saves, Studio presses F11 in Elite to reload your HUD colours. That is why F11 can never be an overlay key."],
-    ["This window", "Menu, Help and Profile work by clicking, and Escape closes them. On Studio Flight, Escape pauses the trainer or Chase the dot instead. The 3D map in Studio Nav has its own keys, shown in its Camera pad."],
+    lacks('reloadKey') ? ["F11 in Elite", "After Studio UI saves, press F11 in Elite yourself to reload your HUD colours."]
+      : lacks('overlay') ? ["Sent to Elite", "After Studio UI saves, Studio presses F11 in Elite to reload your HUD colours."]
+      : ["Sent to Elite", "After Studio UI saves, Studio presses F11 in Elite to reload your HUD colours. That is why F11 can never be an overlay key."],
+    ["This window", lacks('flight') ? "Menu, Help and Profile work by clicking, and Escape closes them. The 3D map in Studio Nav has its own keys, shown in its Camera pad."
+      : "Menu, Help and Profile work by clicking, and Escape closes them. On Studio Flight, Escape pauses the trainer or Chase the dot instead. The 3D map in Studio Nav has its own keys, shown in its Camera pad."],
   ] },
   { id: 'profiles', g: 'g-profile', t: 'Appearance profiles', items: [
     ["What a profile is", "A profile is a named look for Elite Studio: its colour set, your own colours, spacing, top bar, key bar and effects. It changes how Studio looks and nothing else. Your HUD themes, trade presets and saved builds stay as they are."],
@@ -633,34 +678,36 @@ const HELP = [
     ["Colours that keep their meaning", "Green, amber and red mean the same in every look: good, warning and problem. Studio UI's cockpit picture always shows your own HUD colours, whichever look you use."],
   ] },
   { id: 'display', g: 'g-display', t: 'Display', items: [
-    ["Does screen resolution matter?", "Not directly. Elite Studio follows the size of its window. Windows display scaling decides how big things are drawn, and the layout then picks full width, shorter tab names or narrow by itself."],
-    ["Window size", "The window opens maximised. On a narrow window or a heavily scaled display the pages zoom out, down to 60%, so the layout still fits; they never zoom in. Ctrl and the mouse wheel zoom by hand until the window is next resized."],
+    ["Does screen resolution matter?", "Not directly. Elite Studio follows the size of its window. " + (linux() ? "Your display scaling" : "Windows display scaling") + " decides how big things are drawn, and the layout then picks full width, shorter tab names or narrow by itself."],
+    ["Window size", "The window opens maximised. On a narrow window or a heavily scaled display the pages zoom out, down to 60%, so the layout still fits; they never zoom in."
+      + (linux() ? " The zoom follows the window's size." : " Ctrl and the mouse wheel zoom by hand until the window is next resized.")],
     ["Narrower windows", "As the window gets narrower, the tabs drop the word Studio, the status strip drops its labels, and then the tabs drop their glyphs. In a very narrow window each tab shows only its glyph."],
-    ["Short windows", "When the window is shorter than 860, the top bar folds into one row, as high as the old bar, and hides the status strip; the Elite light then shows your system. Below 760 the key bar hides too. That keeps room for the trainer's sky in Studio Flight. The Top bar and Key bar choices can override this."],
+    ["Short windows", "When the window is shorter than 860, the top bar folds into one row, as high as the old bar, and hides the status strip; the Elite light then shows your system. Below 760 the key bar hides too." + (lacks('flight') ? "" : " That keeps room for the trainer's sky in Studio Flight.") + " The Top bar and Key bar choices can override this."],
     ["Your own colours", "Under 'Your own colours' in Display, click a part (frames and tabs, big buttons, text, page background and more) to open its colour wheel. Click or drag on the wheel to pick the colour, set its brightness on the bar under it, or type a code such as #ff7100. Studio's pages change as you go. The cross beside a part puts back the colour set's own colour. Save the look as a profile to keep your colours, and share them with its code."],
     ["Spacing", "Comfortable leaves room around cards and rows. Compact uses tighter gaps and shorter rows in every studio, so more fits on the screen."],
     ["Top bar and key bar", "Top bar: Automatic uses one row on short windows, or choose Always full or Always one row. Key bar: Automatic hides it on short or narrow windows, or choose Always or Never."],
     ["Effects", "Three switches: Starfield behind the pages, Glow on glyphs and live lights, and Movement, which slides panels and pulses lights. Turn them off for a plainer, calmer screen."],
-    ["Your window", "The Your window box in Display shows the window size, how large Windows draws it, and which layout is in use."],
+    ["Your window", "The Your window box in Display shows the window size, how large " + (linux() ? "it is drawn" : "Windows draws it") + ", and which layout is in use."],
   ] },
-];
-const TOUR = [
+].filter(Boolean).map(s => ({ ...s, items: s.items.filter(Boolean) }));
+const tour = () => [
   { sel: '#game', t: 'Is Elite running?', p: 'This light turns green while Elite Dangerous is running. On a short window it shows the system you are in.' },
   { sel: '.stabs.l', t: 'Studio tabs', p: 'One tab per studio. Studio UI and Studio Market are on the left.' },
-  { sel: '.stabs.r', t: 'More studios', p: 'Studio Nav, Studio Loadouts and Studio Flight are on the right.' },
+  { sel: '.stabs.r', t: 'More studios', p: lacks('flight') ? 'Studio Nav and Studio Loadouts are on the right.' : 'Studio Nav, Studio Loadouts and Studio Flight are on the right.' },
   { sel: '#profHex', t: 'Profile', p: 'Your appearance profile: colours, spacing and layout. Click it to save, load or share a look.' },
   { sel: '#helpHex', t: 'Help', p: 'This guide, explained piece by piece. You can come back to the tour any time.' },
   { sel: '#menuBtn', t: 'Menu', p: 'Keybindings, appearance profiles, display, the help guide, this tour and About.' },
   { sel: '#stripL', t: 'Status strip', p: 'Your commander, ship and cargo on the left. The system, your station and the jumps left on your route on the right.' },
   { sel: '#pages', t: 'The studio', p: 'Each studio shows its work here. The menu and the panels open over it, so nothing it is doing stops.' },
-  { sel: '#kbKeys', t: 'Overlay keys', p: 'Press these in game to show a box over Elite (Flight\'s once Overlay on/off is ticked in Studio Flight). Click one to see every key.' },
+  !lacks('overlay') && { sel: '#kbKeys', t: 'Overlay keys', p: lacks('flight') ? 'Press these in game to show a box over Elite. Click one to see every key.'
+    : 'Press these in game to show a box over Elite (Flight\'s once Overlay on/off is ticked in Studio Flight). Click one to see every key.' },
   { sel: '#kbMid', t: 'Spacing', p: 'Comfortable or Compact. Compact fits more on a small screen.' },
   { sel: '#kbProf', t: 'Profile switcher', p: 'Step through your saved looks without opening the menu.' },
-];
+].filter(Boolean);
 
 // ============================================================ menu
-const MENU = [
-  ['keys', 'g-keys', 'Keybindings', 'Every key Studio and the overlay use'],
+const menuItems = () => [
+  ['keys', 'g-keys', 'Keybindings', lacks('overlay') ? 'Every key Studio uses' : 'Every key Studio and the overlay use'],
   ['profiles', 'g-profile', 'Appearance profiles', 'Save, load and share a look'],
   ['display', 'g-display', 'Display', 'Colours, spacing, layout and effects'],
   ['help', 'g-help', 'Help guide', 'What each part does'],
@@ -671,8 +718,11 @@ function setMenu(open) {
   $('#menu').hidden = !open; $('#menuBtn').setAttribute('aria-expanded', String(open));
   if (open) $('#menuList button')?.focus();
 }
-$('#menuList').replaceChildren(...MENU.map(([id, g, t, d]) => h('button', { role: 'menuitem', onclick: () => { setMenu(false); id === 'tour' ? startTour() : openDrawer(id, $('#menuBtn')); } },
-  glyph(g), h('span', null, t, h('small', null, d)))));
+function drawMenu() {
+  $('#menuList').replaceChildren(...menuItems().map(([id, g, t, d]) => h('button', { role: 'menuitem', onclick: () => { setMenu(false); id === 'tour' ? startTour() : openDrawer(id, $('#menuBtn')); } },
+    glyph(g), h('span', null, t, h('small', null, d)))));
+}
+drawMenu();
 $('#menuBtn').addEventListener('click', () => setMenu($('#menu').hidden));
 $('#menuList').addEventListener('keydown', e => {
   const items = $$('#menuList button'), i = items.indexOf(document.activeElement);
@@ -697,7 +747,11 @@ function openDrawer(id, opener, sub, toggle) {
   $('#profHex').setAttribute('aria-expanded', String(id === 'profiles'));
   $('#helpHex').setAttribute('aria-expanded', String(id === 'help'));
   $('#drawerClose').focus();
-  if (id === 'keys') { loadOverlayKeys().then(() => { if (drawerOpen === 'keys') renderDrawer('keys'); }); loadFlightKeys(); }
+  // (Asked only of a part this copy of Studio has: a missing one is never asked, nor its page loaded.)
+  if (id === 'keys') Studio.features.then(f => {
+    if (f.overlay) loadOverlayKeys().then(() => { if (drawerOpen === 'keys') renderDrawer('keys'); });
+    if (f.flight) loadFlightKeys();
+  });
 }
 function closeDrawer() {
   if (!drawerOpen) return;
@@ -731,23 +785,27 @@ const seg = (aria, opts, val, on, cls) => h('div', { class: 'dseg ' + (cls || ''
   opts.map(([v, t]) => h('button', { class: v === val ? 'active' : null, 'aria-pressed': String(v === val), onclick: () => on(v) }, t)));
 
 function keysPanel() {
+  // (A part this copy of Studio lacks has no group: no overlay keys without the overlay, no Flight group without Studio Flight.)
   const groups = {
-    overlay: { name: 'Overlay', note: 'Press a key once to show its box over Elite, and again to hide it (the Flight inputs box only once Overlay on/off is ticked on Options in Studio Flight). These keys work only while Elite, or an overlay box you clicked into, is in front. Each box can also have a controller button. Change keys and buttons in Studio Market, on the Trades page, under OVERLAYS AND KEYS.',
-      rows: overlayKeys.map((k, i) => ({ k: [k.key || '—'], pad: k.pad, what: (KEY_WORDS[k.action] || [k.action])[0], sub: (KEY_WORDS[k.action] || [, ''])[1], state: keyState(k, i) })) },
-    flight: { name: 'Flight', note: 'The Trainer flies with your stick and your own Elite keyboard bindings; Chase the dot aims with your stick only. Enter starts a set or a round, or flies it again; Esc pauses while flying. These number-pad keys stand in where Elite has no key bound.',
+    ...(!lacks('overlay') && { overlay: { name: 'Overlay', note: lacks('flight')
+      ? 'Press a key once to show its box over Elite, and again to hide it. These keys work only while Elite, or an overlay box you clicked into, is in front. Each box can also have a controller button. Change keys and buttons in Studio Market, on the Trades page, under OVERLAYS AND KEYS.'
+      : 'Press a key once to show its box over Elite, and again to hide it (the Flight inputs box only once Overlay on/off is ticked on Options in Studio Flight). These keys work only while Elite, or an overlay box you clicked into, is in front. Each box can also have a controller button. Change keys and buttons in Studio Market, on the Trades page, under OVERLAYS AND KEYS.',
+      rows: overlayKeys.map((k, i) => ({ k: [k.key || '—'], pad: k.pad, what: (KEY_WORDS[k.action] || [k.action])[0], sub: (KEY_WORDS[k.action] || [, ''])[1], state: keyState(k, i) })) } }),
+    ...(!lacks('flight') && { flight: { name: 'Flight', note: 'The Trainer flies with your stick and your own Elite keyboard bindings; Chase the dot aims with your stick only. Enter starts a set or a round, or flies it again; Esc pauses while flying. These number-pad keys stand in where Elite has no key bound.',
       rows: [{ k: ['Enter'], what: 'Start, or fly again', sub: 'Studio Flight, Trainer and Chase the dot pages' }, { k: ['Esc'], what: 'Pause or carry on', sub: 'While a set or a round is flying' }, ...(flightKeys ? flightKeys.rows : [])],
-      problem: flightKeys ? flightKeys.problem : null, busy: !flightKeys },
-    ...KEYS_STATIC,
+      problem: flightKeys ? flightKeys.problem : null, busy: !flightKeys } }),
+    ...keysStatic(),
   };
-  const g = groups[keysTab] || groups.overlay;
-  const out = [seg('Which keys', Object.entries(groups).map(([k, v]) => [k, v.name]), keysTab, v => { keysTab = v; renderDrawer('keys'); }), h('p', { class: 'pnote' }, g.note)];
+  const at = groups[keysTab] ? keysTab : Object.keys(groups)[0], g = groups[at];
+  const out = [seg('Which keys', Object.entries(groups).map(([k, v]) => [k, v.name]), at, v => { keysTab = v; renderDrawer('keys'); }), h('p', { class: 'pnote' }, g.note)];
   if (g.busy) out.push(h('p', { class: 'pnote busy' }, h('span', { class: 'spin' }), 'Asking Studio Flight…'));
   if (g.problem) out.push(h('p', { class: 'pnote warn' }, g.problem));
   for (const r of g.rows) out.push(h('div', { class: 'krow' },
     h('span', { class: 'keys' }, r.k.map(x => keycap(x)), r.pad ? keycap(r.pad, true) : null),
     h('span', { class: 'what' }, r.what, h('small', null, r.sub)),
     r.state ? h('span', { class: 'badge ' + r.state[1] }, r.state[0]) : h('span')));
-  out.push(h('p', { class: 'pnote' }, 'Read from Elite Studio as this panel opens, so it always matches your settings. The menu, Help and profiles add no keys of their own.'));
+  out.push(h('p', { class: 'pnote' }, lacks('overlay') && lacks('flight') ? 'The menu, Help and profiles add no keys of their own.'
+    : 'Read from Elite Studio as this panel opens, so it always matches your settings. The menu, Help and profiles add no keys of their own.'));
   return out;
 }
 
@@ -934,7 +992,7 @@ function helpPanel() {
   const list = h('div');
   const draw = () => {
     const t = q.value.trim().toLowerCase();
-    list.replaceChildren(...HELP.map(s => {
+    list.replaceChildren(...help().map(s => {
       const items = s.items.filter(([a, b]) => !t || (a + ' ' + b + ' ' + s.t).toLowerCase().includes(t));
       if (!items.length) return null;
       return h('details', { class: 'help', open: t || s.id === 'shell' ? true : null }, h('summary', null, glyph(s.g), s.t),
@@ -948,7 +1006,8 @@ function helpPanel() {
 let version = '';
 function aboutPanel() {
   return [h('div', { class: 'sect', style: 'padding-bottom:14px' }, h('h3', null, 'Elite Studio' + (version ? ' ' + version : '')),
-    h('p', null, 'HUD colours, trading, routes, ship builds and a flight trainer for Elite Dangerous, in one window.'),
+    h('p', null, lacks('flight') ? 'HUD colours, trading, routes and ship builds for Elite Dangerous, in one window.'
+      : 'HUD colours, trading, routes, ship builds and a flight trainer for Elite Dangerous, in one window.'),
     h('p', null, 'Look: ' + currentProfile().name + '.'),
     h('h3', null, 'Credits'), h('p', null, 'HUD colours use the EDHM mod by Fred89210 and psychicEgg. Studio UI follows the layout of EDHM-UI by Blue Mystic.'),
     h('p', null, 'Elite Dangerous is a game by Frontier Developments. Elite Studio is a fan-made tool and is not made by Frontier.'))];
@@ -958,7 +1017,7 @@ function aboutPanel() {
 let tourAt = -1, tourSteps = [];
 function startTour() {
   closeDrawer(); setMenu(false);
-  tourSteps = TOUR.filter(t => { const el = $(t.sel); return el && el.offsetParent !== null && el.getBoundingClientRect().width > 0; });   // the parts shown at this window size
+  tourSteps = tour().filter(t => { const el = $(t.sel); return el && el.offsetParent !== null && el.getBoundingClientRect().width > 0; });   // the parts shown at this window size
   if (!tourSteps.length) return;
   tourAt = 0; for (const id of ['#tourBlock', '#spot', '#callout']) $(id).hidden = false;
   placeTour();
@@ -1015,7 +1074,19 @@ if (!Studio.served) return;
 sendDirty();   // this page is new and has no frames yet: whatever an earlier one reported is gone
 Studio.follow('state', '/api/state', showState);
 for (const t of tabs) t.button.addEventListener('click', () => showTab(t));
-Studio.follow('overlay', '/api/overlay/settings', r => { if (r && Array.isArray(r.keys) && r.keys.length) { overlayKeys = r.keys; drawKeybar(); if (drawerOpen === 'keys') renderDrawer('keys'); } });
+// Once the app has said what this copy of Studio has: only that is asked for, and what it lacks goes from the shell.
+// The Windows app has everything, so there the shell stays as it was drawn.
+Studio.features.then(f => {
+  has = f;
+  if (f.overlay) Studio.follow('overlay', '/api/overlay/settings', r => { if (r && Array.isArray(r.keys) && r.keys.length) { overlayKeys = keysShown(r.keys); drawKeybar(); if (drawerOpen === 'keys') renderDrawer('keys'); } });
+  if (!Object.values(f).includes(false)) return;
+  if (lacks('flight')) dropTab('flight');
+  overlayKeys = keysShown(overlayKeys);
+  drawKeybar();
+  drawMenu();
+  if (drawerOpen) renderDrawer(drawerOpen);
+  if (tourAt >= 0) endTour();
+});
 Studio.api('GET', '/api/ping').then(r => { version = r.version || ''; }).catch(() => {});
 let last = null;
 try { last = localStorage.getItem('studio.tab'); } catch (e) {}

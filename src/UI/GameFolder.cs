@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -25,16 +24,17 @@ internal sealed record Reload(bool Attempted, bool Sent, string? Error);
 /// from, and whether the HUD mod's loader file is in it. Also everything Studio UI asks about the
 /// game on this PC: where it is installed, what the mod looks like, and whether it is running.
 /// </summary>
-internal sealed record GameFolder([property: JsonPropertyName("path")] string Dir, string Store, bool Edhm)
+internal sealed partial record GameFolder([property: JsonPropertyName("path")] string Dir, string Store, bool Edhm)
 {
     /// <summary>
     /// Where the game sits below a launcher's folder (the game's own folder, Steam's EDLaunch folder, the
     /// launcher's own). Only the live (Odyssey / Horizons 4) product is looked for.
     /// </summary>
     public static readonly string[] ProductFolders =
-        [@"Products\elite-dangerous-odyssey-64", @"EDLaunch\Products\elite-dangerous-odyssey-64", "elite-dangerous-odyssey-64"];
+        [Path.Combine("Products", "elite-dangerous-odyssey-64"), Path.Combine("EDLaunch", "Products", "elite-dangerous-odyssey-64"), "elite-dangerous-odyssey-64"];
 
-    public static GameFolder At(string dir, string store) => new(dir, store, File.Exists(Path.Combine(dir, "d3dx.ini")));
+    // The mod's own files and folder are looked up whatever their capitals (Paths.InFolder), as Windows does by itself.
+    public static GameFolder At(string dir, string store) => new(dir, store, File.Exists(Paths.InFolder(dir, "d3dx.ini")));
 
     public static bool HasGame(string dir) => File.Exists(Path.Combine(dir, EliteWindow.ProcessName + ".exe"));
 
@@ -44,6 +44,10 @@ internal sealed record GameFolder([property: JsonPropertyName("path")] string Di
     /// <summary>The folders in which each launcher would keep Elite, with the shop's name.</summary>
     static List<(string Root, string Store)> LauncherFolders()
     {
+        // Off Windows only Steam is looked through: where it keeps its libraries there is known (Core's SteamGames).
+        if (!OperatingSystem.IsWindows())
+            return [.. SteamGames.Libraries(SteamGames.Home, SteamGames.Env).Select(library => (Path.Combine(library, "steamapps", "common", "Elite Dangerous"), "Steam"))];
+
         var roots = new List<(string, string)>();
         try
         {
@@ -51,7 +55,7 @@ internal sealed record GameFolder([property: JsonPropertyName("path")] string Di
                 foreach (string library in SteamLibraries(steam.Replace('/', '\\')))
                     roots.Add((Path.Combine(library, @"steamapps\common\Elite Dangerous"), "Steam"));
         }
-        catch (Exception unreadable) when (unreadable is IOException or UnauthorizedAccessException or System.Security.SecurityException) { }
+        catch (Exception unreadable) when (unreadable is IOException or UnauthorizedAccessException or System.Security.SecurityException or PlatformNotSupportedException) { }
 
         string epic = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), @"Epic\EpicGamesLauncher\Data\Manifests");
         string[] manifests = [];
@@ -108,14 +112,14 @@ internal sealed record GameFolder([property: JsonPropertyName("path")] string Di
     /// <summary>The folder holding the four colour files, or null when the mod is not in this install.</summary>
     public string? IniDir()
     {
-        string dir = Path.Combine(Dir, "EDHM-ini");
+        string dir = Paths.InFolder(Dir, "EDHM-ini");
         return Directory.Exists(dir) ? dir : null;
     }
 
     /// <summary>The game's build, from the VersionInfo.txt it ships with.</summary>
     public string? Version()
     {
-        string file = Path.Combine(Dir, "VersionInfo.txt");
+        string file = Paths.InFolder(Dir, "VersionInfo.txt");
         JsonElement? version = File.Exists(file) ? Loose.Field(Loose.Object(File.ReadAllText(file)), "Version") : null;
         return version is null ? null : Loose.Text(version);
     }
@@ -124,7 +128,7 @@ internal sealed record GameFolder([property: JsonPropertyName("path")] string Di
     {
         // The mod's loader file names its own version on a comment line, e.g.
         // "; Elite Dangerous HUD Mod (EDHM) for Odyssey & Horizons Live v22.03 (23 September 2026) for FDev Update 4.4.1.1"
-        string loader = Path.Combine(Dir, "d3dx.ini");
+        string loader = Paths.InFolder(Dir, "d3dx.ini");
         string? version = null, date = null, forGame = null;
         if (File.Exists(loader))
         {
@@ -136,7 +140,7 @@ internal sealed record GameFolder([property: JsonPropertyName("path")] string Di
         if (iniDir is not null)
             foreach (string name in ColourFiles.Names) files[name] = File.Exists(ColourFiles.PathOf(iniDir, name));
         // The three things the mod cannot work without: its settings file, its loader and the colour folder.
-        string[] missing = [.. new[] { "d3dx.ini", "d3d11.dll" }.Where(file => !File.Exists(Path.Combine(Dir, file))), .. iniDir is null ? ["EDHM-ini"] : Array.Empty<string>()];
+        string[] missing = [.. new[] { "d3dx.ini", "d3d11.dll" }.Where(file => !File.Exists(Paths.InFolder(Dir, file))), .. iniDir is null ? ["EDHM-ini"] : Array.Empty<string>()];
         // Some mod managers keep the colour files elsewhere and leave a link here. Files are still read
         // and written through the link; the target is only shown to the player.
         string? linkTarget = iniDir is null ? null : new DirectoryInfo(iniDir).LinkTarget;
@@ -181,39 +185,6 @@ internal sealed record GameFolder([property: JsonPropertyName("path")] string Di
         return new { path = file, exists, isDefault, matrix };
     }
 
-    public static bool IsRunning()
-    {
-        Process[] elite = Process.GetProcessesByName(EliteWindow.ProcessName);
-        foreach (Process process in elite) process.Dispose();
-        return elite.Length > 0;
-    }
-
-    /// <summary>
-    /// Elite reloads the HUD colours when F11 is pressed in the game (the mod's own key). A page
-    /// cannot press a key in another program, so this brings Elite to the front and presses it.
-    /// </summary>
-    public static Reload PressReloadKey()
-    {
-        Process[] elite = Process.GetProcessesByName(EliteWindow.ProcessName);
-        if (elite.Length == 0) return new Reload(false, false, null);
-        try
-        {
-            if (elite[0].MainWindowHandle == IntPtr.Zero) throw new InvalidOperationException("Elite Dangerous is running but its main window handle is not available.");
-            Microsoft.VisualBasic.Interaction.AppActivate(elite[0].Id);
-            Thread.Sleep(200);   // give Windows time to switch windows before the key goes out
-            System.Windows.Forms.SendKeys.SendWait("{F11}");
-            Log.Info("Sent F11 to Elite Dangerous to reload the HUD colours.");
-            return new Reload(true, true, null);
-        }
-        catch (Exception problem)
-        {
-            // Whatever went wrong, the save itself worked: the page tells the player to press F11 themselves.
-            Log.Error("Could not send F11 to Elite Dangerous", problem);
-            return new Reload(true, false, problem.Message);
-        }
-        finally
-        {
-            foreach (Process process in elite) process.Dispose();
-        }
-    }
+    /// <summary>The game is running: the one look-up Core makes (<see cref="EliteWindow.Running"/>), at most every two seconds.</summary>
+    public static bool IsRunning() => EliteWindow.Running;
 }

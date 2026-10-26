@@ -339,6 +339,7 @@ public sealed class FineMapTests(ITestOutputHelper output) : IDisposable
     [Fact]
     public async Task A_rebuild_that_could_not_all_be_put_in_place_says_so_and_is_put_in_place_at_the_next_look()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to replace a file another program holds open.");
         Download(Fixture);
         var map = new FineMap(temp) { MoveTries = 2, ResumeWait = TimeSpan.Zero };
         await map.Build(38, 18);

@@ -768,9 +768,11 @@ public sealed class NavScan : IDisposable
     /// <summary>
     /// The folders Elite's pictures go to, there or not yet: Steam's screenshots of the game for each Steam user of this
     /// PC (Steam's folder as the registry gives it, else where Steam installs itself), and the game's own (F10).
+    /// None off Windows, where Nav scan cannot read pictures yet.
     /// </summary>
     internal static IReadOnlyList<string> PicturePlaces()
     {
+        if (!OperatingSystem.IsWindows()) return [];
         var places = new List<string>();
         foreach (string steam in SteamFolders())
         {

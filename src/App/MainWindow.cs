@@ -1,11 +1,11 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
+using Microsoft.Win32;
 using Forms = System.Windows.Forms;
 
 namespace EliteStudio.App;
@@ -15,7 +15,7 @@ namespace EliteStudio.App;
 /// web server, plus the icon near the clock. Closing the window only hides it, because Studio has to keep
 /// running for the in-game overlay; "Exit" on the tray icon really leaves.
 /// </summary>
-public sealed class MainWindow : Window
+public sealed class MainWindow : Window, IStudioWindow
 {
     /// <summary>
     /// The old tool's dark window colour, close to (not the same as) the pages' own background. Window and
@@ -84,13 +84,6 @@ public sealed class MainWindow : Window
     }
 
     /// <summary>
-    /// The pages are laid out for a width of 1400: on a narrower window (or a heavily scaled display) zoom
-    /// out a little, down to 60%, so the side-by-side layout survives. Never zooms in.
-    /// </summary>
-    /// <param name="width">The web view's width in WPF units, which already have display scaling taken out.</param>
-    internal static double ZoomFor(double width) => Math.Round(Math.Clamp(width / 1400, 0.6, 1.0), 2);
-
-    /// <summary>
     /// Shows the window and the tray icon and loads the pages. If the web engine cannot start, the reason
     /// is logged and shown in the window itself as plain text.
     /// </summary>
@@ -128,7 +121,7 @@ public sealed class MainWindow : Window
         core.NewWindowRequested += (_, e) =>
         {
             e.Handled = true;
-            OpenInBrowser(e.Uri);
+            AppApi.OpenInBrowser(e.Uri);
         };
         core.NavigationStarting += (_, e) =>
         {
@@ -138,7 +131,7 @@ public sealed class MainWindow : Window
                 || e.Uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase);
             if (own) return;
             e.Cancel = true;
-            OpenInBrowser(e.Uri);
+            AppApi.OpenInBrowser(e.Uri);
         };
         core.NavigationCompleted += (_, e) =>
         {
@@ -158,6 +151,32 @@ public sealed class MainWindow : Window
         Show();
         if (WindowState == WindowState.Minimized) SystemCommands.RestoreWindow(this);
         Activate();
+    }
+
+    /// <summary>The folder picker belongs to the Studio window, so that is brought forward first, in case it was hidden or behind a browser.</summary>
+    public string? PickFolder(string title)
+    {
+        BringToFront();
+        var dialog = new OpenFolderDialog { Title = title };
+        return dialog.ShowDialog(this) == true ? dialog.FolderName : null;
+    }
+
+    /// <summary>Ends the app, from whichever thread asks.</summary>
+    public void Quit() => Dispatcher.InvokeAsync(() => Application.Current?.Shutdown());
+
+    public string Engine => WebViewVersion();
+
+    /// <summary>The WebView2 engine's version on this PC, or "not found".</summary>
+    internal static string WebViewVersion()
+    {
+        try
+        {
+            return CoreWebView2Environment.GetAvailableBrowserVersionString();
+        }
+        catch (Exception)   // not installed, or its loader is missing: the report must still be written
+        {
+            return "not found";
+        }
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -182,21 +201,8 @@ public sealed class MainWindow : Window
     void FitZoom()
     {
         if (view.CoreWebView2 is null || view.ActualWidth <= 0) return;
-        double zoom = ZoomFor(view.ActualWidth);
+        double zoom = IStudioWindow.ZoomFor(view.ActualWidth);   // the rule every system's window follows
         if (Math.Abs(view.ZoomFactor - zoom) > 0.01) view.ZoomFactor = zoom;
-    }
-
-    static void OpenInBrowser(string uri)
-    {
-        if (!uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && !uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) return;
-        try
-        {
-            Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
-        }
-        catch (Win32Exception problem)   // no default browser set up
-        {
-            Log.Error($"Could not open {uri} in the browser", problem);
-        }
     }
 
     /// <summary>Ends a --smoke run: one line in the log saying how it went, two seconds for the page to settle, then exit code 0 or 1.</summary>

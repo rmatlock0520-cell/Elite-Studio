@@ -19,6 +19,8 @@
   "state" events.
   What the page does remember, in this browser only: which sections are open. Shown inside the shell
   (..\index.html) and also works opened on its own.
+  A copy of Studio without the in-game overlay (Studio.features: the Linux one) has no OVERLAYS AND KEYS section and
+  no Fullscreen note, and the page then never asks for /api/overlay/...
 -->
 <style>
 /* Only what is this page's own; the shared look (buttons, boxes, fields, the list table, tags...) is in ../studio.css. */
@@ -513,7 +515,8 @@ function drawSettings() {
   // These three lists hold the steps the overlay menu moves through, in the old window's words; the fourth, the orders of its short trade list.
   options($('[data-set=maxAgeHours]'), line('maxAgeHours').choices.map(c => [c.value, hours(c.value)]));
   for (const key of ['minSupply', 'minDemand']) options($('[data-set=' + key + ']'), line(key).choices.map(c => [c.value, tons(c.value)]));
-  options($('[data-set=listSort]'), view.listSorts.map(order => [order.key, order.name]));
+  const listSort = $('[data-set=listSort]');   // in OVERLAYS AND KEYS, which a copy of Studio without the overlay has not
+  if (listSort) options(listSort, view.listSorts.map(order => [order.key, order.name]));
   for (const el of all('[data-set]')) put(el, s[el.dataset.set]);
   // "anywhere" has no distance from the player; from a station to a system, both ends are named and it is one way
   for (const key of ['buyLy', 'maxLy', 'returns']) $('[data-set=' + key + ']').disabled = !line(key).usable;
@@ -583,6 +586,7 @@ function changeSetting(el) {
 
 // ============================================================ the overlay box and its keys
 const keyActions = { haul: 'Hauling overlay', market: 'Find by name overlay', nav: 'Route overlay', loadouts: 'Loadouts overlay', flight: 'Flight inputs overlay' };
+const boxName = action => keyActions[action] || action;   // a box this page has no words for goes by the app's name for it
 // Keys by the name Windows has for them, which is how the hotkey settings spell a key. Punctuation keys are
 // left out: which of them a key is depends on the keyboard's country, and a page cannot see that.
 const namedKeys = { ' ': 'Space', Enter: 'Return', Backspace: 'Back', Escape: 'Escape', Insert: 'Insert', Delete: 'Delete', Home: 'Home', End: 'End',
@@ -644,7 +648,7 @@ async function hear(el) {
 }
 
 function keyWarnings() {
-  const named = k => keyActions[k.action] + ' (' + k.key + ')', lines = [];
+  const named = k => boxName(k.action) + ' (' + k.key + ')', lines = [];
   const unknown = ov.keys.filter(k => !k.valid);
   if (unknown.length) lines.push('Not a key Studio can use: ' + unknown.map(named).join(', ') + '. Click the box and press the keys again.');
   // The same key on two actions: the one further up this list gets it, as in the old tool.
@@ -653,7 +657,7 @@ function keyWarnings() {
   const taken = ov.keys.filter(k => k.valid && k.registered === false && !twice.includes(k));
   if (taken.length) lines.push('Another program already uses: ' + taken.map(named).join(', ') + '. Pick different keys.');
   const twicePad = ov.keys.filter((k, at) => k.pad && ov.keys.findIndex(other => other.pad === k.pad) < at);
-  if (twicePad.length) lines.push('Already on another of these controller buttons: ' + twicePad.map(k => keyActions[k.action] + ' (' + k.pad + ')').join(', ') + '. Pick different buttons.');
+  if (twicePad.length) lines.push('Already on another of these controller buttons: ' + twicePad.map(k => boxName(k.action) + ' (' + k.pad + ')').join(', ') + '. Pick different buttons.');
   // The game reads the keyboard itself, so it sees the key go down whatever is held with it.
   for (const k of ov.keys) if (k.gameActions.length) lines.push('The game itself uses ' + k.key.split('+').pop() + ' (' + k.gameActions.join(', ') + '): ' + named(k) + ' would set that off as well.');
   return lines.join(' ');
@@ -669,15 +673,19 @@ function readouts() {
 
 function drawOverlay() {
   const s = ov.settings;
+  // A box the app does not have (its key is not in its settings) is not shown, and nothing below counts on any one box.
+  for (const box of all('.ovbox')) box.hidden = !(box.querySelector('[data-key]').dataset.key in s);
   for (const el of all('[data-ov]')) put(el, s[el.dataset.ov]);
   // The flight inputs cannot be shown from here while Studio Flight's "Overlay on/off" is off.
   const flightShow = $('[data-ov=flightOn]'), flightOff = (ov.keptHidden || []).includes('flight');
-  flightShow.disabled = flightOff;
-  if (flightOff) flightShow.parentElement.title = 'Off in Studio Flight: Options, "Overlay on/off".';
-  else flightShow.parentElement.removeAttribute('title');   // the box's own title shows again
+  if (flightShow) {
+    flightShow.disabled = flightOff;
+    if (flightOff) flightShow.parentElement.title = 'Off in Studio Flight: Options, "Overlay on/off".';
+    else flightShow.parentElement.removeAttribute('title');   // the box's own title shows again
+  }
   for (const el of all('[data-key]')) put(el, s[el.dataset.key]);
   for (const el of all('[data-pad]')) {
-    const pad = ov.keys.find(k => k.padSetting === el.dataset.pad).pad;   // in words: "Button 7 on <controller>", or '' for none
+    const pad = (ov.keys.find(k => k.padSetting === el.dataset.pad) || { pad: '' }).pad;   // in words: "Button 7 on <controller>", or '' for none
     put(el, el === hearing ? 'Press a button…' : pad);
     el.classList.toggle('hearing', el === hearing);
     // The whole of it for the mouse, as the box is narrow. (With no button the box has no title of its own, so the action's shows.)
@@ -686,7 +694,7 @@ function drawOverlay() {
   readouts();
   const pads = ov.keys.filter(k => k.pad).length;
   // Each box with its key, and whether it is showing: "Hauling F2 (on) · Find by name F3 · …".
-  write($('#sum-overlay'), ov.keys.map(k => keyActions[k.action].replace(' overlay', '') + ' ' + k.key + (s[k.action + 'On'] ? ' (on)' : '')).join(dot)
+  write($('#sum-overlay'), ov.keys.map(k => boxName(k.action).replace(' overlay', '') + ' ' + k.key + (s[k.action + 'On'] ? ' (on)' : '')).join(dot)
     + (pads ? dot + count(pads, 'controller button') : ''));
   const warnings = keyWarnings();
   write($('#key-warn'), warnings);
@@ -728,6 +736,7 @@ function showOverlay(o) {
 }
 
 async function setOverlay(changes) {
+  if (!overlay) return;   // the app has not yet said it has the overlay
   try { await overlay('POST', '/api/overlay/settings', changes); }
   catch (e) {
     toast(e.message, true);
@@ -823,7 +832,18 @@ $('#old-tool-ok').addEventListener('click', oldToolRead);
 // The app's three pictures, kept up to date. market() and overlay() are for this page's own requests, which answer with the same pictures.
 const market = Studio.follow('market', '/api/market/hauling', show);
 // The overlay says so itself when its picture changes: hidden or shown with its key in the game, a key Windows refused.
-const overlay = Studio.follow('overlay', '/api/overlay/settings', showOverlay);
+// It is followed once the app has said it has one. A copy of Studio without it (the Linux one) loses the section, the
+// Fullscreen note and every word that names the overlay; what a click on a row does is said instead.
+let overlay = null;
+Studio.features.then(has => {
+  if (has.overlay) { overlay = Studio.follow('overlay', '/api/overlay/settings', showOverlay); return; }
+  $('[data-sec=overlay]').remove();
+  $('#fullscreen').remove();
+  $('[data-sec=presets] .body p').textContent = 'A preset is a named copy of your search settings (trip, distances, price age, station details, Powerplay). Switch between them here.';
+  $('#accept').title = 'Accepts the trade you clicked in the list. Studio stays on it until you finish it or drop it.';
+  $('#copy').title = 'Copies the star system to fly to next for the trade the Next stop line shows';
+  $('#list').nextElementSibling.textContent = 'Click a row to pick that trade: the Next stop line and Copy next stop follow it. Tick its box to accept it: Studio then stays on that trade until you finish it or drop it. Click a column title to sort.';
+});
 Studio.follow('state', '/api/state', g => { game = g; if (view) drawStatus(); });
 })();
 </script>

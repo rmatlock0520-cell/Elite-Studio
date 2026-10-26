@@ -1,0 +1,130 @@
+# Elite Studio for Linux on GitHub's Linux machines: build it and run its checks, pack the player's copy, open it on
+# a screen with no monitor to prove its window starts (with pictures of each studio), and make the Flatpak.
+# Nothing here publishes a release: what it makes is kept with the run, for the owner to look at and pass on.
+name: Linux
+
+on:
+  push:
+    branches: [linux]
+    tags: ['linux-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+defaults:
+  run:
+    shell: bash   # stops a step at the first failing command, also one inside a pipe
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      # Compiler output goes in this machine's temporary folder (Directory.Build.props would put it under the home
+      # folder, as on the owner's PC), so the test program is at a known place.
+      - name: Build the Linux checks
+        run: dotnet build linux/tests/EliteStudio.Linux.Tests.csproj -p:ArtifactsPath="$RUNNER_TEMP/build"
+      - name: Run the Linux checks
+        # The test program is run directly: "dotnet test" can find no tests here and still say it passed.
+        # For the same reason a run that finds no tests at all fails.
+        run: |
+          "$RUNNER_TEMP/build/bin/EliteStudio.Linux.Tests/debug/EliteStudio.Tests" -noColor | tee "$RUNNER_TEMP/checks.txt"
+          grep -Eq 'Total: [1-9]' "$RUNNER_TEMP/checks.txt" || { echo "::error::The Linux checks ran no tests."; exit 1; }
+      - name: Make the player's copy
+        # Self-contained: the player needs no .NET, only the web engine the window shows the pages with.
+        # The files come from Windows without the "may run" mark, so it is set here; the archive keeps it.
+        run: |
+          dotnet publish linux/EliteStudio.Linux.csproj -c Release -r linux-x64 --self-contained true -o elite-studio -p:ArtifactsPath="$RUNNER_TEMP/build"
+          cp linux/packaging/{elite-studio,elite-studio.desktop,install.sh,uninstall.sh,elite-studio.png,README.txt} elite-studio/
+          chmod +x elite-studio/EliteStudio elite-studio/elite-studio elite-studio/install.sh elite-studio/uninstall.sh
+          tar -czf elite-studio-linux-x64.tar.gz elite-studio
+      - uses: actions/upload-artifact@v4
+        with:
+          name: elite-studio-linux-x64
+          path: elite-studio-linux-x64.tar.gz
+          if-no-files-found: error
+
+  smoke:
+    needs: build
+    strategy:
+      fail-fast: false   # each Ubuntu tells its own story
+      matrix:
+        os: [ubuntu-24.04, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4   # the recorded journals and the picture script
+      - uses: actions/download-artifact@v4
+        with:
+          name: elite-studio-linux-x64
+      # The web engine the window needs, a screen with no monitor, and what clicks in it and pictures it.
+      # No window manager: the window opens where Studio puts it, and clicks reach it all the same.
+      - name: Install the window's web engine and the test screen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-0 libnotify4 xvfb xdotool imagemagick
+      - name: Unpack the player's copy
+        run: tar -xzf elite-studio-linux-x64.tar.gz -C "$RUNNER_TEMP"
+      - name: List libraries this Ubuntu lacks
+        # Says why, should the window not start here (a native part built on a newer Ubuntu than this one).
+        run: ldd "$RUNNER_TEMP"/elite-studio/*.so 2>&1 | grep -E '^/|not found' || true
+      - name: Keep any web browser closed
+        # When its window cannot start, Studio opens the player's browser instead (xdg-open). A browser here would
+        # let the smoke run pass without the window, so xdg-open only says what it was asked to open.
+        run: |
+          mkdir -p "$RUNNER_TEMP/no-browser"
+          printf '#!/bin/sh\necho "xdg-open was asked to open: $*" >&2\n' > "$RUNNER_TEMP/no-browser/xdg-open"
+          chmod +x "$RUNNER_TEMP/no-browser/xdg-open"
+          echo "$RUNNER_TEMP/no-browser" >> "$GITHUB_PATH"
+      - name: Smoke run
+        # Passes when the window's page has asked Studio for the game state within a minute (--smoke).
+        run: |
+          code=0
+          timeout 150 xvfb-run -a -s "-screen 0 1600x1000x24" "$RUNNER_TEMP/elite-studio/elite-studio" --smoke --offline \
+            --data-dir "$RUNNER_TEMP/smoke-data" --journal-dir "$GITHUB_WORKSPACE/tests/Fixtures/journals" || code=$?
+          cat "$RUNNER_TEMP/smoke-data/logs/studio.log" || true
+          exit $code
+      - name: Pictures of each studio
+        run: |
+          timeout 180 xvfb-run -a -s "-screen 0 1600x1000x24" \
+            bash linux/packaging/ci/screenshots.sh "$RUNNER_TEMP/elite-studio" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/shots"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/shots
+            ${{ runner.temp }}/smoke-data/logs
+          if-no-files-found: warn
+
+  flatpak:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Flathub's build box with the GNOME 51 runtime: the last GNOME runtime with the web engine the window uses
+    # (webkit2gtk-4.1), supported until September 2027. Keep it the same as runtime-version in the manifest.
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      # The player's copy goes next to the manifest, which takes it from there.
+      - uses: actions/download-artifact@v4
+        with:
+          name: elite-studio-linux-x64
+          path: linux/packaging
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: linux/packaging/io.github.rmatlock0520_cell.EliteStudio.yml
+          bundle: elite-studio.flatpak
+          artifact-name: elite-studio-flatpak
+          cache: false   # every run packs a new copy; a kept build could hand back the last one

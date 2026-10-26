@@ -1,4 +1,3 @@
-using System.Media;
 using EliteStudio.App;
 
 namespace EliteStudio.Nav;
@@ -18,22 +17,13 @@ public static class NavScanSounds
 
     const int Rate = 44100;
 
-    static SoundPlayer? playing;   // kept, so it is not cleared away while it still sounds
-    static readonly Lock guard = new();
-
     /// <summary>Plays one at a volume of 0 to 100 and returns at once; nothing at 0. A PC without a sound device stays silent.</summary>
     public static void Play(string sound, int volume)
     {
         if (volume <= 0) return;
         try
         {
-            lock (guard)
-            {
-                SoundPlayer? before = playing;
-                playing = new SoundPlayer(Wave(sound, volume / 100.0));
-                playing.Play();
-                before?.Dispose();
-            }
+            Sound.Play(Wave(sound, volume / 100.0).ToArray());
         }
         catch (Exception problem) when (problem is InvalidOperationException or IOException or TimeoutException)
         {

@@ -1,0 +1,11 @@
+#!/bin/sh
+# Starts Elite Studio, the program in the folder this script is in, passing on any options (see README.txt).
+
+# WebKitGTK's newer way of drawing shows a blank window with some graphics drivers (NVIDIA on Wayland among them),
+# so it is turned off unless the player has set it themselves.
+: "${WEBKIT_DISABLE_DMABUF_RENDERER:=1}"
+export WEBKIT_DISABLE_DMABUF_RENDERER
+
+# The real folder, also when this script is started through the link install.sh makes in ~/.local/bin.
+here=$(dirname "$(readlink -f "$0")")
+exec "$here/EliteStudio" "$@"

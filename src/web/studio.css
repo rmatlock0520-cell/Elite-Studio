@@ -21,14 +21,31 @@
   --act-ink:var(--cyan);--act-top:color-mix(in srgb,var(--ice) 24%,transparent);--act-bot:color-mix(in srgb,color-mix(in srgb,var(--ice) 22%,var(--bg)) 70%,transparent);--act-top-h:color-mix(in srgb,var(--ice) 38%,transparent);--act-bot-h:color-mix(in srgb,color-mix(in srgb,var(--ice) 22%,var(--bg)) 75%,transparent);
   /* meaning: these never follow the profile */
   --good:#3ddc84;--warn:#ffb020;--bad:#ff5a4f;
-  --font:"Segoe UI",system-ui,-apple-system,sans-serif;
-  --hud:"Bahnschrift","DIN Alternate","Segoe UI",system-ui,sans-serif;
-  --mono:"Cascadia Mono",Consolas,"Courier New",monospace;
+  /* each with its free look-alike (the faces below) after the Windows font */
+  --font:"Segoe UI","Studio Text",system-ui,-apple-system,sans-serif;
+  --hud:"Bahnschrift","DIN Alternate","Studio Heading","Segoe UI","Studio Text",system-ui,sans-serif;
+  --mono:"Cascadia Mono",Consolas,"Studio Mono","Courier New",monospace;
   /* spacing that .dense tightens */
   --pad:14px;--cell:5px;
   color-scheme:dark;
 }
 html.dense{--pad:10px;--cell:3px}
+/* Free look-alikes of the Windows fonts, for a PC that lacks those: Barlow for Bahnschrift (with DINish's digits, which
+   are closer to its own), Selawik for Segoe UI, Cascadia Mono as it is. Only the Linux app carries the files and serves
+   them at /fonts/; each font list above names the Windows font first, so Windows draws with its own.
+   (ui/index.html keeps its own copy of these, as it does of the rest of the look.) */
+@font-face{font-family:"Studio Heading";src:url(/fonts/Barlow-Medium.ttf);font-weight:400;size-adjust:102.6%}
+@font-face{font-family:"Studio Heading";src:url(/fonts/Barlow-Medium.ttf);font-weight:500;size-adjust:102.6%}
+@font-face{font-family:"Studio Heading";src:url(/fonts/Barlow-SemiBold.ttf);font-weight:600;size-adjust:102.6%}
+@font-face{font-family:"Studio Heading";src:url(/fonts/Barlow-Bold.ttf);font-weight:700;size-adjust:102.6%}
+@font-face{font-family:"Studio Heading";src:url(/fonts/DINishDigits-500.ttf);font-weight:400;unicode-range:U+0030-0039;size-adjust:102.8%}
+@font-face{font-family:"Studio Heading";src:url(/fonts/DINishDigits-500.ttf);font-weight:500;unicode-range:U+0030-0039;size-adjust:102.8%}
+@font-face{font-family:"Studio Heading";src:url(/fonts/DINishDigits-610.ttf);font-weight:600;unicode-range:U+0030-0039;size-adjust:102.8%}
+@font-face{font-family:"Studio Heading";src:url(/fonts/DINishDigits-720.ttf);font-weight:700;unicode-range:U+0030-0039;size-adjust:102.8%}
+@font-face{font-family:"Studio Text";src:url(/fonts/selawk.ttf);font-weight:400;ascent-override:107.91%;descent-override:25.1%;line-gap-override:0%}
+@font-face{font-family:"Studio Text";src:url(/fonts/selawksb.ttf);font-weight:600;size-adjust:98%;ascent-override:107.91%;descent-override:25.1%;line-gap-override:0%}
+@font-face{font-family:"Studio Text";src:url(/fonts/selawkb.ttf);font-weight:700;ascent-override:107.91%;descent-override:25.1%;line-gap-override:0%}
+@font-face{font-family:"Studio Mono";src:url(/fonts/CascadiaMono.ttf);font-weight:200 700}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 /* A page fills the window and never scrolls as a whole; its own parts scroll. The red bar and a .subtabs

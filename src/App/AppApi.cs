@@ -1,13 +1,45 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
-using System.Windows;
-using System.Windows.Threading;
 using EliteStudio.Core;
 using EliteStudio.UI;
-using Microsoft.Web.WebView2.Core;
-using Microsoft.Win32;
 
 namespace EliteStudio.App;
+
+/// <summary>
+/// The window the pages are shown in, as the app-level routes need it. Each system has its own (Windows: WebView2 in a
+/// WPF window; a --headless run has a stand-in that shows nothing).
+/// </summary>
+public interface IStudioWindow
+{
+    /// <summary>Shows the window again and brings it forward. Called on the app's UI thread.</summary>
+    void BringToFront();
+
+    /// <summary>Ends Studio. May be called from any thread.</summary>
+    void Quit();
+
+    /// <summary>Asks the player for a folder; null when they cancel. Called on the app's UI thread.</summary>
+    string? PickFolder(string title);
+
+    /// <summary>The web engine and its version, for the report.</summary>
+    string Engine { get; }
+
+    /// <summary>
+    /// The pages are laid out for a width of 1400: on a narrower window (or a heavily scaled display) zoom
+    /// out a little, down to 60%, so the side-by-side layout survives. Never zooms in. Every system's window follows it.
+    /// </summary>
+    /// <param name="width">The web view's width with display scaling taken out (on Windows, in WPF units).</param>
+    internal static double ZoomFor(double width) => Math.Round(Math.Clamp(width / 1400, 0.6, 1.0), 2);
+}
+
+/// <summary>The "linux" section of settings.json.</summary>
+internal sealed record LinuxSettings
+{
+    /// <summary>The journal folder the player chose by hand; used from the next start, over the one Studio found.</summary>
+    public string? JournalDir { get; init; }
+}
 
 /// <summary>
 /// The app-level routes: GET /api/state and everything under /api/app/. They give the pages what the old
@@ -27,21 +59,23 @@ public static class AppApi
         public string Text { get; set; } = "";
         public string Message { get; set; } = "";
         public int Count { get; set; }
+        public string Url { get; set; } = "";
     }
 
     /// <summary>Registers the routes. Call on the UI thread, which is also where the server runs them.</summary>
-    /// <param name="window">Null in a --headless run: nothing is ever shown, and the folder picker answers as if cancelled.</param>
-    public static void Map(WebServer web, GameState state, MainWindow? window)
+    /// <param name="window">Null only in tests: nothing is ever shown, and the folder pickers answer as if cancelled.</param>
+    /// <param name="settings">Where the journal folder the player chose is kept (POST /api/app/pick-journal); null only in tests.</param>
+    public static void Map(WebServer web, GameState state, IStudioWindow? window, Settings? settings = null)
     {
-        Dispatcher ui = Dispatcher.CurrentDispatcher;
         WebResponse Done() => WebResponse.Json(new { ok = true });
 
         web.Map("GET", "/api/state", _ => WebResponse.Json(state.Snapshot()));
 
-        web.Map("POST", "/api/app/pick-folder", _ => WebResponse.Json(new { path = PickGameFolder(window) }));
+        web.Map("POST", "/api/app/pick-folder", _ =>
+            WebResponse.Json(new { path = window?.PickFolder("Choose your Elite Dangerous folder") is string picked ? FindGameFolder(picked) : null }));
 
         web.Map("POST", "/api/app/report", request =>
-            WebResponse.Json(new { path = SaveReport(Paths.DataDir, request.Read<Body>().Text) }));
+            WebResponse.Json(new { path = SaveReport(Paths.DataDir, request.Read<Body>().Text, window?.Engine) }));
 
         web.Map("POST", "/api/app/log", request =>
         {
@@ -64,8 +98,23 @@ public static class AppApi
         web.Map("POST", "/api/app/quit", _ =>
         {
             // Answer first, then leave a moment later, so the caller gets its reply before the server is gone.
-            Task.Delay(200).ContinueWith(answered => ui.InvokeAsync(() => Application.Current?.Shutdown()));
+            Task.Delay(200).ContinueWith(answered => window?.Quit());
             return Done();
+        });
+
+        // A link to a website, opened in the player's own browser (for a window that cannot do that by itself).
+        web.Map("POST", "/api/app/open", request =>
+            OpenInBrowser(request.Read<Body>().Url) ? Done() : WebResponse.Error("Only links to websites can be opened.", 400));
+
+        // Where Studio reads the game from, and the player's own choice of journal folder, kept for the next start
+        // (Linux, where the game's folders are inside Proton's and Studio may not find them).
+        web.Map("GET", "/api/app/journal", _ => WebResponse.Json(new { path = Paths.JournalDir, found = Directory.Exists(Paths.JournalDir) }));
+
+        web.Map("POST", "/api/app/pick-journal", _ =>
+        {
+            string? path = window?.PickFolder("Choose the folder that holds Elite's journal files");
+            if (path is not null) settings?.Set("linux", settings.Get<LinuxSettings>("linux") with { JournalDir = path });
+            return WebResponse.Json(new { path });
         });
     }
 
@@ -82,51 +131,54 @@ public static class AppApi
     /// Writes what the page gathered, followed by this PC's details and the end of the log, as one text
     /// file the owner can send when asking for help. Returns the file's full path.
     /// </summary>
-    internal static string SaveReport(string dataDir, string text)
+    /// <param name="engine">The window's web engine (<see cref="IStudioWindow.Engine"/>); null without a window.</param>
+    internal static string SaveReport(string dataDir, string text, string? engine = null)
     {
         string folder = Path.GetFullPath(Path.Combine(dataDir, "logs"));
         Directory.CreateDirectory(folder);
         DateTime now = DateTime.Now;
         string path = Path.Combine(folder, $"report-{now.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture)}.txt");
-        string report = new StringBuilder()
+        var report = new StringBuilder()
             .AppendLine("ELITE STUDIO REPORT")
             .AppendLine(CultureInfo.InvariantCulture, $"Time: {now:yyyy-MM-dd HH:mm:ss}")
             .AppendLine(CultureInfo.InvariantCulture, $"Version: {Program.Version}")
             .AppendLine()
             .AppendLine(text)
             .AppendLine()
-            .AppendLine("--- this PC ---")
-            .AppendLine(CultureInfo.InvariantCulture, $"Windows: {Environment.OSVersion.VersionString}")
-            .AppendLine(CultureInfo.InvariantCulture, $".NET: {Environment.Version}")
-            .AppendLine(CultureInfo.InvariantCulture, $"WebView2: {WebViewVersion()}")
-            .AppendLine(CultureInfo.InvariantCulture, $"Program folder: {AppContext.BaseDirectory}")
+            .AppendLine("--- this PC ---");
+        if (OperatingSystem.IsWindows())
+            report.AppendLine(CultureInfo.InvariantCulture, $"Windows: {Environment.OSVersion.VersionString}")
+                .AppendLine(CultureInfo.InvariantCulture, $".NET: {Environment.Version}")
+                .AppendLine(CultureInfo.InvariantCulture, $"WebView2: {engine ?? "not found"}");
+        else
+            // Off Windows the system's own name says more ("Ubuntu 24.04.1 LTS", "SteamOS") than its kernel's version.
+            report.AppendLine(CultureInfo.InvariantCulture, $"System: {RuntimeInformation.OSDescription}")
+                .AppendLine(CultureInfo.InvariantCulture, $".NET: {Environment.Version}")
+                .AppendLine(CultureInfo.InvariantCulture, $"Web engine: {engine ?? "no window"}");
+        report.AppendLine(CultureInfo.InvariantCulture, $"Program folder: {AppContext.BaseDirectory}")
             .AppendLine(CultureInfo.InvariantCulture, $"Data folder: {dataDir}")
             .AppendLine("--- end of the log ---")
-            .AppendLine(LogTail(60))
-            .ToString();
-        File.WriteAllText(path, report);
+            .AppendLine(LogTail(60));
+        File.WriteAllText(path, report.ToString());
         return path;
     }
 
-    static string? PickGameFolder(MainWindow? window)
+    /// <summary>
+    /// Opens a link to a website in the player's normal browser (on Linux through xdg-open). False, and nothing
+    /// opened, for anything that is not an http or https link.
+    /// </summary>
+    internal static bool OpenInBrowser(string uri)
     {
-        if (window is null) return null;
-        // The picker belongs to the Studio window, so bring that forward in case it was hidden or behind a browser.
-        window.BringToFront();
-        var dialog = new OpenFolderDialog { Title = "Choose your Elite Dangerous folder" };
-        return dialog.ShowDialog(window) == true ? FindGameFolder(dialog.FolderName) : null;
-    }
-
-    static string WebViewVersion()
-    {
+        if (!uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && !uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) return false;
         try
         {
-            return CoreWebView2Environment.GetAvailableBrowserVersionString();
+            Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true })?.Dispose();
         }
-        catch (Exception)   // not installed, or its loader is missing: the report must still be written
+        catch (Win32Exception problem)   // no default browser set up
         {
-            return "not found";
+            Log.Error($"Could not open {uri} in the browser", problem);
         }
+        return true;
     }
 
     static string LogTail(int lines)

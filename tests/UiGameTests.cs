@@ -45,6 +45,7 @@ public sealed partial class UiTests
     [Fact]
     public void Installs_are_found_in_each_launchers_folders_once_each()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows' launchers, with Windows paths: Linux has its own check of Steam's folders (SteamGamesTests).");
         string steam = Path.Combine(temp, "Steam"), second = Path.Combine(temp, "Second Library");
         string viaSteam = Path.Combine(steam, @"steamapps\common\Elite Dangerous\Products\elite-dangerous-odyssey-64");
         string viaLauncher = Path.Combine(temp, @"Frontier\EDLaunch\Products\elite-dangerous-odyssey-64");
@@ -76,6 +77,7 @@ public sealed partial class UiTests
     [Fact]
     public async Task The_game_is_chosen_by_the_player_first_then_by_where_the_mod_is_and_remembered()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The player types the folder in other capitals, which only Windows takes as the same folder.");
         string plain = Path.Combine(temp, "plain"), modded = Path.Combine(temp, "modded"), custom = Path.Combine(temp, "custom");
         StageGame(plain, withMod: false);
         StageGame(modded);
@@ -352,6 +354,7 @@ public sealed partial class UiTests
     [Fact]
     public async Task Colour_files_kept_elsewhere_behind_a_link_are_read_and_saved_through_it()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The link is made by Windows' own command (mklink).");
         Rig rig = NewRig();
         StageGame(rig.Game);
         string store = Path.Combine(temp, "mod manager", "EDHM-ini");
@@ -375,6 +378,40 @@ public sealed partial class UiTests
         Assert.Contains("\nx232 = 0.1\n", File.ReadAllText(Path.Combine(store, "Advanced.ini")));
         Assert.Equal(4, Directory.GetFiles(store).Length);   // nothing left behind next to the real files
         Assert.Contains("x232 = 0.5", File.ReadAllText(Path.Combine(rig.Backups, saved.GetProperty("backup").GetString()!, "Advanced.ini")));
+    }
+
+    [Fact]
+    public async Task A_mod_unpacked_with_other_capitals_is_read_and_saved_under_its_own_names()
+    {
+        // Windows ignores capitals in file names by itself. Linux does not, so there Studio finds the real names.
+        Rig rig = NewRig();
+        StageGame(rig.Game);
+        static void Rename(string from, string to)
+        {
+            // Through another name: a rename that only changes capitals is not one on Windows.
+            if (Directory.Exists(from)) { Directory.Move(from, from + ".moving"); Directory.Move(from + ".moving", to); }
+            else { File.Move(from, from + ".moving"); File.Move(from + ".moving", to); }
+        }
+        Rename(Path.Combine(rig.Game, "d3dx.ini"), Path.Combine(rig.Game, "D3DX.INI"));
+        Rename(Path.Combine(rig.Game, "d3d11.dll"), Path.Combine(rig.Game, "D3D11.DLL"));
+        Rename(Path.Combine(rig.Game, "VersionInfo.txt"), Path.Combine(rig.Game, "versioninfo.txt"));
+        string colours = Path.Combine(rig.Game, "edhm-INI");
+        Rename(rig.IniDir, colours);
+        Rename(Path.Combine(colours, "Advanced.ini"), Path.Combine(colours, "ADVANCED.ini"));
+        rig.Start(rig.Game);
+
+        JsonElement status = await rig.Ok("GET", "/status");
+        JsonElement mod = status.GetProperty("edhm");
+        Assert.True(mod.GetProperty("installed").GetBoolean(), Compact(mod));
+        Assert.Equal(JsonValueKind.String, mod.GetProperty("version").ValueKind);
+        Assert.Equal(JsonValueKind.String, status.GetProperty("game").GetProperty("version").ValueKind);
+        Assert.All(mod.GetProperty("files").EnumerateObject(), file => Assert.True(file.Value.GetBoolean(), file.Name));
+        Assert.Equal(4, (await rig.Ok("GET", "/ini")).GetProperty("files").EnumerateObject().Count());
+
+        Assert.Equal(1, (await rig.Ok("POST", "/save", OneChange)).GetProperty("written").GetInt32());
+        // Written into the file that is there, not a second one beside it.
+        Assert.Equal(4, Directory.GetFiles(colours).Length);
+        Assert.Contains("\nx232 = 0.1\n", File.ReadAllText(Path.Combine(colours, "ADVANCED.ini")));
     }
 
     [Fact]

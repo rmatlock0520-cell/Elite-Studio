@@ -1004,9 +1004,11 @@ public sealed class HeatmapSurvey(Spansh spansh, string folder)
         return await request();
     }
 
-    // Closing Studio's window only hides it (the count goes on), so the words say how to exit it.
+    // On Windows closing Studio's window only hides it (the count goes on), so the words say how to exit it. Without the
+    // icon near the clock (Linux), closing the window ends Studio.
     string? Refusal() => Used >= SessionCap
-        ? $"Studio allows itself {SessionCap} requests to Spansh for the 3D map each time it runs, and they are used up. Everything that came back is kept. To ask for more, exit Studio (right-click its icon near the clock and choose Exit) and start it again."
+        ? $"Studio allows itself {SessionCap} requests to Spansh for the 3D map each time it runs, and they are used up. Everything that came back is kept. To ask for more, "
+            + (Program.Features.TrayIcon ? "exit Studio (right-click its icon near the clock and choose Exit) and start it again." : "close Studio and start it again.")
         : null;
 
     SurveyNeeds Needs(int requests, double kilobytes) => new(requests, Math.Round(kilobytes / 1024, 2), Math.Max(0, SessionCap - Used));

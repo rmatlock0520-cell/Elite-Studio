@@ -55,28 +55,29 @@ internal static class ModInstall
     /// </summary>
     public static int Unpack(byte[] zip, string gameDir)
     {
-        string root = Path.GetFullPath(gameDir).TrimEnd('\\') + '\\';
-        string colours = root + @"EDHM-ini\";
+        string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(gameDir)) + Path.DirectorySeparatorChar;
+        string colours = root + "EDHM-ini" + Path.DirectorySeparatorChar;
         var entries = new List<(ZipArchiveEntry Entry, string Path)>();
         try
         {
             using var archive = new ZipArchive(new MemoryStream(zip), ZipArchiveMode.Read);
             foreach (ZipArchiveEntry entry in archive.Entries)
             {
-                string path = Path.GetFullPath(Path.Combine(root, entry.FullName));
+                // A zip made on Windows may name its folders with "\": a folder there too, as Windows takes it.
+                string path = Path.GetFullPath(Path.Combine(root, entry.FullName.Replace('\\', '/')));
                 // Checked for the whole zip before anything is written: a name that leads out of the game folder refuses it all.
-                if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException();
+                if (!path.StartsWith(root, Paths.FileNameCase)) throw new InvalidDataException();
                 entries.Add((entry, path));
             }
             bool Holds(string name) => entries.Exists(entry => GameFolder.SamePath(entry.Path, root + name));
-            if (!Holds("d3dx.ini") || !Holds("d3d11.dll") || !entries.Exists(entry => entry.Path.StartsWith(colours, StringComparison.OrdinalIgnoreCase)))
+            if (!Holds("d3dx.ini") || !Holds("d3d11.dll") || !entries.Exists(entry => entry.Path.StartsWith(colours, Paths.FileNameCase)))
                 throw new InvalidDataException();
 
             int written = 0;
             foreach (var (entry, path) in entries)
             {
                 if (entry.Name.Length == 0) { Directory.CreateDirectory(path); continue; }   // a folder
-                if (path.StartsWith(colours, StringComparison.OrdinalIgnoreCase) && File.Exists(path)) continue;
+                if (path.StartsWith(colours, Paths.FileNameCase) && File.Exists(path)) continue;
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                 entry.ExtractToFile(path, overwrite: true);
                 written++;
@@ -89,7 +90,7 @@ internal static class ModInstall
         }
         catch (UnauthorizedAccessException)
         {
-            throw new InvalidOperationException("Windows did not let Elite Studio write into the game folder. Install the HUD mod from its page instead (it says how).");
+            throw new InvalidOperationException("Elite Studio was not allowed to write into the game folder. Install the HUD mod from its page instead (it says how).");
         }
     }
 }

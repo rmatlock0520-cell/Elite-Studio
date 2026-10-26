@@ -616,7 +616,7 @@
       <p><b>Choosing.</b> A click on a sector, a cube, a star, a nebula or one of your finds chooses it and centres the camera on it; a double-click goes closer; a click on empty space does nothing. What is chosen, the highlight, is outlined in white over everything in front of it. Click the same spot again (slowly: two quick clicks are a double-click) to reach the cube or sector behind it, and again for the next one, all the way through and round to the first; the camera stays put meanwhile, so the outline steps back behind the cubes in front. Over a sector's cubes, a click on the edge of a nebula's sphere takes the cube: the nebula comes after everything else on that line. The arrow keys (and the arrows on its card) move the highlight one cube, or one sector, at a time: left and right, away and towards, as you see the map; Page Up and Page Down move it up and down. The camera stays where it is, and C centres the map on the highlight; one moved off the map has its label at the map's edge, pointing to it. Over a sector's edge the highlight goes on into the next sector's cubes when Studio has them on this PC, else onto that sector. Cube level, under the map, shows one level of a sector's cubes alone, so the cubes inside can be clicked.</p>
       <p><b>Flat views.</b> View switches between 3D and two flat views of the same map. Top (2D) looks straight down, north up and east right, like the flat map. Side (2D) looks from the south towards the core, up up and east right, so the layers stand one above the other as on the strip beside the map. In the flat views the camera cannot turn: any drag slides the map, and so do W, A, S and D. Clicks choose and centre as in 3D, and the arrow keys move the highlight: from above, up is north; from the side, up is up.</p>
       <p><b>Markers.</b> The orange ring is you, with a dashed line down to the galaxy's middle to show your height. The cyan ring is the system the game has targeted, and the cyan square the end of your plotted route; one placed from its name says so, with how far off it may be, and its cube is outlined. Green diamonds are your finds. Small dots joined by a faint line are the stops of your plotted route, coloured as the Route check on the left colours them: grey waiting, blue being checked, green recorded, gold not recorded, red not checked. The faint orange ball round you is your jump range (Within reach, under the map), with a dot for each system in it in the same colours: a paler green is recorded by its name only, and a hollow ring is a system that must exist but no database has. The Markers switch hides them all; Nebulae shows every nebula, only those near the point the camera turns round, or none.</p>
-      <p><b>Within reach and Nav scan.</b> Within reach lists, after every jump, the systems your ship can reach with its next one: from the detailed map on this PC where it covers your place, else with one request to Spansh. Nav scan reads the system names in each screenshot you take while it is on (F10, or Steam's own screenshot key), checks each, pings when one is not recorded, and lists them. A name read off a picture can be misread, so target it in the game to confirm it. Both use Studio's memory of checks: a recorded system is remembered for the days you choose, a not recorded one for 24 hours, and "Forget all checks" has every system checked afresh.</p>
+      <p id="read-reach"><b>Within reach and Nav scan.</b> Within reach lists, after every jump, the systems your ship can reach with its next one: from the detailed map on this PC where it covers your place, else with one request to Spansh. Nav scan reads the system names in each screenshot you take while it is on (F10, or Steam's own screenshot key), checks each, pings when one is not recorded, and lists them. A name read off a picture can be misread, so target it in the game to confirm it. Both use Studio's memory of checks: a recorded system is remembered for the days you choose, a not recorded one for 24 hours, and "Forget all checks" has every system checked afresh.</p>
       <p><b>Names to try.</b> The game numbers the systems of each of its cubes from 0 up, with no gaps. Under the map, each cube's known numbers are listed with numbers to try: a gap below the highest known must exist, and the next three may exist. Copy one and paste it into the galaxy map's search: if the game finds it and no database has it, it is not recorded yet. Target it or plot a route to it and Studio checks it for you, and keeps it in Your finds.</p>
     </details>
 
@@ -2581,7 +2581,8 @@ function budgetLeft(needs) {
   if (left == null) return '';
   const of = cap != null ? ' of the ' + whole(cap) : '';
   if (needs.requests > left) return 'Only ' + count(Math.max(0, left), 'request') + of + ' Studio allows itself for the 3D map this session ' + (left === 1 ? 'is' : 'are')
-    + ' left, so it will stop part way. What it fetches is kept. To fetch the rest, exit Studio (right-click its icon near the clock and choose Exit) and start it again: closing the window only hides it.';
+    + ' left, so it will stop part way. What it fetches is kept. To fetch the rest, '
+    + (closingEnds ? 'close Studio and start it again.' : 'exit Studio (right-click its icon near the clock and choose Exit) and start it again: closing the window only hides it.');
   return 'That leaves ' + whole(left - needs.requests) + of + ' requests Studio allows itself for the 3D map this session.';
 }
 
@@ -3652,6 +3653,8 @@ let recordedDays = 1;      // how long a recorded system is remembered, as the a
 let daysAsk = 0, daysSeq = 0;
 let volumeAsk = 0;
 let scanSpent = '';        // the last picture whose check ended (file and when): what it asked of Spansh is counted once
+let scanLeftOut = false;   // true in a copy of Studio without Nav scan (the Linux one: it cannot read pictures yet), see leaveOutScan()
+let closingEnds = false;   // true in a copy of Studio without the icon near the clock (the Linux one): closing its window ends it
 
 const scanKey = n => n.id64 || n.name.toLowerCase();
 // A name as the app sends it: what was read, its id64 (text) when known, its check's state, unsure when the picture
@@ -3835,7 +3838,8 @@ const dayButtons = () => DAYS_OFFERED.map(d => h('button', { type: 'button', 'da
 // route check, your targets, Within reach and Nav scan all use them); each is checked afresh. Your finds stay.
 async function forgetChecks() {
   const yes = await Studio.ask({ title: 'Forget all checks?',
-    body: ['Studio forgets every answer it keeps of whether a system is recorded. The route check, your targets, Within reach and Nav scan then check each system afresh, which can use more of the 3D map\'s requests to Spansh.', 'Your finds stay as they are.'],
+    body: [scanLeftOut ? 'Studio forgets every answer it keeps of whether a system is recorded. The route check, your targets and Within reach then check each system afresh, which can use more of the 3D map\'s requests to Spansh.'
+      : 'Studio forgets every answer it keeps of whether a system is recorded. The route check, your targets, Within reach and Nav scan then check each system afresh, which can use more of the 3D map\'s requests to Spansh.', 'Your finds stay as they are.'],
     ok: 'Forget all checks', danger: true });
   if (!yes) return;
   let a;
@@ -3845,6 +3849,17 @@ async function forgetChecks() {
   loadReach();
   loadScan();
   loadRouteCheck();
+}
+// A copy of Studio without Nav scan: its controls make way for one line, and how long a recorded system is remembered
+// (with "Forget all checks", which the route check and Within reach use too) stays on the tab. Hidden by a style of
+// their own, so nothing that shows or hides them as Nav scan's news comes can bring them back.
+function leaveOutScan() {
+  scanLeftOut = true;
+  const tab = $('#tab-navscan'), keep = $('#recorded-days').parentElement;
+  for (const el of tab.children) if (el !== keep) el.style.display = 'none';
+  tab.prepend(h('p', { class: 'small tab-line' }, 'Nav scan reads system names from your screenshots. It is not available on Linux yet.'));
+  $('#ptab-navscan').title = 'Nav scan is not available on Linux yet. How long Studio remembers its checks is set here.';
+  $('#read-reach').replaceChildren(h('b', null, 'Within reach.'), ' Within reach lists, after every jump, the systems your ship can reach with its next one: from the detailed map on this PC where it covers your place, else with one request to Spansh. It uses Studio\'s memory of checks: a recorded system is remembered for the days you choose, a not recorded one for 24 hours, and "Forget all checks" has every system checked afresh.');
 }
 // A name's check in words (its row's tooltip, its card).
 function scanNameWords(n) {
@@ -6503,6 +6518,10 @@ renderNames();
 showFinds();
 showRouteCheck();
 
+Studio.features.then(has => {
+  closingEnds = !has.trayIcon;
+  if (!has.navScan) leaveOutScan();
+});
 Studio.follow('explore', '/api/nav/explore/trip', showTrip);
 Studio.onEvent('heatmap', progress);
 Studio.onEvent('heatmap-find', found);

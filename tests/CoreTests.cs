@@ -75,7 +75,7 @@ sealed class PracticeGame : IDisposable
 /// as found; Status, Cargo, Market and NavRoute are written in the game's exact layout from values
 /// in the recordings, because the owner's own copies were in their empty "game closed" form.
 /// </summary>
-public class CoreTests
+public partial class CoreTests
 {
     const string OnFoot = "Journal.2025-04-17T013240.01.log";       // game 4.1: leaves the ship in a station and boards again (whole)
     const string Replot = "Journal.2026-09-24T191106.01.log";       // the game plots a route again without saying NavRoute (whole)
@@ -937,12 +937,30 @@ public class CoreTests
     }
 
     [Fact]
-    public void Elite_window_answers_whether_or_not_the_game_runs()
+    public void Off_Windows_the_game_is_the_process_whose_command_line_names_its_program()
     {
-        // Elite may or may not be running on the PC the tests run on: check that the answers agree with each other.
-        if (EliteWindow.Running) return;
-        Assert.Equal(IntPtr.Zero, EliteWindow.Handle);
-        Assert.False(EliteWindow.IsForeground);
-        Assert.Null(EliteWindow.MonitorBounds);
+        // A practice copy of Linux's list of processes: one folder a process, named by its number, its command line inside.
+        string proc = Directory.CreateTempSubdirectory("EliteStudioProc-").FullName;
+        try
+        {
+            void Process(string name, string? commandLine)
+            {
+                Directory.CreateDirectory(Path.Combine(proc, name));
+                if (commandLine is not null) File.WriteAllText(Path.Combine(proc, name, "cmdline"), commandLine);
+            }
+            Process("self", "bash\0");                                         // not a process number
+            Process("12", "/usr/bin/steam\0-silent\0");
+            Process("40", null);                                                // ended while the list was read
+            Assert.Equal(0u, EliteWindow.UnderProton(proc));
+
+            // Under Proton the game runs as a Wine process whose command line is the Windows path of its program.
+            Process("4471", @"Z:\home\deck\.local\share\Steam\steamapps\common\Elite Dangerous\Products\elite-dangerous-odyssey-64\EliteDangerous64.exe" + "\0");
+            Assert.Equal(4471u, EliteWindow.UnderProton(proc));
+        }
+        finally
+        {
+            Directory.Delete(proc, recursive: true);
+        }
+        Assert.Equal(0u, EliteWindow.UnderProton(proc));   // and no list of processes at all: not running
     }
 }

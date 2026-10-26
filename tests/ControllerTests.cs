@@ -94,6 +94,7 @@ public sealed class ControllerTests
     [Fact]
     public void A_controller_windows_has_no_name_for_is_called_by_its_numbers()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Controller names are looked up in Windows' registry (the overlay is Windows only).");
         Assert.Equal("controller 0000:0001", WindowsPads.NameOf("0000:0001"));
         Assert.Equal("controller 0000:0001 #2", WindowsPads.NameOf("0000:0001#2"));
     }

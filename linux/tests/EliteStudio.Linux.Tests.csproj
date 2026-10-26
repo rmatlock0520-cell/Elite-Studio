@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Linux build's checks: the shared checks in ../../tests, run against ../EliteStudio.Linux.csproj. -->
+  <PropertyGroup>
+    <!-- Plain .NET, over the Windows one Directory.Build.props sets for the Windows build. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>EliteStudio.Tests</RootNamespace>
+    <AssemblyName>EliteStudio.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <!-- Keep test reports out of the project folder. -->
+    <TestingPlatformCommandLineArguments>--results-directory "$(ArtifactsPath)/TestResults"</TestingPlatformCommandLineArguments>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../EliteStudio.Linux.csproj" />
+    <Using Include="Xunit" />
+    <Using Include="System.IO" />
+    <!-- Every shared check, without those of what the Linux version leaves out (Studio Flight, the in-game overlay,
+         the station pictures it draws) and the Windows-only ones, which are kept in files ending in .Windows.cs. -->
+    <Compile Include="../../tests/**/*.cs" Exclude="../../tests/**/*.Windows.cs;../../tests/FlightTests.cs;../../tests/GimbalynTests.cs;../../tests/VJoyTests.cs;../../tests/OverlayTests.cs;../../tests/HaulOverlayTests.cs;../../tests/HaulOverlayDrawingTests.cs;../../tests/StationPictureTests.cs" />
+    <None Include="../../tests/Fixtures/**" Link="Fixtures/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.1" />
+  </ItemGroup>
+</Project>

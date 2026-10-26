@@ -19,11 +19,26 @@
   --line:#1f2935;--line2:#2a3645;--text:#e2e8f0;--muted:#8d99aa;--faint:#5b6677;
   --accent:#ff7100;--accent-ink:#140900;--accent-soft:rgba(255,113,0,.14);--accent-line:rgba(255,113,0,.45);
   --good:#3ddc84;--warn:#ffb020;--bad:#ff5a4f;
-  --font:"Segoe UI",system-ui,-apple-system,sans-serif;
-  --hud:"Bahnschrift","DIN Alternate","Segoe UI",system-ui,sans-serif;
-  --mono:"Cascadia Mono",Consolas,"Courier New",monospace;
+  /* each with its free look-alike (the faces below) after the Windows font */
+  --font:"Segoe UI","Studio Text",system-ui,-apple-system,sans-serif;
+  --hud:"Bahnschrift","DIN Alternate","Studio Heading","Segoe UI","Studio Text",system-ui,sans-serif;
+  --mono:"Cascadia Mono",Consolas,"Studio Mono","Courier New",monospace;
   color-scheme:dark;
 }
+/* This page's copy of studio.css's look-alike fonts, for a PC that lacks the Windows ones: only the Linux app carries
+   the files (at /fonts/), and each font list names the Windows font first, so Windows draws with its own. */
+@font-face{font-family:"Studio Heading";src:url(/fonts/Barlow-Medium.ttf);font-weight:400;size-adjust:102.6%}
+@font-face{font-family:"Studio Heading";src:url(/fonts/Barlow-Medium.ttf);font-weight:500;size-adjust:102.6%}
+@font-face{font-family:"Studio Heading";src:url(/fonts/Barlow-SemiBold.ttf);font-weight:600;size-adjust:102.6%}
+@font-face{font-family:"Studio Heading";src:url(/fonts/Barlow-Bold.ttf);font-weight:700;size-adjust:102.6%}
+@font-face{font-family:"Studio Heading";src:url(/fonts/DINishDigits-500.ttf);font-weight:400;unicode-range:U+0030-0039;size-adjust:102.8%}
+@font-face{font-family:"Studio Heading";src:url(/fonts/DINishDigits-500.ttf);font-weight:500;unicode-range:U+0030-0039;size-adjust:102.8%}
+@font-face{font-family:"Studio Heading";src:url(/fonts/DINishDigits-610.ttf);font-weight:600;unicode-range:U+0030-0039;size-adjust:102.8%}
+@font-face{font-family:"Studio Heading";src:url(/fonts/DINishDigits-720.ttf);font-weight:700;unicode-range:U+0030-0039;size-adjust:102.8%}
+@font-face{font-family:"Studio Text";src:url(/fonts/selawk.ttf);font-weight:400;ascent-override:107.91%;descent-override:25.1%;line-gap-override:0%}
+@font-face{font-family:"Studio Text";src:url(/fonts/selawksb.ttf);font-weight:600;size-adjust:98%;ascent-override:107.91%;descent-override:25.1%;line-gap-override:0%}
+@font-face{font-family:"Studio Text";src:url(/fonts/selawkb.ttf);font-weight:700;ascent-override:107.91%;descent-override:25.1%;line-gap-override:0%}
+@font-face{font-family:"Studio Mono";src:url(/fonts/CascadiaMono.ttf);font-weight:200 700}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--text);font:14px/1.45 var(--font);overflow:hidden}
@@ -2101,8 +2116,8 @@ async function renderThemes(force) {
       h('div', { class: 'dots', style: 'margin:0' }, (t.colors || []).filter(Boolean).map(c => h('i', { style: `background:#${c}` }))),
       h('div', { class: 'grow' }, h('div', { class: 'nm' }, t.name), h('div', { class: 'muted small' }, t.created ? new Date(t.created).toLocaleString() : '')),
       h('button', { class: 'btn small', onclick: () => loadTheme('mine', t.id, t.name) }, 'Load'),
-      h('button', { class: 'btn small danger', title: 'Moves the theme file to the Recycle Bin', onclick: async () => {
-        if (!await confirmBox({ title: `Delete “${t.name}”?`, body: ['The theme file goes to the Windows Recycle Bin, so you can still get it back.'], ok: 'Delete' })) return;
+      h('button', { class: 'btn small danger', title: linux() ? 'Moves the theme file to the Trash' : 'Moves the theme file to the Recycle Bin', onclick: async () => {
+        if (!await confirmBox({ title: `Delete “${t.name}”?`, body: [linux() ? 'The theme file goes to the Trash, so you can still get it back.' : 'The theme file goes to the Windows Recycle Bin, so you can still get it back.'], ok: 'Delete' })) return;
         try { await api('POST', API + '/mythemes/delete', { id: t.id }); S.themes = null; renderThemes(true); } catch (e) { toast(e.message, 'bad'); }
       } }, 'Delete')));
   }
@@ -2184,10 +2199,13 @@ async function fetchMod() {
 // Studio cannot save a color without the HUD mod, so it fetches the mod by itself (the owner, 10 October 2026): once
 // per start of Studio, as soon as the player has said which game is theirs, that game lacks the mod, and the game is
 // closed. Not when another copy of Elite on this PC has the mod: then the player picks that copy on the Setup tab.
+// Never by itself on Linux, where the newest Proton (11) stops the game showing while the mod is there: only the button
+// installs it there. So not before the app has said which system it runs on, either.
 let modTried = false;
 function autoInstallMod() {
+  if (!hasKnown || linux()) return;
   const st = S.status || {}, e = st.edhm || {};
-  if (modTried || !st.game || !st.gameConfirmed || e.installed || st.running) return;
+  if (modTried|| !st.game || !st.gameConfirmed || e.installed || st.running) return;
   if ((st.games || []).some(g => g.edhm && g.path !== st.game.path)) return;
   modTried = true;
   fetchMod();
@@ -2197,11 +2215,12 @@ async function renderEdhm() {
   box.innerHTML = '';
   const st = S.status || {}, e = st.edhm || {}, game = st.game;
   if (!game) {
-    const inp = h('input', { placeholder: 'e.g. D:\\Games\\Elite Dangerous\\Products\\elite-dangerous-odyssey-64' });
+    const inp = h('input', { placeholder: linux() ? 'e.g. /home/you/.local/share/Steam/steamapps/common/Elite Dangerous/Products/elite-dangerous-odyssey-64' : 'e.g. D:\\Games\\Elite Dangerous\\Products\\elite-dangerous-odyssey-64' });
     box.append(h('div', { class: 'card bad' }, h('h2', null, 'Elite Dangerous not found'),
-      h('p', { class: 'muted small' }, 'Paste the folder that contains EliteDangerous64.exe (…\\Products\\elite-dangerous-odyssey-64).'),
+      h('p', { class: 'muted small' }, linux() ? 'Paste the folder that contains EliteDangerous64.exe (…/Products/elite-dangerous-odyssey-64).' : 'Paste the folder that contains EliteDangerous64.exe (…\\Products\\elite-dangerous-odyssey-64).'),
       h('div', { class: 'row-actions', style: 'margin-bottom:10px' }, h('button', { class: 'btn primary', onclick: browseForGame }, 'Browse for the game folder…')),
       h('div', { class: 'field' }, inp, h('button', { class: 'btn', onclick: async () => { try { S.status = await api('POST', API + '/select-game', { path: inp.value.trim() }); await loadFromGame(false); afterBulkChange(); renderEdhm(); } catch (x) { toast(x.message, 'bad'); } } }, 'Use this folder'))));
+    if (linux()) linuxCards(box);
     return;
   }
   box.append(h('div', { class: 'card' }, h('h2', null, 'Your setup'),
@@ -2215,7 +2234,8 @@ async function renderEdhm() {
   if (!e.installed) box.append(h('div', { class: 'card bad' }, h('h2', null, 'HUD color files not found'),
     h('p', { class: 'small' }, 'Studio UI edits the color files of the HUD mod (EDHM), so the mod needs to be in this game before colors can be saved. ', missingWords(st)),
     h('div', { class: 'row-actions' }, h('button', { class: 'btn primary', onclick: installMod }, 'Install the HUD mod now')),
-    h('p', { class: 'muted small' }, 'EDHM is a free mod by Fred89210 and psychicEgg. Studio downloads it (about 4 MB) from ', h('a', { href: 'https://github.com/psychicEgg/EDHM/tree/main/Odyssey', target: '_blank', rel: 'noopener' }, 'its own page'), ' by itself once Elite is closed; this button tries again. It adds its own files and changes none of Elite’s, and colors already in the folder are kept. To remove the mod, run EDHM-Uninstall.bat in the game folder.')));
+    h('p', { class: 'muted small' }, 'EDHM is a free mod by Fred89210 and psychicEgg. Studio downloads it (about 4 MB) from ', h('a', { href: 'https://github.com/psychicEgg/EDHM/tree/main/Odyssey', target: '_blank', rel: 'noopener' }, 'its own page'), linux() ? ' when you click the button.' : ' by itself once Elite is closed; this button tries again.', ' It adds its own files and changes none of Elite’s, and colors already in the folder are kept. To remove the mod, run EDHM-Uninstall.bat in the game folder.')));
+  if (linux()) linuxCards(box);
   const x = st.xml || {};
   box.append(h('div', { class: 'card' }, h('h2', null, 'Elite’s built-in color file'),
     h('p', { class: 'muted small' }, 'Elite has its own HUD color matrix (GraphicsConfigurationOverride.xml). Your HUD colors look right when it is left at default.'),
@@ -2382,7 +2402,8 @@ function pickGameFolder() {
 }
 async function useGameFolder(path) {
   if (!path) return false;
-  if (path[0] === '?') { toast('That folder doesn’t contain Elite Dangerous (EliteDangerous64.exe). Choose the “Elite Dangerous” folder or …\\Products\\elite-dangerous-odyssey-64.', 'bad'); return false; }
+  if (path[0] === '?') { toast(linux() ? 'That folder doesn’t contain Elite Dangerous (EliteDangerous64.exe). Choose the “Elite Dangerous” folder or …/Products/elite-dangerous-odyssey-64.'
+    : 'That folder doesn’t contain Elite Dangerous (EliteDangerous64.exe). Choose the “Elite Dangerous” folder or …\\Products\\elite-dangerous-odyssey-64.', 'bad'); return false; }
   try {
     S.status = await api('POST', API + '/select-game', { path });
     await loadFromGame(false); afterBulkChange(); updateTopbar();
@@ -2392,6 +2413,51 @@ async function useGameFolder(path) {
   } catch (x) { toast(x.message, 'bad'); return false; }
 }
 async function browseForGame() { return useGameFolder(await pickGameFolder()); }
+
+// What this copy of Studio has (GET /api/ping's "features", as studio.js reads it for the other pages). Empty until the
+// app has said, and from an app too old to say, which reads as the Windows app. On Linux the page says "Trash", the
+// Setup tab carries the notes below, and a link that would open a second window goes to the player's own web browser
+// through the app (the Linux window opens none; POST /api/app/open takes http and https only).
+let has = {}, hasKnown = false;   // hasKnown: the app has answered (autoInstallMod waits for it; without an answer only the button installs)
+const linux = () => has.system === 'linux';
+function loadFeatures() {
+  fetch('/api/ping').then(r => r.json()).then(r => {
+    has = (r && r.features) || {};
+    hasKnown = true;
+    if (!linux()) return;
+    document.addEventListener('click', e => {
+      const a = e.target.closest && e.target.closest('a[target="_blank"]');
+      if (!a || !/^https?:/i.test(a.href)) return;
+      e.preventDefault();
+      api('POST', '/api/app/open', { url: a.href }).catch(x => toast(x.message, 'bad'));
+    }, true);
+    if (S.tab === 'edhm') renderEdhm();
+  }).catch(() => {});
+}
+// The Setup tab on Linux: what to know about the HUD mod there, and where Studio reads the game from (Elite's journal
+// folder, found in Steam's Proton folders when Studio starts, or the one chosen here), with a way to choose another.
+// A folder chosen is kept by the app and used from its next start.
+let journalChosen = '';
+function linuxCards(box) {
+  box.append(h('div', { class: 'card note' }, h('p', { class: 'small', style: 'margin:0' },
+    'On Linux, press F11 in the game to load new colors. The HUD mod does not work with Proton 11 yet: in Steam, set Elite to use Proton 10.')));
+  const line = h('p', { class: 'small' }, h('span', { class: 'spin' }), ' Asking Elite Studio…');
+  const chosen = h('p', { class: 'small muted', style: 'margin:10px 0 0' });
+  const showChosen = () => { chosen.textContent = 'Used from the next start: ' + journalChosen; chosen.hidden = !journalChosen; };
+  showChosen();
+  api('GET', '/api/app/journal').then(d => line.replaceChildren(...(d.found ? ['Studio reads your game from: ', h('span', { class: 'muted' }, d.path)]
+    : ['Studio did not find Elite’s journal folder, so it cannot see your game. Choose the folder that holds Elite’s journal files: in the Proton folder Steam keeps for Elite, it is drive_c/users/steamuser/Saved Games/Frontier Developments/Elite Dangerous.'])),
+    () => line.replaceChildren('Studio could not say which folder it reads your game from.'));
+  const pick = async () => {
+    let d;
+    try { d = await api('POST', '/api/app/pick-journal', {}); } catch (e) { toast(e.message, 'bad'); return; }
+    if (!d.path) return;   // closed without choosing
+    journalChosen = d.path;
+    showChosen();
+  };
+  box.append(h('div', { class: 'card' }, h('h2', null, 'Where Studio reads your game'), line,
+    h('div', { class: 'row-actions' }, h('button', { class: 'btn small', onclick: pick }, 'Choose another folder')), chosen));
+}
 // First start: confirm the game Elite Studio found, or help find it. The answer is kept in Studio's
 // settings.json (by the app), so it's asked once, not every launch.
 async function firstRunGameCheck() {
@@ -2452,6 +2518,7 @@ function wireTopbar() {
 }
 async function init() {
   if (!IN_APP) { $('#cover-nohelper').hidden = false; return; }
+  loadFeatures();
   buildHud();
   setupPreviewEvents();
   wireTopbar();

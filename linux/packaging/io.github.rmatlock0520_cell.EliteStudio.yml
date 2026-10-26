@@ -1,0 +1,38 @@
+# Elite Studio for Linux as a Flatpak: for the Steam Deck and other systems whose own files cannot be changed, with
+# the window's web engine (WebKitGTK 4.1) from GNOME's runtime. It is made from the release folder the Linux check
+# machine builds (elite-studio-linux-x64.tar.gz, put next to this file first), so nothing is compiled here.
+app-id: io.github.rmatlock0520_cell.EliteStudio
+# GNOME 51 is the newest runtime with WebKitGTK 4.1 (GTK 3): GNOME took it out after 51, and 51 is looked after until
+# September 2027. Before then Studio's window needs the newer engine (webkitgtk-6.0, GTK 4) or another runtime.
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: elite-studio
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --device=dri
+  # The community's services (Spansh, Ardent Insight, EDAstro) and the HUD mod's download.
+  - --share=network
+  # The sniffer's chime and Nav scan's sounds.
+  - --socket=pulseaudio
+  # Steam keeps the game and its Proton folder (journal, key bindings, HUD colours) anywhere in the home folder, and
+  # Studio writes the HUD mod into the game's folder. SD cards and other drives are under /run/media. The Flatpak
+  # version of Steam keeps its folders among the apps' own, which the home folder alone does not reach.
+  - --filesystem=home
+  - --filesystem=/run/media
+  - --filesystem=~/.var/app/com.valvesoftware.Steam
+modules:
+  - name: elite-studio
+    buildsystem: simple
+    build-commands:
+      - cp -R . /app/elite-studio
+      - install -d /app/bin
+      - ln -s /app/elite-studio/elite-studio /app/bin/elite-studio
+      - install -Dm644 elite-studio.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - sed -i "s/^Icon=.*/Icon=${FLATPAK_ID}/" /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 elite-studio.png /app/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+    sources:
+      - type: archive
+        path: elite-studio-linux-x64.tar.gz

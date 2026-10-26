@@ -394,7 +394,9 @@ public sealed partial class LoadoutsTests : IDisposable
         Assert.Empty((await Ok("GET", "saved")).GetProperty("saved").EnumerateArray());
         Assert.Equal("Explorer", (await Ok("POST", "save", new { name = "  Explorer " })).GetProperty("id").GetString());
         Assert.True(File.Exists(Path.Combine(Builds, "Explorer.json")));
-        Assert.Contains("already have a saved build called \"explorer\"", await Refused(409, "POST", "save", new { name = "explorer" }));
+        // Windows file names ignore capitals, so "explorer" is the same file there (on Linux it would be another build).
+        if (OperatingSystem.IsWindows())
+            Assert.Contains("already have a saved build called \"explorer\"", await Refused(409, "POST", "save", new { name = "explorer" }));
         foreach (string unusable in new[] { "", "   ", "...", "CON", "nul.old", new string('x', 81) })
             Assert.StartsWith("Please give the build a name", await Refused(400, "POST", "save", new { name = unusable }));
         // A name Windows cannot use as a file name is kept as typed; only the file is named differently.

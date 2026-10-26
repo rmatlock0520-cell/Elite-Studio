@@ -90,6 +90,9 @@ button.work:hover{color:var(--text)}
 'use strict';
 const { $, h, toast, ask, cover, count, credits, tons, ago, dot } = Studio;
 if (!Studio.served) return;
+// What this copy of Studio has (Studio.features): the Linux one has the Trash instead of the Recycle Bin, and no overlay.
+let linux = false, overlay = true;
+Studio.features.then(has => { linux = has.system === 'linux'; overlay = has.overlay; });
 
 // ============================================================ hand-off
 // An EDSY or Coriolis link carries the whole build and runs to about 2,600 characters. Windows is known to refuse
@@ -193,7 +196,7 @@ function renderDetail() {
         h('button', { class: 'btn', title: 'Opens this build in the Coriolis ship designer, in your browser', onclick: () => openIn('coriolis') }, 'Open in Coriolis'),
         h('button', { class: 'btn', title: 'Copies the build as text (SLEF) that Inara, EDSY, Coriolis and Spansh accept when pasted', onclick: copySlef }, 'Copy SLEF'),
         selected && h('button', { class: 'btn', onclick: rename }, 'Rename'),
-        selected && h('button', { class: 'btn danger', title: 'Moves the saved build to the Recycle Bin', onclick: remove }, 'Delete'))),
+        selected && h('button', { class: 'btn danger', title: linux ? 'Moves the saved build to the Trash' : 'Moves the saved build to the Recycle Bin', onclick: remove }, 'Delete'))),
     h('div', { class: 'stats' },
       stat('Jump, full hold', ly(ship.jumpLaden)),
       stat('Jump, empty hold', ly(ship.jumpEmpty)),
@@ -294,7 +297,8 @@ function stops() {
       + '. Spansh knows no station that sells ' + (trip.notFound.length > 1 ? 'these' : 'this') + ', takes your ship and passes your station filters in Studio Market.'
       + (trip.cutShort ? ' Studio stops at ' + trip.questions + ' questions to Spansh for one list, so not everything was asked about.' : '')),
     trip.stops.length > 0 && h('div', { class: 'row' },
-      h('button', { class: 'btn primary', onclick: toNav, title: 'Makes these stops the route in Studio Nav: the next stop, its Copy button and the overlay in the game walk you along them' }, 'Send the trip to Studio Nav'),
+      h('button', { class: 'btn primary', onclick: toNav, title: overlay ? 'Makes these stops the route in Studio Nav: the next stop, its Copy button and the overlay in the game walk you along them'
+        : 'Makes these stops the route in Studio Nav: the next stop and its Copy button walk you along them' }, 'Send the trip to Studio Nav'),
       h('span', { class: 'muted small' }, [count(trip.stops.length, 'stop') + ' from ' + trip.from, credits(cost) + ' at the prices last reported', 'Spansh was asked ' + ago(trip.askedUtc)].join(dot)))];
 }
 
@@ -361,7 +365,7 @@ async function rename() {
 
 async function remove() {
   const gone = build;
-  if (!await ask({ title: 'Delete “' + gone.name + '”?', body: 'The saved build goes to the Windows Recycle Bin, so you can still get it back.', ok: 'Delete', danger: true })) return;
+  if (!await ask({ title: 'Delete “' + gone.name + '”?', body: linux ? 'The saved build goes to the Trash, so you can still get it back.' : 'The saved build goes to the Windows Recycle Bin, so you can still get it back.', ok: 'Delete', danger: true })) return;
   try {
     await Studio.api('POST', '/api/loadouts/delete', { id: gone.id });
     await loadSaved();

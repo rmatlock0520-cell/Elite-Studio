@@ -17,7 +17,8 @@
 // the message at the bottom (Studio.toast), the dialog (Studio.ask, and Studio.nameLength for a name it asks
 // for), the clipboard (Studio.copy, Studio.copyName), the whole-page message (Studio.cover), a From box that
 // follows the game (Studio.fromBox), keeping one of the app's pictures on the page (Studio.follow) and going
-// to another studio's page with something for it to do (Studio.open, or Studio.go for a link that does).
+// to another studio's page with something for it to do (Studio.open, or Studio.go for a link that does), and what this
+// copy of Studio has (Studio.features: the Linux one leaves some parts out).
 // Every page also wears the player's look (the colour set, the player's own colours over it, spacing and effects the shell
 // keeps as "studio.appearance.look"); the shell uses Studio.palettes, Studio.parts and Studio.applyLook for its panels.
 // The red "can't reach Elite Studio" bar and the "Start Elite Studio" cover appear by themselves; a page
@@ -53,6 +54,17 @@ if (boxed) {
   fit();
   window.addEventListener('resize', fit);
 }
+
+// What this copy of Studio has, as /api/ping says: { system, flight, overlay, navScan, reloadKey, trayIcon }. The Windows
+// app has all of it; the Linux one leaves out Studio Flight, the in-game overlay and its keys, Nav scan, pressing F11 in
+// the game and the icon near the clock. A page asks
+//   Studio.features.then(has => { if (!has.overlay) ... })
+// and changes something only for a part that is not there, so on Windows every page stays as it was. An app that does
+// not say (one older than this) counts as having everything, as does one that cannot be reached. A page in one of the
+// shell's frames takes the shell's answer, so a window asks once.
+const everything = { system: 'windows', flight: true, overlay: true, navScan: true, reloadKey: true, trayIcon: true };
+const features = shell && shell.features ? shell.features : !served ? Promise.resolve(everything)
+  : fetch('/api/ping').then(res => res.json()).then(r => ({ ...everything, ...(r && r.features) }), () => everything);
 
 // ---- the player's look (appearance profile)
 // The shell keeps the look the player chose in localStorage as "studio.appearance.look": a colour set, the player's own
@@ -618,6 +630,22 @@ function open(studio, page) {
 //   Studio.go('Route', 'Opens Studio Nav with Sol under To, ready to plot', 'nav', '?to=Sol')
 const go = (text, title, studio, page) => h('button', { class: 'textbtn go', title, onclick: () => open(studio, page) }, text);
 
+// ---- web sites, on Linux
+// The Linux app's window is a plain web view that opens no second window. So there a link that would open one
+// (target="_blank": Inara, Spansh, the credits) and window.open (EDSY and Coriolis) hand the address to the app, which
+// opens it in the player's own web browser (POST /api/app/open takes http and https only). On Windows nothing changes.
+features.then(has => {
+  if (has.system !== 'linux') return;
+  const browse = url => api('POST', '/api/app/open', { url: new URL(url, location.href).href }).catch(problem => toast(problem.message, true));
+  document.addEventListener('click', e => {
+    const a = e.target.closest && e.target.closest('a[target="_blank"]');
+    if (!a || !/^https?:/i.test(a.href)) return;
+    e.preventDefault();
+    browse(a.href);
+  }, true);
+  window.open = url => { browse(url); return null; };
+});
+
 // ---- the red bar
 // Shown across the top of the page while the app cannot be reached. It is made here the first time it
 // is needed and put at the very top; a page that wants it somewhere else has an empty
@@ -729,5 +757,5 @@ function report(text) {
 window.addEventListener('error', e => report((e.message || 'error') + (e.filename ? ' (line ' + e.lineno + ')' : '')));
 window.addEventListener('unhandledrejection', e => report('Unhandled: ' + ((e.reason && e.reason.message) || e.reason)));
 
-return { served, boxed, api, onEvent, follow, open, go, $, h, stationIcon, link, inspect, stationSheet, options, fromBox, whole, count, credits, tons, ly, ago, dot, wideDot, toast, ask, nameLength, copy, copyName, cover, palettes, parts, applyLook };
+return { served, boxed, features, api, onEvent, follow, open, go, $, h, stationIcon, link, inspect, stationSheet, options, fromBox, whole, count, credits, tons, ly, ago, dot, wideDot, toast, ask, nameLength, copy, copyName, cover, palettes, parts, applyLook };
 })();

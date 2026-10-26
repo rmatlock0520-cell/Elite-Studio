@@ -23,7 +23,7 @@ public static class ThemeApi
         string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         new StudioUi(settings, Paths.DataDir, Paths.GameDir,
             // Elite keeps its own colour file in the folder next to its key bindings.
-            graphicsXml: Path.GetFullPath(Path.Combine(Paths.BindingsDir, @"..\Graphics\GraphicsConfigurationOverride.xml")),
+            graphicsXml: Path.GetFullPath(Path.Combine(Paths.BindingsDir, "..", "Graphics", "GraphicsConfigurationOverride.xml")),
             // Elite HUD Studio kept saved themes next to its program up to 1.6 and in the user folder from 1.7.
             // A practice copy must not pull in the player's real files: for it there are no such folders to copy from.
             oldThemeDirs: Paths.Practice ? [] : [Path.Combine(documents, "Elite HUD Studio", "My Themes"), Path.Combine(local, "Elite HUD Studio", "My Themes")]) { DownloadMod = () => ModInstall.Download(network) }.Map(web);
@@ -84,7 +84,9 @@ internal sealed class StudioUi(Settings settings, string dataDir, string? forced
     internal Func<List<GameFolder>> FindGames { get; init; } = GameFolder.FindAll;
     internal Func<bool> GameRunning { get; init; } = GameFolder.IsRunning;
     internal Func<Reload> PressReloadKey { get; init; } = GameFolder.PressReloadKey;
-    internal Action<string> ShowFolder { get; init; } = folder => Process.Start("explorer.exe", $"\"{folder}\"")?.Dispose();
+    // Explorer on Windows, as before; elsewhere the folder is opened as a document, which shows it in the desktop's file manager (xdg-open).
+    internal Action<string> ShowFolder { get; init; } = folder =>
+        (OperatingSystem.IsWindows() ? Process.Start("explorer.exe", $"\"{folder}\"") : Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true }))?.Dispose();
     internal Action<string> Recycle { get; init; } = RecycleBin.Send;
     internal Func<(string Version, byte[] Zip)> DownloadMod { get; init; } = () => ModInstall.Download(null);
 
@@ -149,7 +151,7 @@ internal sealed class StudioUi(Settings settings, string dataDir, string? forced
         {
             // A practice copy was named at start-up: use only that, and never look at the real installs.
             games = [];
-            game = Directory.Exists(forcedGameDir) ? GameFolder.At(Path.GetFullPath(forcedGameDir).TrimEnd('\\'), "Custom") : null;
+            game = Directory.Exists(forcedGameDir) ? GameFolder.At(Path.TrimEndingDirectorySeparator(Path.GetFullPath(forcedGameDir)), "Custom") : null;
             if (game is null) Log.Error($"Game folder not found: {forcedGameDir}");
             return;
         }
@@ -480,7 +482,9 @@ internal static class Loose
     };
 }
 
-/// <summary>Deleting to the Windows Recycle Bin, so a theme deleted by mistake can be put back.</summary>
+/// <summary>
+/// Deleting to the Windows Recycle Bin (on Linux, the desktop's Trash), so a theme or build deleted by mistake can be put back.
+/// </summary>
 internal static class RecycleBin
 {
     const uint Delete = 3;                 // FO_DELETE
@@ -491,10 +495,59 @@ internal static class RecycleBin
 
     public static void Send(string file)
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            string data = Environment.GetEnvironmentVariable("XDG_DATA_HOME") is { Length: > 0 } set ? set
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share");
+            ToTrash(file, Path.Combine(data, "Trash"), DateTime.Now);
+            return;
+        }
         // Windows wants a list of paths ending in an empty one, hence the extra '\0'.
         var operation = new FileOperation { Function = Delete, From = file + '\0', Flags = Silent | NoQuestions | ToRecycleBin | NoErrorBox };
         int result = SHFileOperation(ref operation);
         if (result != 0 || operation.Aborted) throw new IOException($"Windows could not move the file to the Recycle Bin (code {result}).");
+    }
+
+    /// <summary>
+    /// Moves a file into a Trash as freedesktop.org describes it, the one the Linux desktops' file managers show: the
+    /// file goes into its "files" folder under a name not taken there, and a note of the same name in its "info" folder
+    /// says where it was and when it was deleted, so the file manager can put it back. The note is made first: that
+    /// claims the name.
+    /// </summary>
+    internal static void ToTrash(string file, string trash, DateTime now)
+    {
+        string files = Path.Combine(trash, "files"), info = Path.Combine(trash, "info");
+        Directory.CreateDirectory(files);
+        Directory.CreateDirectory(info);
+        // Where the file was, written as in a web address, folder by folder ("Elite Studio" is "Elite%20Studio").
+        string place = string.Join('/', Path.GetFullPath(file).Split('/').Select(Uri.EscapeDataString));
+        string said = $"[Trash Info]\nPath={place}\nDeletionDate={now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture)}\n";
+        for (int copy = 1; ; copy++)
+        {
+            // "Explorer.json", then "Explorer.2.json", "Explorer.3.json"...
+            string name = copy == 1 ? Path.GetFileName(file) : $"{Path.GetFileNameWithoutExtension(file)}.{copy}{Path.GetExtension(file)}";
+            string note = Path.Combine(info, name + ".trashinfo"), kept = Path.Combine(files, name);
+            if (File.Exists(note) || File.Exists(kept)) continue;
+            try
+            {
+                using var writer = new StreamWriter(new FileStream(note, FileMode.CreateNew));
+                writer.Write(said);
+            }
+            catch (IOException) when (File.Exists(note))
+            {
+                continue;   // another program took the name meanwhile
+            }
+            try
+            {
+                File.Move(file, kept);
+                return;
+            }
+            catch
+            {
+                File.Delete(note);
+                throw;
+            }
+        }
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]

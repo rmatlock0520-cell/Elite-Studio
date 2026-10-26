@@ -277,7 +277,7 @@ function legend(canvas, rampBytes, s, opts) {
   const look = canvas.isConnected ? getComputedStyle(canvas) : null;
   const token = (name, fallback) => (look && look.getPropertyValue(name).trim()) || fallback;
   const ink = token('--muted', '#8d99aa'), edge = token('--line2', '#2a3645'), text = token('--text', '#e2e8f0');
-  c.font = '11px "Segoe UI",system-ui,sans-serif';
+  c.font = '11px "Segoe UI","Studio Text",system-ui,sans-serif';   // "Studio Text": studio.css's look-alike where Segoe UI is missing
 
   // Room at both ends for half of the end numbers, which sit centred under the strip's ends.
   const marks = ticks(sc);

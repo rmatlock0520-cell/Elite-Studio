@@ -1,6 +1,5 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Windows;
+using System.Globalization;
 using System.Xml;
 using System.Xml.Linq;
 
@@ -13,8 +12,9 @@ public enum DisplayMode { Unknown, Windowed, Fullscreen, Borderless }
 /// Elite's own window: is the game running, is it the window in front, and which monitor is it on.
 /// Looking a process up by name is slow, so that is done at most every two seconds however often
 /// these are asked; the "in front" test itself is cheap and always fresh. UI thread only.
+/// (The window half, Windows only, is in EliteWindow.Windows.cs.)
 /// </summary>
-public static class EliteWindow
+public static partial class EliteWindow
 {
     /// <summary>The game itself, as Windows names its process and (with ".exe") its program file; the launcher does not count.</summary>
     internal const string ProcessName = "EliteDangerous64";
@@ -22,47 +22,12 @@ public static class EliteWindow
 
     static long checkedAt = -CheckEveryMs;
     static uint processId;
-    static IntPtr handle;
+    static IntPtr handle;   // read by the window half
 
     /// <summary>The game's process exists.</summary>
     public static bool Running
     {
         get { Refresh(); return processId != 0; }
-    }
-
-    /// <summary>The game's main window; zero while it is not running or has no window yet.</summary>
-    public static IntPtr Handle
-    {
-        get { Refresh(); return handle; }
-    }
-
-    /// <summary>The window the player is typing into belongs to the game.</summary>
-    public static bool IsForeground
-    {
-        get
-        {
-            Refresh();
-            if (processId == 0) return false;
-            GetWindowThreadProcessId(GetForegroundWindow(), out uint front);
-            return front == processId;
-        }
-    }
-
-    /// <summary>
-    /// The whole monitor the game's window is on (not just the part free of the taskbar), in the
-    /// screen pixels Windows reports to this program; null while the game has no window.
-    /// </summary>
-    public static Int32Rect? MonitorBounds
-    {
-        get
-        {
-            Refresh();
-            if (handle == IntPtr.Zero) return null;
-            var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-            const uint nearestMonitor = 2;
-            if (!GetMonitorInfo(MonitorFromWindow(handle, nearestMonitor), ref info)) return null;
-            return new Int32Rect(info.Monitor.Left, info.Monitor.Top, info.Monitor.Right - info.Monitor.Left, info.Monitor.Bottom - info.Monitor.Top);
-        }
     }
 
     /// <summary>
@@ -93,6 +58,11 @@ public static class EliteWindow
         long now = Environment.TickCount64;
         if (now - checkedAt < CheckEveryMs) return;
         checkedAt = now;
+        if (!OperatingSystem.IsWindows())
+        {
+            (processId, handle) = (UnderProton(), IntPtr.Zero);
+            return;
+        }
         // Worked out first and stored together at the end, so nothing asking meanwhile (the tests ask from several
         // threads at once) sees the game gone for the moment of the look.
         uint id = 0;
@@ -119,21 +89,32 @@ public static class EliteWindow
         (processId, handle) = (id, window);
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    struct Rect { public int Left, Top, Right, Bottom; }
-
-    [StructLayout(LayoutKind.Sequential)]
-    struct MonitorInfo { public int Size; public Rect Monitor, Work; public uint Flags; }
-
-    [DllImport("user32.dll")]
-    static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll")]
-    static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
-
-    [DllImport("user32.dll")]
-    static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
-
-    [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
-    static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+    /// <summary>
+    /// Off Windows the game runs under Proton, as a Wine process: its name is cut short there, but its command line is the
+    /// Windows path of the game's program, so the game is the process whose command line names EliteDangerous64.exe.
+    /// Zero when there is none. Inside a Flatpak, /proc shows no process outside the sandbox, so there the game always
+    /// reads as closed (the "Elite running" chip then says closed).
+    /// </summary>
+    /// <param name="proc">The processes' folder; tests give their own.</param>
+    internal static uint UnderProton(string proc = "/proc")
+    {
+        try
+        {
+            foreach (string process in Directory.EnumerateDirectories(proc))
+            {
+                if (!uint.TryParse(Path.GetFileName(process), NumberStyles.None, CultureInfo.InvariantCulture, out uint id)) continue;
+                try
+                {
+                    // The words of a command line are separated by '\0'.
+                    if (File.ReadAllText(Path.Combine(process, "cmdline")).Contains(ProcessName + ".exe", StringComparison.OrdinalIgnoreCase)) return id;
+                }
+                catch (Exception gone) when (gone is IOException or UnauthorizedAccessException)
+                {
+                    // it ended while being looked at, or it is not this user's to read
+                }
+            }
+        }
+        catch (Exception unreadable) when (unreadable is IOException or UnauthorizedAccessException) { }
+        return 0;
+    }
 }

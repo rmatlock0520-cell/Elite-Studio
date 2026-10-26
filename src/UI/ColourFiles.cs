@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using EliteStudio.App;
 
 namespace EliteStudio.UI;
 
@@ -18,7 +19,7 @@ internal static class ColourFiles
     /// <summary>File names without ".ini". The order is the order every answer lists them in.</summary>
     public static readonly string[] Names = ["Startup-Profile", "Advanced", "SuitHud", "XML-Profile"];
 
-    public static string PathOf(string dir, string name) => Path.Combine(dir, name + ".ini");
+    public static string PathOf(string dir, string name) => Paths.InFolder(dir, name + ".ini");
 
     /// <summary>The whole text of each colour file that exists in a folder (the game's, or a backup's).</summary>
     public static Dictionary<string, string> ReadAll(string dir)

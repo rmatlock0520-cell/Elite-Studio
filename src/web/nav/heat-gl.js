@@ -1412,7 +1412,7 @@ function create(canvas, overlay, opts) {
     const say = (text, x, y, o) => {
       o = o || {};
       if (!text) return false;
-      const font = (o.bold ? '600 ' : '') + (o.size || 12) + 'px "Segoe UI",system-ui,sans-serif';
+      const font = (o.bold ? '600 ' : '') + (o.size || 12) + 'px "Segoe UI","Studio Text",system-ui,sans-serif';   // "Studio Text": studio.css's look-alike where Segoe UI is missing
       g.font = font;
       const icon = o.lock ? 12 : 0, tw = g.measureText(text).width + icon, th = (o.size || 12) + 3;
       const [left, top] = o.beside ? besideMark(placed, x, y, tw, th, o.gap || 8, w, h) : [o.right ? x + (o.gap || 8) : x - tw / 2, y - th / 2];

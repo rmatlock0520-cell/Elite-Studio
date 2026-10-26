@@ -87,7 +87,7 @@ function palette(el) {
     accent: v('--accent', '#ff7100'), soft: v('--accent-soft', 'rgba(255,113,0,.14)'), text: v('--text', '#e2e8f0'),
     muted: v('--muted', '#8d99aa'), faint: v('--faint', '#5b6677'), line: v('--line', '#1f2935'), line2: v('--line2', '#2a3645'),
     bg: v('--bg', '#06080c'), bg2: v('--bg2', '#0a0e14'), good: v('--good', '#3ddc84'),
-    font: v('--font', '"Segoe UI",system-ui,sans-serif'), hud: v('--hud', '"Bahnschrift","Segoe UI",system-ui,sans-serif'),
+    font: v('--font', '"Segoe UI","Studio Text",system-ui,sans-serif'), hud: v('--hud', '"Bahnschrift","Studio Heading","Segoe UI","Studio Text",system-ui,sans-serif'),
   };
 }
 const HALO = 'rgba(6,8,12,.85)';          // a dark edge round text and dots, so they read on bright colours too

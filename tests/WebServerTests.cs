@@ -3,7 +3,6 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
-using System.Windows.Threading;
 using EliteStudio.App;
 using WebRequest = EliteStudio.App.WebRequest;     // System.Net has older types with the same names
 using WebResponse = EliteStudio.App.WebResponse;
@@ -11,7 +10,7 @@ using WebResponse = EliteStudio.App.WebResponse;
 namespace EliteStudio.Tests;
 
 /// <summary>The local web server: first its routing rules without the network, then real requests on a free port.</summary>
-public sealed class WebServerTests : IDisposable
+public sealed partial class WebServerTests : IDisposable
 {
     static readonly IReadOnlyDictionary<string, string> NoQuery = new Dictionary<string, string>();
 
@@ -73,6 +72,13 @@ public sealed class WebServerTests : IDisposable
         JsonElement ping = Json(Text(await Get("/api/ping")));
         Assert.Equal("elite-studio", ping.GetProperty("app").GetString());
         Assert.Matches(@"^\d+\.\d+\.\d+$", ping.GetProperty("version").GetString());
+
+        // And what this build has, so the pages can hide what it has not: everything on Windows, none of these on Linux.
+        JsonElement features = ping.GetProperty("features");
+        bool windows = OperatingSystem.IsWindows();
+        Assert.Equal(windows ? "windows" : "linux", features.GetProperty("system").GetString());
+        foreach (string part in new[] { "flight", "overlay", "navScan", "reloadKey", "trayIcon" })
+            Assert.Equal(windows, features.GetProperty(part).GetBoolean());
     }
 
     [Theory]
@@ -93,6 +99,8 @@ public sealed class WebServerTests : IDisposable
     [InlineData("/api/blocked", "Access to the path 'x.ini' is denied. Windows or your antivirus is blocking Elite Studio from changing this file. If Elite is open, close it and try again.")]
     public async Task A_handler_that_throws_gives_500_with_its_message_and_a_hint_for_file_problems(string path, string error)
     {
+        // Elsewhere the hint names no Windows and no antivirus.
+        if (!OperatingSystem.IsWindows()) error = error.Replace("Windows or your antivirus is blocking", "Your system is blocking");
         WebResponse response = await Get(path);
         Assert.Equal(500, response.Status);
         Assert.False(Json(Text(response)).GetProperty("ok").GetBoolean());
@@ -137,7 +145,7 @@ public sealed class WebServerTests : IDisposable
         Assert.Equal("text/plain; charset=utf-8", notes.ContentType);
         Assert.StartsWith("__STUDIO_TOKEN__", Text(notes));
 
-        Assert.Equal(200, (await Get("/ui/PAGE.CSS")).Status);         // Windows file names ignore case
+        Assert.Equal(OperatingSystem.IsWindows() ? 200 : 404, (await Get("/ui/PAGE.CSS")).Status);   // Windows file names ignore case; Linux's do not
         Assert.Equal(200, (await Get("/ui/img/dot%2Epng")).Status);    // escapes are decoded
     }
 
@@ -300,7 +308,10 @@ public sealed class WebServerTests : IDisposable
         {
             var request = new HttpRequestMessage(HttpMethod.Get, $"http://{network}:{web.Port}{path}");
             request.Headers.Host = $"localhost:{web.Port}";
-            HttpResponseMessage response = await http.SendAsync(request, TestContext.Current.CancellationToken);
+            HttpResponseMessage response;
+            try { response = await http.SendAsync(request, TestContext.Current.CancellationToken); }
+            // Off Windows the server may listen on this PC's own loopback only; then such a call cannot even connect, which is refused all the same.
+            catch (HttpRequestException) when (!OperatingSystem.IsWindows()) { continue; }
             Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
             Assert.Equal("Forbidden", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         }
@@ -382,41 +393,6 @@ public sealed class WebServerTests : IDisposable
         finally
         {
             foreach (HttpListener other in ours.Values) other.Close();
-        }
-    }
-
-    [Fact]
-    public async Task Handlers_run_on_the_thread_that_started_the_server_when_it_has_a_message_loop()
-    {
-        // The app starts the server on its UI thread; game state lives there, so handlers must run there too.
-        int handlerThread = 0, uiThread = 0;
-        var started = new TaskCompletionSource<Dispatcher>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var ui = new Thread(() =>
-        {
-            uiThread = Environment.CurrentManagedThreadId;
-            SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
-            web.Map("GET", "/api/where", async _ =>
-            {
-                await Task.Delay(1);   // still the same thread after waiting
-                handlerThread = Environment.CurrentManagedThreadId;
-                return WebResponse.Json(new { ok = true });
-            });
-            started.SetResult(web.Start(47850) ? Dispatcher.CurrentDispatcher : throw new InvalidOperationException("no free port"));
-            Dispatcher.Run();
-        });
-        ui.SetApartmentState(ApartmentState.STA);
-        ui.Start();
-        Dispatcher dispatcher = await started.Task;
-        try
-        {
-            Assert.Equal(HttpStatusCode.OK, (await Send(HttpMethod.Get, "/api/where", web.Token)).Status);
-            Assert.NotEqual(0, uiThread);
-            Assert.Equal(uiThread, handlerThread);
-        }
-        finally
-        {
-            dispatcher.InvokeShutdown();
-            ui.Join();
         }
     }
 

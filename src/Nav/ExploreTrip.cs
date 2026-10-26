@@ -1,8 +1,6 @@
 using System.Text.Json;
-using System.Windows.Controls;
 using EliteStudio.App;
 using EliteStudio.Core;
-using EliteStudio.Overlay;
 
 namespace EliteStudio.Nav;
 
@@ -89,7 +87,7 @@ public sealed record ExploreView(
 /// Lives on the UI thread like the game state it follows. A system or a body is only ever counted
 /// once, however often the game writes about it: on arrival, after mapping, or on a later visit.
 /// </summary>
-public sealed class ExploreTrip
+public sealed partial class ExploreTrip
 {
     const string Section = "explore";
     const int TrailLength = 10;       // jumps the heading is taken over
@@ -168,25 +166,6 @@ public sealed class ExploreTrip
         unsaved = true;
         Tell();
     }
-
-    /// <summary>
-    /// The in-game overlay's one quiet line while the commander is out exploring, or null when not:
-    /// docked, the trip's finds sold, or nothing on this trip yet that nobody had found before.
-    /// </summary>
-    public TextBlock? OverlayLine(string accent)
-    {
-        ExploreView view = View;
-        if (game.Docked || view.HandedIn || view.NewSystems + view.FirstDiscoveries + view.FirstMapped == 0) return null;
-
-        TextBlock line = Draw.Text(14.5).Add("EXPLORING   ", accent, bold: true);
-        if (view.IsNew is { } isNew) line.Add(isNew ? "new system" : "already discovered", isNew ? Draw.Green : null, bold: isNew).Add(Draw.Dot, Draw.Dim);
-        line.Add(view.BodyCount > 0 ? $"{view.Scanned} of {view.BodyCount} bodies" : Counted(view.Scanned, "body scanned", "bodies scanned"));
-        string finds = $"{Counted(view.NewSystems, "new system", "new systems")}, {Counted(view.FirstDiscoveries, "first discovery", "first discoveries")}"
-            + (view.FirstMapped > 0 ? $", {Draw.Whole(view.FirstMapped)} first mapped" : "");
-        return line.Add($"{Draw.Dot}trip: {finds}", Draw.Dim);
-    }
-
-    static string Counted(int number, string one, string many) => $"{Draw.Whole(number)} {(number == 1 ? one : many)}";
 
     /// <summary>Takes one journal line into the count. Lines about anything else change nothing.</summary>
     void Count(JournalLine line)

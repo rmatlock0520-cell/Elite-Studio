@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Elite Studio for Linux: the shared code in ../src, with the Linux start-up and window from this folder. -->
+  <PropertyGroup>
+    <!-- Plain .NET, over the Windows one Directory.Build.props sets for the Windows build. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>EliteStudio</RootNamespace>
+    <AssemblyName>EliteStudio</AssemblyName>
+    <Product>Elite Studio</Product>
+    <Version>1.0.0</Version>
+    <!-- CA1416 warns about Windows-only calls; in the shared code each one is only reached on Windows. -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <!-- No debug file from a Release build: a player has no use for it, and it names the build PC's account. -->
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="System.IO" />
+    <InternalsVisibleTo Include="EliteStudio.Tests" />
+    <!-- The checks' project sits in tests/ below this folder and compiles code of its own. -->
+    <Compile Remove="tests/**" />
+    <!-- The shared code, without Windows' own start-up and window, and without what the Linux version leaves out:
+         Studio Flight, the in-game overlay with its boxes and keys, and Nav scan's reading of screenshots. -->
+    <Compile Include="../src/**/*.cs" Exclude="../src/App/Program.cs;../src/App/MainWindow.cs;../src/App/Sound.Windows.cs;../src/Core/EliteWindow.Windows.cs;../src/UI/GameFolder.Windows.cs;../src/Market/StationPictures.Windows.cs;../src/Market/HaulOverlay.cs;../src/Market/HaulOverlayDrawing.cs;../src/Nav/ExploreTrip.Overlay.cs;../src/Nav/NavScanOcr.cs;../src/Overlay/OverlayWindow.cs;../src/Overlay/OverlayHost.cs;../src/Overlay/Hotkeys.cs;../src/Flight/**;../src/Gimbalyn/**" />
+    <!-- The community's tables of ships, modules, materials and names; Core/GameData.cs reads them. -->
+    <EmbeddedResource Include="../src/Core/Data/*" LogicalName="Data.%(Filename)%(Extension)" />
+    <!-- The window's icon (StudioWindow.cs). -->
+    <EmbeddedResource Include="packaging/elite-studio.png" LogicalName="studio.png" />
+    <!-- The pages, without Studio Flight's, and the free fonts they fall back to where the Windows ones are missing. -->
+    <Content Include="../src/web/**" Exclude="../src/web/flight/**" Link="web/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="fonts/*" Link="web/fonts/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Pinned: the window. Photino 4 is the one on WebKitGTK 4.1, which current Linux systems carry. -->
+    <PackageReference Include="Photino.NET" Version="4.0.16" />
+  </ItemGroup>
+</Project>

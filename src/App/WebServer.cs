@@ -35,7 +35,8 @@ public sealed record WebResponse(int Status, string ContentType, byte[] Body)
 /// - GET of anything outside /api/ serves a file from the web root. "/" and folder paths serve the
 ///   index.html inside. In .html files the text __STUDIO_TOKEN__ is replaced with <see cref="Token"/>.
 ///   Paths may not leave the web root. Responses are never cached (Cache-Control: no-store).
-/// - /api/ping needs no token and answers {"app":"elite-studio","version":"..."}.
+/// - /api/ping needs no token and answers {"app":"elite-studio","version":"...","features":{...}}, the features
+///   being what this build has (<see cref="StudioFeatures"/>).
 /// - Every other /api/ route needs the token: header X-Studio-Token, or query "t" (EventSource
 ///   cannot send headers). Wrong or missing token: 401 with the error shape. POST bodies must be
 ///   application/json, else 400.
@@ -60,6 +61,9 @@ public sealed class WebServer(string webRoot) : IDisposable
         [".png"] = "image/png",
         [".jpg"] = "image/jpeg",
         [".ico"] = "image/x-icon",
+        // The look-alike fonts the Linux build carries for the Windows fonts the pages name first.
+        [".ttf"] = "font/ttf",
+        [".woff2"] = "font/woff2",
     };
 
     // An event ends at a blank line, so its JSON has to stay on one line.
@@ -68,7 +72,7 @@ public sealed class WebServer(string webRoot) : IDisposable
     /// <summary>Events a page may fall behind by before its stream is dropped (it reconnects by itself).</summary>
     const int EventBacklog = 500;
 
-    readonly string root = Path.GetFullPath(webRoot).TrimEnd('\\');
+    readonly string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(webRoot));
     readonly Dictionary<string, Func<WebRequest, Task<WebResponse>>> routes = [];
     readonly List<Channel<byte[]>> eventStreams = [];
     HttpListener? listener;
@@ -110,7 +114,7 @@ public sealed class WebServer(string webRoot) : IDisposable
     {
         if (!request.Path.StartsWith("/api/", StringComparison.Ordinal))
             return request.Method == "GET" ? await StaticFile(request.Path) : WebResponse.Text("Not found", 404);
-        if (request.Path == "/api/ping") return WebResponse.Json(new { app = "elite-studio", version = Program.Version });
+        if (request.Path == "/api/ping") return WebResponse.Json(new { app = "elite-studio", version = Program.Version, features = Program.Features });
         if (!routes.TryGetValue($"{request.Method} {request.Path}", out var handler)) return WebResponse.Error("Unknown request.", 404);
         try
         {
@@ -256,12 +260,12 @@ public sealed class WebServer(string webRoot) : IDisposable
 
     async Task<WebResponse> StaticFile(string urlPath)
     {
-        string relative = Uri.UnescapeDataString(urlPath).TrimStart('/').Replace('/', '\\');
+        string relative = Uri.UnescapeDataString(urlPath).TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
         if (relative.Contains("..") || relative.Contains(':') || relative.Contains('\0') || relative.StartsWith('\\'))
             return WebResponse.Text("Bad path", 400);
-        if (relative.Length == 0 || relative.EndsWith('\\')) relative += "index.html";
+        if (relative.Length == 0 || relative.EndsWith(Path.DirectorySeparatorChar)) relative += "index.html";
         string file = Path.GetFullPath(Path.Combine(root, relative));
-        if (!file.StartsWith(root + '\\', StringComparison.OrdinalIgnoreCase)) return WebResponse.Text("Forbidden", 403);
+        if (!file.StartsWith(root + Path.DirectorySeparatorChar, Paths.FileNameCase)) return WebResponse.Text("Forbidden", 403);
         if (!ContentTypes.TryGetValue(Path.GetExtension(file), out string? contentType) || !File.Exists(file))
             return WebResponse.Text("Not found", 404);
         if (!contentType.StartsWith("text/html", StringComparison.Ordinal)) return new WebResponse(200, contentType, await File.ReadAllBytesAsync(file));
@@ -284,11 +288,13 @@ public sealed class WebServer(string webRoot) : IDisposable
         static string Decode(string text) => Uri.UnescapeDataString(text.Replace('+', ' '));
     }
 
-    /// <summary>Windows' wording for the two usual file problems does not say what to do, so say it.</summary>
+    /// <summary>The system's wording for the two usual file problems does not say what to do, so say it.</summary>
     static string Hint(string message)
     {
         if (message.Contains("denied", StringComparison.OrdinalIgnoreCase))
-            return " Windows or your antivirus is blocking Elite Studio from changing this file. If Elite is open, close it and try again.";
+            return OperatingSystem.IsWindows()
+                ? " Windows or your antivirus is blocking Elite Studio from changing this file. If Elite is open, close it and try again."
+                : " Your system is blocking Elite Studio from changing this file. If Elite is open, close it and try again.";
         if (message.Contains("being used by another process", StringComparison.OrdinalIgnoreCase))
             return " Another program (usually Elite) has this file open. Close it and try again.";
         return "";

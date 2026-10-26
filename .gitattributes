@@ -2,6 +2,10 @@
 *.cmd text eol=crlf
 # Desktop pages stay LF in every checkout.
 src/web/** text eol=lf
+# Linux's scripts and launcher, and GitHub's check files, stay LF: a Linux shell will not run a CRLF script.
+linux/packaging/** text eol=lf
+.github/** text eol=lf
+*.ttf binary
 # Recorded game files and golden outputs must stay byte-for-byte.
 tests/Fixtures/** -text
 *.png binary

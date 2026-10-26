@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Elite Studio
+Comment=Companion for Elite Dangerous: HUD colours, trading, routes and ship builds
+Exec=elite-studio
+Icon=elite-studio
+Terminal=false
+Categories=Game;Utility;

@@ -202,6 +202,7 @@ public sealed partial class UiTests : IDisposable
     [Fact]
     public async Task Answers_and_files_match_what_the_old_helper_recorded()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The old helper's recording was made on Windows: its answers hold Windows paths.");
         Rig rig = NewRig();
         StageGame(rig.Game);
         StageData(rig.Backups, rig.Themes);
@@ -323,6 +324,7 @@ public sealed partial class UiTests : IDisposable
     [Fact]
     public void Write_that_cannot_change_the_file_leaves_it_as_it_was_with_nothing_beside_it()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to change a file another program has open.");
         string readOnly = Path.Combine(temp, "read-only.ini"), open = Path.Combine(temp, "open.ini");
         File.WriteAllText(readOnly, "x1 = 1\n");
         File.WriteAllText(open, "x1 = 1\n");
@@ -341,6 +343,40 @@ public sealed partial class UiTests : IDisposable
         Assert.Equal(["open.ini", "read-only.ini"], Directory.GetFiles(temp).Select(Path.GetFileName).Order());
         Assert.Equal("x1 = 1\n", File.ReadAllText(readOnly));
         Assert.Equal("x1 = 1\n", File.ReadAllText(open));
+    }
+
+    [Fact]
+    public void Off_Windows_a_deleted_file_goes_to_the_desktops_Trash_where_the_file_manager_can_put_it_back()
+    {
+        string trash = Path.Combine(temp, "Trash"), folder = Directory.CreateDirectory(Path.Combine(temp, "My Themes")).FullName;
+        string theme = Path.Combine(folder, "Explorer one.json");
+        File.WriteAllText(theme, "first");
+        var when = new DateTime(2026, 10, 26, 21, 5, 9);
+        RecycleBin.ToTrash(theme, trash, when);
+
+        Assert.False(File.Exists(theme));
+        Assert.Equal("first", File.ReadAllText(Path.Combine(trash, "files", "Explorer one.json")));
+        // The note beside it says where it was, written as in a web address, and when it was deleted (the PC's own time).
+        string[] note = File.ReadAllText(Path.Combine(trash, "info", "Explorer one.json.trashinfo")).Split('\n');
+        Assert.Equal("[Trash Info]", note[0]);
+        Assert.StartsWith("Path=", note[1]);
+        Assert.DoesNotContain(" ", note[1]);
+        Assert.Equal(theme, Uri.UnescapeDataString(note[1]["Path=".Length..]));
+        Assert.Equal(["DeletionDate=2026-10-26T21:05:09", ""], note[2..]);
+
+        // Another file of that name: the next name not taken, for the file and its note alike.
+        File.WriteAllText(theme, "second");
+        RecycleBin.ToTrash(theme, trash, when);
+        File.WriteAllText(theme, "third");
+        RecycleBin.ToTrash(theme, trash, when);
+        Assert.Equal(["Explorer one.2.json", "Explorer one.3.json", "Explorer one.json"],
+            Directory.GetFiles(Path.Combine(trash, "files")).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+        Assert.Equal("third", File.ReadAllText(Path.Combine(trash, "files", "Explorer one.3.json")));
+        Assert.Equal(3, Directory.GetFiles(Path.Combine(trash, "info"), "*.trashinfo").Length);
+
+        // A file that cannot be moved leaves no note behind.
+        Assert.Throws<FileNotFoundException>(() => RecycleBin.ToTrash(Path.Combine(folder, "gone.json"), trash, when));
+        Assert.False(File.Exists(Path.Combine(trash, "info", "gone.json.trashinfo")));
     }
 
     // ------------------------------------------------------------ saving
