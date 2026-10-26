@@ -1,6 +1,6 @@
 # Elite Studio for Linux on GitHub's Linux machines: build it and run its checks, pack the player's copy, open it on
 # a screen with no monitor to prove its window starts (with pictures of each studio) and, on an Ubuntu too old for
-# the window, that it works in the browser, and make the Flatpak.
+# the window, that it works in the browser, and make the Flatpak and start it.
 # Nothing here publishes a release: what it makes is kept with the run, for the owner to look at and pass on.
 name: Linux
 
@@ -178,3 +178,34 @@ jobs:
           bundle: elite-studio.flatpak
           artifact-name: elite-studio-flatpak
           cache: false   # every run packs a new copy; a kept build could hand back the last one
+
+  # The Flatpak installed as a player would (GNOME's runtime from Flathub, then the bundle) and started: its window
+  # must load the page within a minute, as in the smoke run above.
+  flatpak-smoke:
+    needs: flatpak
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4   # the recorded journals
+      - uses: actions/download-artifact@v4
+        with:
+          name: elite-studio-flatpak
+      - name: Install Flatpak and the test screen
+        # Ubuntu 24.04 keeps programs from making the private rooms Flatpak runs apps in; a player's desktop allows it.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y -o Acquire::Retries=3 flatpak xvfb dbus
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Install the Flatpak as a player would
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.gnome.Platform//51
+          flatpak install --user -y --noninteractive elite-studio.flatpak
+      - name: Smoke run of the Flatpak
+        run: |
+          code=0
+          timeout 180 dbus-run-session -- xvfb-run -a -s "-screen 0 1600x1000x24" \
+            flatpak run --user io.github.rmatlock0520_cell.EliteStudio --smoke --offline \
+            --data-dir "$HOME/flatpak-smoke" --journal-dir "$GITHUB_WORKSPACE/tests/Fixtures/journals" || code=$?
+          cat "$HOME/flatpak-smoke/logs/studio.log" || true
+          exit $code
