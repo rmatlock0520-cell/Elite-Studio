@@ -299,6 +299,30 @@ public sealed partial class WebServerTests : IDisposable
     }
 
     [Fact]
+    public async Task The_address_Studio_opens_gets_the_page_at_every_loopback_address_a_browser_may_reach()
+    {
+        // A browser looks the name up itself and may reach either loopback address for "localhost". On Linux .NET's
+        // listener answers a name only on the one address it took for it, so a browser that reached the other one
+        // (Ubuntu's curl does: /etc/hosts gives it 127.0.0.1) was told "not found".
+        Assert.True(web.Start(47850));
+        var opened = new Uri(web.Url);
+        IPAddress[] addresses = IPAddress.TryParse(opened.Host, out IPAddress? literal) ? [literal] : [IPAddress.Loopback, IPAddress.IPv6Loopback];
+        int answered = 0;
+        foreach (IPAddress address in addresses)
+        {
+            string at = address.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{address}]" : address.ToString();
+            var request = new HttpRequestMessage(HttpMethod.Get, $"http://{at}:{web.Port}/");
+            request.Headers.Host = opened.Authority;
+            HttpResponseMessage response;
+            try { response = await http.SendAsync(request, TestContext.Current.CancellationToken); }
+            catch (HttpRequestException) { continue; }   // nothing listens there: a browser moves on to the next address
+            Assert.True(response.StatusCode == HttpStatusCode.OK, $"{opened.Authority} reached at {at}: {response.StatusCode}");
+            answered++;
+        }
+        Assert.True(answered > 0, "No loopback address answered.");
+    }
+
+    [Fact]
     public async Task A_caller_that_does_not_connect_from_this_PC_itself_is_refused()
     {
         // Windows listens on every network card, so a request can arrive at this PC's network address
