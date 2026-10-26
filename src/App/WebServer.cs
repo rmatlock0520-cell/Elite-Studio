@@ -30,8 +30,8 @@ public sealed record WebResponse(int Status, string ContentType, byte[] Body)
 /// The local web server every desktop page talks to. Answers this PC only.
 ///
 /// Rules (the pages rely on these):
-/// - Pages open at http://localhost:PORT/. Requests that do not come from this PC itself, or whose
-///   Host header is not localhost:PORT or 127.0.0.1:PORT, get 403.
+/// - Pages open at http://localhost:PORT/ (on Linux http://127.0.0.1:PORT/, see <see cref="UrlFor"/>). Requests that
+///   do not come from this PC itself, or whose Host header is not localhost:PORT or 127.0.0.1:PORT, get 403.
 /// - GET of anything outside /api/ serves a file from the web root. "/" and folder paths serve the
 ///   index.html inside. In .html files the text __STUDIO_TOKEN__ is replaced with <see cref="Token"/>.
 ///   Paths may not leave the web root. Responses are never cached (Cache-Control: no-store).
@@ -79,7 +79,14 @@ public sealed class WebServer(string webRoot) : IDisposable
 
     public int Port { get; private set; }
     public string Token { get; } = Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
-    public string Url => $"http://localhost:{Port}/";
+    public string Url => UrlFor(Port);
+
+    /// <summary>
+    /// The address pages open at. Off Windows it is 127.0.0.1, not "localhost": .NET's listener there answers a name
+    /// only on the one address it took for it (::1 or 127.0.0.1), while a browser looks the name up itself and may
+    /// reach the other, where it would be told "not found".
+    /// </summary>
+    public static string UrlFor(int port) => OperatingSystem.IsWindows() ? $"http://localhost:{port}/" : $"http://127.0.0.1:{port}/";
 
     /// <summary>Registers a handler for an exact path, e.g. Map("GET", "/api/state", ...).</summary>
     public void Map(string method, string path, Func<WebRequest, Task<WebResponse>> handler) => routes[$"{method} {path}"] = handler;
@@ -93,8 +100,9 @@ public sealed class WebServer(string webRoot) : IDisposable
         for (int port = firstPort; port < firstPort + 10; port++)
         {
             var candidate = new HttpListener();
-            // Both spellings of "this PC". Neither needs administrator rights (checked on Windows 10).
-            candidate.Prefixes.Add($"http://localhost:{port}/");
+            // Both spellings of "this PC". Neither needs administrator rights (checked on Windows 10). Off Windows only
+            // 127.0.0.1 (see UrlFor): "localhost" would also take ::1, which a Linux without IPv6 cannot listen on.
+            if (OperatingSystem.IsWindows()) candidate.Prefixes.Add($"http://localhost:{port}/");
             candidate.Prefixes.Add($"http://127.0.0.1:{port}/");
             try { candidate.Start(); }
             catch (HttpListenerException) { candidate.Close(); continue; }   // port taken: try the next

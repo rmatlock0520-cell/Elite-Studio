@@ -219,7 +219,7 @@ public sealed partial class WebServerTests : IDisposable
     {
         Assert.True(web.Start(47850));
         Assert.InRange(web.Port, 47850, 47859);
-        Assert.Equal($"http://localhost:{web.Port}/", web.Url);
+        Assert.Equal(OperatingSystem.IsWindows() ? $"http://localhost:{web.Port}/" : $"http://127.0.0.1:{web.Port}/", web.Url);
 
         var page = await Send(HttpMethod.Get, "/");
         Assert.Equal(HttpStatusCode.OK, page.Status);
@@ -228,7 +228,7 @@ public sealed partial class WebServerTests : IDisposable
         Assert.Equal("nosniff", page.Response.Headers.GetValues("X-Content-Type-Options").Single());
         Assert.Equal("text/html; charset=utf-8", page.Response.Content.Headers.ContentType?.ToString());
 
-        // The same page under the other name for this PC.
+        // The same page at the address the app opens (on Windows the other name for this PC).
         string viaName = await http.GetStringAsync(web.Url, TestContext.Current.CancellationToken);
         Assert.Equal(page.Text, viaName);
 
@@ -407,7 +407,7 @@ public sealed partial class WebServerTests : IDisposable
             for (int port = first; port < first + 10; port++)
             {
                 var other = new HttpListener();
-                other.Prefixes.Add($"http://localhost:{port}/");
+                other.Prefixes.Add(WebServer.UrlFor(port));   // the address Studio listens at, so the port is taken for it
                 try { other.Start(); ours[port] = other; }
                 catch (HttpListenerException) { other.Close(); }   // some other program has it: just as taken
             }

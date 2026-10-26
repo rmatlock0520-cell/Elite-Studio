@@ -127,7 +127,7 @@ public static partial class Program
                 // Straight to this PC, never through a proxy: one set up in Windows or in HTTP_PROXY would
                 // otherwise be handed this call and could not reach the running copy.
                 using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(2) };
-                using var request = new HttpRequestMessage(HttpMethod.Post, $"http://localhost:{running.Port}/api/app/show")
+                using var request = new HttpRequestMessage(HttpMethod.Post, WebServer.UrlFor(running.Port) + "api/app/show")
                 {
                     Content = new StringContent("{}", new MediaTypeHeaderValue("application/json")),
                 };
