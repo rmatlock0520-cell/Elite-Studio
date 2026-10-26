@@ -257,15 +257,15 @@ public sealed partial class WebServerTests : IDisposable
         Assert.True(web.Start(47850));
 
         // 403: the address bar said something other than this PC (another site pointing its name here).
-        // Off Windows .NET's own listener turns another name away itself (404, before Studio sees the request); a
-        // wrong port under this PC's name still reaches Studio, which refuses it.
-        HttpStatusCode otherName = OperatingSystem.IsWindows() ? HttpStatusCode.Forbidden : HttpStatusCode.NotFound;
+        // Off Windows .NET's own listener turns away a name or port it was not started for itself (404, before
+        // Studio sees the request).
+        HttpStatusCode refusedHost = OperatingSystem.IsWindows() ? HttpStatusCode.Forbidden : HttpStatusCode.NotFound;
         var foreign = await Send(HttpMethod.Get, "/", host: "evil.example");
-        Assert.Equal(otherName, foreign.Status);
+        Assert.Equal(refusedHost, foreign.Status);
         Assert.DoesNotContain(web.Token, foreign.Text);   // the page, which holds the token, is not given out
         if (OperatingSystem.IsWindows()) Assert.Equal("Forbidden", foreign.Text);
-        Assert.Equal(HttpStatusCode.Forbidden, (await Send(HttpMethod.Get, "/api/ping", host: $"localhost:{web.Port + 100}")).Status);
-        Assert.Equal(otherName, (await Send(HttpMethod.Get, "/api/echo", web.Token, host: "evil.example")).Status);
+        Assert.Equal(refusedHost, (await Send(HttpMethod.Get, "/api/ping", host: $"localhost:{web.Port + 100}")).Status);
+        Assert.Equal(refusedHost, (await Send(HttpMethod.Get, "/api/echo", web.Token, host: "evil.example")).Status);
 
         // 401: no token, a wrong one, or one from before a restart.
         foreach (string? token in new[] { null, "", "0123456789abcdef0123456789abcdef", web.Token.ToUpperInvariant() })
