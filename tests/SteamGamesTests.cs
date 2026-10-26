@@ -106,12 +106,13 @@ public sealed class SteamGamesTests : IDisposable
             	}
             }
             """);
-        // The older layout names each library straight after its number.
+        // The older layout names each library straight after its number. The line before it ends in a number (any
+        // ContentStatsID Steam picked, half the time without a minus), which must not pair with the "1" below it.
         Vdf(flatpak, $$"""
             "LibraryFolders"
             {
             	"TimeNextStatsReport"		"1760000000"
-            	"ContentStatsID"		"-4242"
+            	"ContentStatsID"		"4242"
             	"1"		"{{Quoted(second)}}"
             }
             """);

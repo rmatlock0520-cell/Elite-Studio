@@ -86,6 +86,24 @@ public static partial class Program
         return $@"Local\EliteStudio-{hash}";
     }
 
+    /// <summary>
+    /// The "already running" marker off Windows: running.lock in the data folder, held open with no sharing for as long
+    /// as Studio runs (the system lets go of it however Studio ends). Null when another copy holds it. A named mutex will
+    /// not do there: .NET keeps one to a single login session, and each terminal is a session of its own. The file is
+    /// never deleted, so two copies can never each hold a different one.
+    /// </summary>
+    internal static FileStream? LockDataFolder(string dataDir)
+    {
+        try
+        {
+            return new FileStream(Path.Combine(dataDir, "running.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException)   // another copy holds it
+        {
+            return null;
+        }
+    }
+
     /// <summary>The network of an --offline run: every request fails at once, as if the PC had no connection.</summary>
     internal sealed class Offline : HttpMessageHandler
     {

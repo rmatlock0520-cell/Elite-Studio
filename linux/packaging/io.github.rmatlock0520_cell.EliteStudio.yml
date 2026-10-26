@@ -18,10 +18,14 @@ finish-args:
   # The sniffer's chime and Nav scan's sounds.
   - --socket=pulseaudio
   # Steam keeps the game and its Proton folder (journal, key bindings, HUD colours) anywhere in the home folder, and
-  # Studio writes the HUD mod into the game's folder. SD cards and other drives are under /run/media. The Flatpak
-  # version of Steam keeps its folders among the apps' own, which the home folder alone does not reach.
+  # Studio writes the HUD mod into the game's folder, so every place a Steam library may be is opened for writing.
+  # SD cards and other drives are under /run/media (Steam Deck, Fedora, Arch), /media (Ubuntu, Debian, Mint) or
+  # /mnt (drives set up by hand). The Flatpak version of Steam keeps its folders among the apps' own, which the home
+  # folder alone does not reach. README.txt tells players with a library anywhere else how to open it.
   - --filesystem=home
   - --filesystem=/run/media
+  - --filesystem=/media
+  - --filesystem=/mnt
   - --filesystem=~/.var/app/com.valvesoftware.Steam
 modules:
   - name: elite-studio

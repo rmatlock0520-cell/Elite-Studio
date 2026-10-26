@@ -48,6 +48,8 @@ public sealed partial class UiTests : IDisposable
         public string Themes => Path.Combine(Data, "ui", "My Themes");
         public string IniDir => Path.Combine(Game, "EDHM-ini");
         public string SettingsFile => Path.Combine(Data, "settings.json");
+        /// <summary>The player's home folder, where an exported theme goes (its Downloads folder).</summary>
+        public readonly string Home = Path.Combine(root, "home");
 
         public WebServer Web = new(Path.Combine(root, "web"));
         public bool Running;
@@ -73,6 +75,7 @@ public sealed partial class UiTests : IDisposable
                 ShowFolder = Shown.Add,
                 Recycle = file => { Recycled.Add(file); File.Move(file, file + ".recycled"); },
                 DownloadMod = () => ModDownload(),
+                Home = Home,
             }.Map(Web);
             return this;
         }
@@ -377,6 +380,21 @@ public sealed partial class UiTests : IDisposable
         // A file that cannot be moved leaves no note behind.
         Assert.Throws<FileNotFoundException>(() => RecycleBin.ToTrash(Path.Combine(folder, "gone.json"), trash, when));
         Assert.False(File.Exists(Path.Combine(trash, "info", "gone.json.trashinfo")));
+    }
+
+    [Fact]
+    public void The_Trash_is_the_one_the_players_file_manager_shows_even_from_inside_the_Flatpak()
+    {
+        string home = Path.Combine(temp, "home"), usual = Path.Combine(home, ".local", "share", "Trash");
+        string TrashWith(Dictionary<string, string?> env) => RecycleBin.TrashFolder(name => env.GetValueOrDefault(name), home);
+        const string App = "io.github.rmatlock0520_cell.EliteStudio", Own = "/home/deck/.var/app/" + App + "/data";
+
+        Assert.Equal(usual, TrashWith(new()));
+        Assert.Equal(Path.Combine("/data", "Trash"), TrashWith(new() { ["XDG_DATA_HOME"] = "/data" }));
+        // The Flatpak points XDG_DATA_HOME at the app's own hidden folder, and keeps the player's own in HOST_XDG_DATA_HOME
+        // when they set one.
+        Assert.Equal(usual, TrashWith(new() { ["FLATPAK_ID"] = App, ["XDG_DATA_HOME"] = Own }));
+        Assert.Equal(Path.Combine("/data", "Trash"), TrashWith(new() { ["FLATPAK_ID"] = App, ["XDG_DATA_HOME"] = Own, ["HOST_XDG_DATA_HOME"] = "/data" }));
     }
 
     // ------------------------------------------------------------ saving

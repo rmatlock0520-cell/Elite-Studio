@@ -36,13 +36,23 @@ case ":$PATH:" in
     *) echo "($bin is not on your PATH yet, so for now type $bin/elite-studio.)" ;;
 esac
 
-# The window needs WebKitGTK 4.1. Without it Studio still works, in the web browser.
-if ! { ldconfig -p 2>/dev/null || /sbin/ldconfig -p 2>/dev/null; } | grep -q 'libwebkit2gtk-4\.1\.so\.0'; then
+# The window needs WebKitGTK 4.1, libnotify and a few more of the system's libraries, on a Linux no older than
+# Ubuntu 24.04 (the window's library, Photino.Native.so, asks for glibc 2.38). ldd says what of that this PC lacks:
+# "libname => not found" for a library, "version `GLIBC_2.38' not found" for too old a system. Without the window
+# Studio still works, in the web browser.
+lacks=$(command -v ldd >/dev/null && ldd "$program/Photino.Native.so" 2>&1 | grep 'not found' || true)
+if printf '%s\n' "$lacks" | grep -q 'version'; then
     echo
-    echo "Note: this PC does not have WebKitGTK 4.1 (libwebkit2gtk-4.1), which Studio's own window needs,"
-    echo "so Studio will open in your web browser instead. For its own window, install it, for example:"
-    echo "  Ubuntu, Debian, Mint:  sudo apt install libwebkit2gtk-4.1-0"
-    echo "  Fedora:                sudo dnf install webkit2gtk4.1"
-    echo "  Arch, Manjaro:         sudo pacman -S webkit2gtk-4.1"
+    echo "Note: this Linux is older than Studio's own window needs, so Studio will open in your web browser instead."
+    echo "The window needs Ubuntu 24.04, Mint 22, Debian 13, Fedora 39 or newer; installing more does not change that."
+    echo "For Studio's own window on this PC, use the Flatpak version (see README.txt)."
+elif [ -n "$lacks" ]; then
+    echo
+    echo "Note: this PC lacks libraries Studio's own window needs, so Studio will open in your web browser instead."
+    echo "Missing: $(printf '%s\n' "$lacks" | sed 's/^[[:space:]]*\([^[:space:]]*\).*/\1/' | sort -u | paste -s -d ' ' -)"
+    echo "For its own window, install WebKitGTK 4.1 and libnotify, for example:"
+    echo "  Ubuntu, Debian, Mint:  sudo apt install libwebkit2gtk-4.1-0 libnotify4"
+    echo "  Fedora:                sudo dnf install webkit2gtk4.1 libnotify"
+    echo "  Arch, Manjaro:         sudo pacman -S webkit2gtk-4.1 libnotify"
     echo "On a Steam Deck, keep using the browser: SteamOS does not carry WebKitGTK 4.1 (see README.txt)."
 fi

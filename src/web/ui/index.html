@@ -2123,10 +2123,18 @@ async function renderThemes(force) {
   }
   holder.append(ml);
 }
+// The Linux window saves a download into Downloads without a word to the player (and not at all under a name already
+// there), so on Linux the app writes the file into the player's Downloads folder, under a name not taken, and the page
+// says where. On Windows the window's own download does it.
 function exportTheme() {
   const name = (prompt('Name for the exported theme:', 'My HUD theme') || '').trim();
   if (!name) return;
   const data = { app: 'hud-studio', version: 1, name, created: new Date().toISOString(), colors: [sourceColor('Advanced:x236|y236|z236').hex.slice(1), sourceColor(ID.middle).hex.slice(1)], values: currentValues() };
+  if (linux()) {
+    api('POST', API + '/export', { name, json: JSON.stringify(data, null, 1) })
+      .then(d => toast('Exported. The theme file is in your Downloads folder: ' + d.path, 'good'), e => toast('Could not export: ' + e.message, 'bad'));
+    return;
+  }
   const a = h('a', { href: URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' })), download: name.replace(/[\\/:*?"<>|]/g, '-') + '.hudtheme.json' });
   document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
@@ -2200,7 +2208,7 @@ async function fetchMod() {
 // per start of Studio, as soon as the player has said which game is theirs, that game lacks the mod, and the game is
 // closed. Not when another copy of Elite on this PC has the mod: then the player picks that copy on the Setup tab.
 // Never by itself on Linux, where the newest Proton (11) stops the game showing while the mod is there: only the button
-// installs it there. So not before the app has said which system it runs on, either.
+// installs it there. So not before the app has said which system it runs on (or failed to: see loadFeatures), either.
 let modTried = false;
 function autoInstallMod() {
   if (!hasKnown || linux()) return;
@@ -2234,7 +2242,10 @@ async function renderEdhm() {
   if (!e.installed) box.append(h('div', { class: 'card bad' }, h('h2', null, 'HUD color files not found'),
     h('p', { class: 'small' }, 'Studio UI edits the color files of the HUD mod (EDHM), so the mod needs to be in this game before colors can be saved. ', missingWords(st)),
     h('div', { class: 'row-actions' }, h('button', { class: 'btn primary', onclick: installMod }, 'Install the HUD mod now')),
-    h('p', { class: 'muted small' }, 'EDHM is a free mod by Fred89210 and psychicEgg. Studio downloads it (about 4 MB) from ', h('a', { href: 'https://github.com/psychicEgg/EDHM/tree/main/Odyssey', target: '_blank', rel: 'noopener' }, 'its own page'), linux() ? ' when you click the button.' : ' by itself once Elite is closed; this button tries again.', ' It adds its own files and changes none of Elite’s, and colors already in the folder are kept. To remove the mod, run EDHM-Uninstall.bat in the game folder.')));
+    h('p', { class: 'muted small' }, 'EDHM is a free mod by Fred89210 and psychicEgg. Studio downloads it (about 4 MB) from ', h('a', { href: 'https://github.com/psychicEgg/EDHM/tree/main/Odyssey', target: '_blank', rel: 'noopener' }, 'its own page'), linux() ? ' when you click the button.' : ' by itself once Elite is closed; this button tries again.', ' It adds its own files and changes none of Elite’s, and colors already in the folder are kept. ',
+      // Linux runs no .bat file: these are the mod's files that its own EDHM-Uninstall.bat deletes (besides its logs).
+      linux() ? 'To remove the mod, close Elite and delete its files from the game folder: d3d11.dll, d3dcompiler_47.dll, d3dx.ini and EDHM-Uninstall.bat, and the EDHM-ini, ShaderFixes and ShaderCache folders.'
+        : 'To remove the mod, run EDHM-Uninstall.bat in the game folder.')));
   if (linux()) linuxCards(box);
   const x = st.xml || {};
   box.append(h('div', { class: 'card' }, h('h2', null, 'Elite’s built-in color file'),
@@ -2415,14 +2426,16 @@ async function useGameFolder(path) {
 async function browseForGame() { return useGameFolder(await pickGameFolder()); }
 
 // What this copy of Studio has (GET /api/ping's "features", as studio.js reads it for the other pages). Empty until the
-// app has said, and from an app too old to say, which reads as the Windows app. On Linux the page says "Trash", the
+// app has said. An app too old to say, or no answer, reads as the Windows app (as in studio.js), so Windows never loses
+// the HUD mod's automatic install; but where the web engine itself names Linux (the Linux window's does, Windows' never
+// does), no answer reads as Linux, so Linux never installs the mod by itself. On Linux the page says "Trash", the
 // Setup tab carries the notes below, and a link that would open a second window goes to the player's own web browser
 // through the app (the Linux window opens none; POST /api/app/open takes http and https only).
-let has = {}, hasKnown = false;   // hasKnown: the app has answered (autoInstallMod waits for it; without an answer only the button installs)
+let has = {}, hasKnown = false;   // hasKnown: the app has answered, or could not (autoInstallMod waits for it)
 const linux = () => has.system === 'linux';
 function loadFeatures() {
-  fetch('/api/ping').then(r => r.json()).then(r => {
-    has = (r && r.features) || {};
+  fetch('/api/ping').then(r => r.json()).then(r => r && r.features, () => null).then(features => {
+    has = features || (/Linux/.test(navigator.userAgent) ? { system: 'linux' } : {});
     hasKnown = true;
     if (!linux()) return;
     document.addEventListener('click', e => {
@@ -2445,7 +2458,11 @@ function linuxCards(box) {
   const chosen = h('p', { class: 'small muted', style: 'margin:10px 0 0' });
   const showChosen = () => { chosen.textContent = 'Used from the next start: ' + journalChosen; chosen.hidden = !journalChosen; };
   showChosen();
+  // The app says only whether the folder is there. One that is not, inside Steam's Proton folder for Elite, is the place
+  // Studio found itself (with nothing found it reads an empty folder of its own): the game has not been started yet.
+  const waiting = d => /\/drive_c\/users\/[^/]+\/Saved Games\/Frontier Developments\/Elite Dangerous$/.test(d.path);
   api('GET', '/api/app/journal').then(d => line.replaceChildren(...(d.found ? ['Studio reads your game from: ', h('span', { class: 'muted' }, d.path)]
+    : waiting(d) ? ['Elite makes its journal folder the first time you start the game, so it is not there yet. Studio found where it will be, in Steam’s files for Elite, and reads your game from there by itself: ', h('span', { class: 'muted' }, d.path)]
     : ['Studio did not find Elite’s journal folder, so it cannot see your game. Choose the folder that holds Elite’s journal files: in the Proton folder Steam keeps for Elite, it is drive_c/users/steamuser/Saved Games/Frontier Developments/Elite Dangerous.'])),
     () => line.replaceChildren('Studio could not say which folder it reads your game from.'));
   const pick = async () => {

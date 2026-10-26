@@ -146,22 +146,23 @@ public sealed class MarketApiTests : IDisposable
     {
         Hauling hauling = Start(HaulRig.In(Alpha));
         TradeRow bauxite = hauling.Trades[1], silver = hauling.Trades[2];
+        string keeper = Program.Features.Overlay ? "The overlay" : "Studio";   // Linux's copy has no overlay to name
 
         JsonElement page = await Post("show", Row(silver));         // a click on the third row
         Assert.Equal((2, null, "Delta"), (page.GetProperty("shown").GetInt32(), Said(page), page.GetProperty("nextStop").GetProperty("system").GetString()));
         Assert.Same(silver, hauling.Shown);
 
         page = await Post("accept");                                // the Accept button with no row picked: the trade on the overlay
-        Assert.Equal("Accepted: Silver to Beta Hub. The overlay stays on it until you finish it or drop it.", Said(page));
+        Assert.Equal($"Accepted: Silver to Beta Hub. {keeper} stays on it until you finish it or drop it.", Said(page));
         Assert.Equal(("silver", "buy", 2), (page.GetProperty("accepted").GetProperty("commodityId").GetString(), hauling.Leg, page.GetProperty("shown").GetInt32()));
 
         page = await Post("show", Row(bauxite));                    // another row clicked: the overlay stays where it is
-        Assert.Equal("The overlay stays on your accepted trade. Tick this row's box, or click Accept trade, to switch to it.", Said(page));
+        Assert.Equal($"{keeper} stays on your accepted trade. Tick this row's box, or click Accept trade, to switch to it.", Said(page));
         Assert.Equal(2, page.GetProperty("shown").GetInt32());
         Assert.Null(Said(await Post("show", Row(silver))));         // the accepted row itself: nothing to say
 
         page = await Post("accept", Row(bauxite));                  // its box ticked: switched without a search
-        Assert.Equal("Accepted: Bauxite to Gamma Dock. The overlay stays on it until you finish it or drop it.", Said(page));
+        Assert.Equal($"Accepted: Bauxite to Gamma Dock. {keeper} stays on it until you finish it or drop it.", Said(page));
         Assert.Equal((1, "bauxite"), (page.GetProperty("shown").GetInt32(), hauling.Accepted?.CommodityId));
         Assert.Single(rig!.Search.Asked);
 

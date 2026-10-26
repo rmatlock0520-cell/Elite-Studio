@@ -383,7 +383,7 @@ public sealed partial class Hauling
 
         listMessage = (trades.Count > 0 ? result.Summary ?? $"{trades.Count} trades from {result.StarSystem}" : message)
             + (string.IsNullOrEmpty(result.Note) ? "" : $"   ·   {result.Note}")
-            + (Accepted is null ? "" : "   ·   the overlay stays on your accepted trade until you drop it");
+            + (Accepted is null ? "" : $"   ·   {(Program.Features.Overlay ? "the overlay" : "Studio")} stays on your accepted trade until you drop it");
         RaiseChanged();
     }
 

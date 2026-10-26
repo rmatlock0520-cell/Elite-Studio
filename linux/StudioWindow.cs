@@ -41,20 +41,35 @@ internal sealed class StudioWindow(bool headless, bool smoke, bool browser) : IS
         if (smoke) Task.Delay(TimeSpan.FromSeconds(60)).ContinueWith(_ => FinishSmoke("no page had loaded after 60 seconds"));
         if (!headless)
         {
-            // GTK ends the whole program when it finds no desktop to show a window on, so that is looked at first.
-            noWindow = browser ? "asked for with --browser or ELITE_STUDIO_BROWSER=1"
-                : Environment.GetEnvironmentVariable("DISPLAY") is not { Length: > 0 } && Environment.GetEnvironmentVariable("WAYLAND_DISPLAY") is not { Length: > 0 }
-                    ? "there is no desktop to show a window on"
-                    : ShowWindow();
+            noWindow = browser ? "asked for with --browser or ELITE_STUDIO_BROWSER=1" : NoDesktop() ?? ShowWindow();
             if (noWindow is null) return;   // the window was shown, and has been closed
             string line = $"Studio opens in the web browser at {url}, not in a window of its own: {noWindow}";
             if (browser) Log.Info(line);
             else Log.Error(line);
             // A check run is about the window, so without one it fails instead of passing in some browser.
             if (smoke && !browser) FinishSmoke($"the window could not start: {noWindow}");
-            else Desktop.Open(url);
+            else AppApi.OpenInBrowser(url);
         }
         ended.Wait();
+    }
+
+    /// <summary>
+    /// Why there is no desktop to show the window on, or null when there is. Photino starts GTK in the way that ends the
+    /// whole program when the desktop cannot be reached (none is set, or the one set refuses, as under sudo or over SSH),
+    /// so GTK is started here first, in the way that answers instead. Photino then finds it started.
+    /// </summary>
+    static string? NoDesktop()
+    {
+        try
+        {
+            XInitThreads();   // as Photino does: before any other call to the X display
+            if (gtk_init_check(IntPtr.Zero, IntPtr.Zero)) return null;
+        }
+        catch (DllNotFoundException missing)   // no GTK: the reason names the library
+        {
+            return missing.Message.ReplaceLineEndings(" ");
+        }
+        return $"no desktop could be reached to show a window on (DISPLAY \"{Environment.GetEnvironmentVariable("DISPLAY")}\", WAYLAND_DISPLAY \"{Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")}\")";
     }
 
     /// <summary>The window until it is closed (null), or why it could not start: mostly a library missing, libwebkit2gtk-4.1.</summary>
@@ -117,7 +132,7 @@ internal sealed class StudioWindow(bool headless, bool smoke, bool browser) : IS
         PhotinoWindow? window;
         lock (gate) window = open;
         if (window is not null) window.Invoke(Present);
-        else if (noWindow is not null) Desktop.Open(url);
+        else if (noWindow is not null) AppApi.OpenInBrowser(url);
     }
 
     /// <summary>Ends Studio: closes the window, or lets a browser or --headless run end. From any thread.</summary>
@@ -184,6 +199,12 @@ internal sealed class StudioWindow(bool headless, bool smoke, bool browser) : IS
             if (Marshal.PtrToStringUTF8(gtk_window_get_title(Marshal.ReadIntPtr(item))) == Title) gtk_window_present(Marshal.ReadIntPtr(item));
         g_list_free(windows);
     }
+
+    [DllImport("libX11.so.6")]
+    static extern int XInitThreads();
+
+    [DllImport("libgtk-3.so.0")]
+    static extern bool gtk_init_check(IntPtr argc, IntPtr argv);
 
     [DllImport("libgtk-3.so.0")]
     static extern IntPtr gtk_window_list_toplevels();

@@ -51,7 +51,7 @@ public class HaulingSettingsTests
         Assert.Equal(3, rig.Search.Asked.Count);
         Assert.False(rig.Search.Asked[2].Returns);
         Assert.Same(accepted, hauling.Shown);
-        Assert.EndsWith("the overlay stays on your accepted trade until you drop it", hauling.ListMessage);
+        Assert.EndsWith($"   ·   {Keeper} stays on your accepted trade until you drop it", hauling.ListMessage);
     }
 
     [Fact]
@@ -429,7 +429,7 @@ public class HaulingSettingsTests
         Assert.Equal((50.0, "BUY", "Alpha"), (gold.BuyDistanceLy, hauling.NextStop?.What, hauling.NextStop?.System));   // measured from Gamma now
         // The list under it is made this once without the player asking for it.
         Assert.Equal("Gamma", Assert.Single(rig.Search.Asked).StarSystem);
-        Assert.Equal("3 trades from Gamma   ·   the overlay stays on your accepted trade until you drop it", hauling.ListMessage);
+        Assert.Equal($"3 trades from Gamma   ·   {Keeper} stays on your accepted trade until you drop it", hauling.ListMessage);
         Assert.NotSame(gold, hauling.Trades[0]);                    // the list's own gold has today's prices; the accepted one keeps its own
         Assert.Equal(("buy", rig.Clock), (rig.Kept().Leg, rig.Kept().AcceptedAt));
 

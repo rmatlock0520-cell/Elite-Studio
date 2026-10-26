@@ -111,9 +111,13 @@ public static partial class SteamGames
         ];
     }
 
-    /// <summary>A key and its text: "path" "...", or a number and its text.</summary>
+    /// <summary>
+    /// A key and its text on one line, as Steam writes them: "path" "...", or a number and its text. Never across lines:
+    /// in the older files a line ending in a number ("TimeNextStatsReport" "1760000000") would otherwise pair with the
+    /// next line's key and swallow the "1" of the first library listed.
+    /// </summary>
     [GeneratedRegex("""
-        "(path|\d+)"\s+"((?:[^"\\]|\\.)*)"
+        "(path|\d+)"[ \t]+"((?:[^"\\]|\\.)*)"
         """)]
     private static partial Regex LibraryLine();
 

@@ -1,5 +1,6 @@
 # Elite Studio for Linux on GitHub's Linux machines: build it and run its checks, pack the player's copy, open it on
-# a screen with no monitor to prove its window starts (with pictures of each studio), and make the Flatpak.
+# a screen with no monitor to prove its window starts (with pictures of each studio) and, on an Ubuntu too old for
+# the window, that it works in the browser, and make the Flatpak.
 # Nothing here publishes a release: what it makes is kept with the run, for the owner to look at and pass on.
 name: Linux
 
@@ -42,9 +43,24 @@ jobs:
       - name: Make the player's copy
         # Self-contained: the player needs no .NET, only the web engine the window shows the pages with.
         # The files come from Windows without the "may run" mark, so it is set here; the archive keeps it.
+        # The licences go with it, as with the Windows installer: Studio's own, and README.md's credits with the
+        # licence notices of the work Studio builds on (EDTS's BSD licence asks for its notice). Also the window's,
+        # Photino's Apache 2.0 licence, whose text Ubuntu keeps.
         run: |
           dotnet publish linux/EliteStudio.Linux.csproj -c Release -r linux-x64 --self-contained true -o elite-studio -p:ArtifactsPath="$RUNNER_TEMP/build"
           cp linux/packaging/{elite-studio,elite-studio.desktop,install.sh,uninstall.sh,elite-studio.png,README.txt} elite-studio/
+          cp LICENSE elite-studio/LICENSE.txt
+          sed -n '/^## Credits/,$p' README.md > elite-studio/CREDITS.md
+          grep -q 'Redistributions in binary form' elite-studio/CREDITS.md \
+            || { echo "::error::CREDITS.md lacks EDTS's licence notice: README.md's Credits or Licence notices have moved."; exit 1; }
+          { echo "Photino.NET and Photino.Native (Studio's window on Linux), by TryPhotino, https://github.com/tryphotino:"
+            echo; cat /usr/share/common-licenses/Apache-2.0; } > elite-studio/Photino-LICENSE.txt
+          # The .NET that runs Studio comes inside the copy too, so its licence and third-party notices go with it.
+          runtime=$(ls -d "$HOME"/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/*/ | sort -V | tail -1)
+          for notice in LICENSE.TXT THIRD-PARTY-NOTICES.TXT; do
+            if [ -f "$runtime$notice" ]; then cp "$runtime$notice" "elite-studio/dotnet-$notice"
+            else echo "::warning::.NET's $notice was not found in $runtime"; fi
+          done
           chmod +x elite-studio/EliteStudio elite-studio/elite-studio elite-studio/install.sh elite-studio/uninstall.sh
           tar -czf elite-studio-linux-x64.tar.gz elite-studio
       - uses: actions/upload-artifact@v4
@@ -58,7 +74,15 @@ jobs:
     strategy:
       fail-fast: false   # each Ubuntu tells its own story
       matrix:
-        os: [ubuntu-24.04, ubuntu-22.04]
+        # The window's library (Photino.Native) asks for glibc 2.38 and GLIBCXX_3.4.31, so the window needs Ubuntu
+        # 24.04 or newer (Mint 22+, Debian 13+, Fedora 39+): there it must open. Ubuntu 22.04 (glibc 2.35) is too
+        # old for it, as are Mint 21 and Debian 12, so there Studio is checked in the browser, which is what players
+        # on those systems get.
+        include:
+          - os: ubuntu-24.04
+            window: true
+          - os: ubuntu-22.04
+            window: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
@@ -77,23 +101,43 @@ jobs:
       - name: List libraries this Ubuntu lacks
         # Says why, should the window not start here (a native part built on a newer Ubuntu than this one).
         run: ldd "$RUNNER_TEMP"/elite-studio/*.so 2>&1 | grep -E '^/|not found' || true
-      - name: Keep any web browser closed
-        # When its window cannot start, Studio opens the player's browser instead (xdg-open). A browser here would
-        # let the smoke run pass without the window, so xdg-open only says what it was asked to open.
+      - name: Install it as a player would
+        # install.sh must tell the player whether Studio's own window can start: nothing to say where it opens, and
+        # on 22.04 that this Linux is too old for it.
         run: |
-          mkdir -p "$RUNNER_TEMP/no-browser"
-          printf '#!/bin/sh\necho "xdg-open was asked to open: $*" >&2\n' > "$RUNNER_TEMP/no-browser/xdg-open"
-          chmod +x "$RUNNER_TEMP/no-browser/xdg-open"
-          echo "$RUNNER_TEMP/no-browser" >> "$GITHUB_PATH"
+          said="$RUNNER_TEMP/install.txt"
+          HOME="$RUNNER_TEMP/player" "$RUNNER_TEMP/elite-studio/install.sh" | tee "$said"
+          if [ "${{ matrix.window }}" = true ]; then
+            if grep -q '^Note:' "$said"; then echo "::error::install.sh says the window cannot start here."; exit 1; fi
+          else
+            grep -q 'older than' "$said" || { echo "::error::install.sh does not say this Linux is too old for the window."; exit 1; }
+          fi
+      - name: A stand-in for the web browser
+        # Studio opens the player's browser (xdg-open) when its window cannot start or is not wanted (--browser). A
+        # real browser here could stand in for a window that did not open, so xdg-open is this stand-in: it says what
+        # it was asked to open, then asks for the game state with the page's token, as the page does when it loads.
+        run: |
+          mkdir -p "$RUNNER_TEMP/browser"
+          cat > "$RUNNER_TEMP/browser/xdg-open" <<'EOF'
+          #!/bin/sh
+          echo "xdg-open was asked to open: $*" >&2
+          token=$(curl -fsS "$1" | sed -n 's/.*name="studio-token" content="\([0-9a-f]*\)".*/\1/p')
+          curl -fsS -o /dev/null -H "X-Studio-Token: $token" "${1}api/state"
+          EOF
+          chmod +x "$RUNNER_TEMP/browser/xdg-open"
+          echo "$RUNNER_TEMP/browser" >> "$GITHUB_PATH"
       - name: Smoke run
-        # Passes when the window's page has asked Studio for the game state within a minute (--smoke).
+        # Passes when the page has asked Studio for the game state within a minute (--smoke): the window's page, or on
+        # 22.04 the stand-in browser's (--browser).
         run: |
           code=0
           timeout 150 xvfb-run -a -s "-screen 0 1600x1000x24" "$RUNNER_TEMP/elite-studio/elite-studio" --smoke --offline \
+            ${{ !matrix.window && '--browser' || '' }} \
             --data-dir "$RUNNER_TEMP/smoke-data" --journal-dir "$GITHUB_WORKSPACE/tests/Fixtures/journals" || code=$?
           cat "$RUNNER_TEMP/smoke-data/logs/studio.log" || true
           exit $code
       - name: Pictures of each studio
+        if: matrix.window   # pictures of the window, so only where it opens
         run: |
           timeout 180 xvfb-run -a -s "-screen 0 1600x1000x24" \
             bash linux/packaging/ci/screenshots.sh "$RUNNER_TEMP/elite-studio" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/shots"

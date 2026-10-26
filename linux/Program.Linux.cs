@@ -73,8 +73,9 @@ public static partial class Program
         Paths.Init(options, found.Journal, found.Bindings);
         string? chosen = new Settings(Path.Combine(Paths.DataDir, "settings.json")).Get<LinuxSettings>("linux").JournalDir;
         if (chosen is not null && Directory.Exists(chosen)) Paths.Init(options, chosen, BindingsBeside(chosen) ?? found.Bindings);
-        using var oneCopy = new Mutex(true, MutexName(Paths.DataDir), out bool first);
-        if (!first)
+        // One copy per data folder, by a lock on a file in it (Windows uses a named mutex: LockDataFolder says why not here).
+        using FileStream? oneCopy = LockDataFolder(Paths.DataDir);
+        if (oneCopy is null)
         {
             if (options.ContainsKey("smoke"))
             {

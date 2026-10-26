@@ -330,7 +330,10 @@ function showTab(tab, page) {
   tab.frame.title = tab.name;
   tab.frame.src = address;
   // A page that has just loaded (first time, or reloaded from inside) has no unsaved changes yet.
-  tab.frame.addEventListener('load', () => { setDirty(tab, 0); if (current === tab && !layerOpen()) tab.frame.contentWindow.focus(); });
+  tab.frame.addEventListener('load', () => {
+    tab.frame.contentWindow.addEventListener('keydown', reloadKey);   // a key pressed in a studio stays in its frame
+    setDirty(tab, 0); if (current === tab && !layerOpen()) tab.frame.contentWindow.focus();
+  });
   $('#pages').append(tab.frame);
 }
 // Hands the keyboard back to the studio being shown (after the menu, a panel or the tour closes).
@@ -566,7 +569,8 @@ const help = () => [
     linux() && ["Where Studio reads your game", "Studio finds Elite's journal folder in Steam's Proton folders by itself. Studio UI's Setup tab shows the folder it reads, and lets you choose another."],
   ] },
   { id: 'ui', g: 'g-ui', t: 'Studio UI', items: [
-    ["What it does", "Studio UI changes the colours of your cockpit HUD and shows the result live. It works through the free EDHM HUD mod, which Studio downloads (about 4 MB) once Elite is closed. On first start, confirm the game folder Studio found, or browse to yours."],
+    ["What it does", "Studio UI changes the colours of your cockpit HUD and shows the result live. It works through the free EDHM HUD mod, which Studio downloads (about 4 MB) "
+      + (linux() ? "when you press 'Install the HUD mod now' on Studio UI's Setup tab." : "once Elite is closed.") + " On first start, confirm the game folder Studio found, or browse to yours."],
     ["Three steps", lacks('reloadKey') ? "Pick colours on Quick Theme, or click any part of the HUD picture, then press Save to game (Ctrl+S). Then press F11 in Elite to reload the HUD. Nothing reaches the game until you save, unless Auto-save is on."
       : "Pick colours on Quick Theme, or click any part of the HUD picture, then press Save to game (Ctrl+S). Studio presses F11 in Elite to reload the HUD, or tells you to press it. Nothing reaches the game until you save, unless Auto-save is on."],
     linux() && ["Proton version", "The HUD mod does not work with Proton 11 yet. In Steam, set Elite to use Proton 10."],
@@ -1066,6 +1070,14 @@ document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (tourAt >= 0) endTour(); else if (!$('#menu').hidden) { setMenu(false); $('#menuBtn').focus(); } else if (drawerOpen) closeDrawer();
 });
+// F5 and Ctrl+R reload the window, as Keybindings says. Windows' window does that itself; the Linux one has no keys of
+// its own, so on Linux the shell does it, for keys pressed in the studios' frames too (each frame is given this as it loads).
+function reloadKey(e) {
+  if (!linux() || !(e.key === 'F5' || (e.ctrlKey && !e.altKey && (e.key === 'r' || e.key === 'R')))) return;
+  e.preventDefault();
+  location.reload();
+}
+document.addEventListener('keydown', reloadKey);
 
 // ============================================================ start-up
 drawKeybar();

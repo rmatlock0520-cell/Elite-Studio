@@ -58,6 +58,12 @@ sealed class HaulRig : IDisposable
     public static readonly Place Gamma = new("Gamma", [10, 0, 50], "Gamma Dock", 303);
     public static readonly Place Delta = new("Delta", [40, 0, 0], "Delta Yard", 404);
 
+    /// <summary>
+    /// What stays on an accepted trade, in the list's words: the overlay; in a copy of Studio without the overlay
+    /// (Linux's), Studio itself, so the page never names a box that is not there.
+    /// </summary>
+    public static string Keeper => Program.Features.Overlay ? "the overlay" : "Studio";
+
     /// <summary>The time a rig's clock starts at unless the test gives another.</summary>
     public static readonly DateTime Noon = new(2026, 10, 9, 12, 0, 0);
 
@@ -437,7 +443,7 @@ public class HaulingTests
 
         Assert.Equal(new[] { "silver", "gold" }, hauling.Trades.Select(trade => trade.CommodityId));
         Assert.Same(accepted, hauling.Shown);                       // the trade as accepted, not the new list's copy of it
-        Assert.Equal("2 trades from Alpha   ·   Powerplay filter: 3 systems to buy in   ·   the overlay stays on your accepted trade until you drop it", hauling.ListMessage);
+        Assert.Equal($"2 trades from Alpha   ·   Powerplay filter: 3 systems to buy in   ·   {Keeper} stays on your accepted trade until you drop it", hauling.ListMessage);
         Assert.Equal(20, accepted.BuyDistanceLy);                   // kept current for the accepted trade too
     }
 

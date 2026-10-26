@@ -531,6 +531,38 @@ public sealed partial class UiTests
     }
 
     [Fact]
+    public async Task An_exported_theme_goes_into_the_players_Downloads_folder_under_a_name_not_taken_there()
+    {
+        // The Linux window saves a page's download without a word, so its page has the app save the file and say where.
+        Rig rig = Practice();
+        const string Made = "{\n \"app\": \"hud-studio\",\n \"version\": 1,\n \"name\": \"Blue: night\"\n}";   // as the page makes it
+        static string Export(string name, string json = Made) => JsonSerializer.Serialize(new { name, json });
+        async Task<string> Saved(string name) => (await rig.Ok("POST", "/export", Export(name))).GetProperty("path").GetString()!;
+        string downloads = Path.Combine(rig.Home, "Downloads");
+
+        Assert.Equal(Path.Combine(downloads, "Blue- night.hudtheme.json"), await Saved("Blue: night"));   // the folder is made if missing
+        Assert.Equal(Made, File.ReadAllText(Path.Combine(downloads, "Blue- night.hudtheme.json")));
+        // Exported again: the file already there is kept, and the new one takes the next free name.
+        Assert.Equal(Path.Combine(downloads, "Blue- night (2).hudtheme.json"), await Saved("Blue: night"));
+        Assert.Equal(Path.Combine(downloads, "Blue- night (3).hudtheme.json"), await Saved("Blue: night"));
+        Assert.Equal(3, Directory.GetFiles(downloads).Length);
+
+        // The desktop names the Downloads folder in its own language, in ~/.config/user-dirs.dirs, or anywhere at all.
+        Directory.CreateDirectory(Path.Combine(rig.Home, ".config"));
+        string list = Path.Combine(rig.Home, ".config", "user-dirs.dirs");
+        File.WriteAllText(list, "# This file is written by xdg-user-dirs-update\nXDG_DESKTOP_DIR=\"$HOME/Bureau\"\nXDG_DOWNLOAD_DIR=\"$HOME/Téléchargements\"\n");
+        Assert.Equal(Path.Combine(rig.Home, "Téléchargements", "Blue- night.hudtheme.json"), await Saved("Blue: night"));
+        string elsewhere = Path.Combine(temp, "Big disk", "Downloads");
+        File.WriteAllText(list, $"XDG_DOWNLOAD_DIR=\"{elsewhere}\"\n");
+        Assert.Equal(elsewhere, StudioUi.DownloadsFolder(rig.Home));
+
+        Assert.Equal("Please give the theme a name (up to 80 characters).", await rig.Refused("POST", "/export", Export(" ")));
+        Assert.Equal("That name cannot be used as a file name.", await rig.Refused("POST", "/export", Export("Con")));
+        Assert.Equal("The theme could not be exported.", await rig.Refused("POST", "/export", Export("Blue", "not a theme")));
+        Assert.False(Directory.Exists(elsewhere));
+    }
+
+    [Fact]
     public async Task The_first_run_copies_themes_saved_with_the_old_tool_once_without_overwriting()
     {
         string besideProgram = Path.Combine(temp, "Elite HUD Studio", "My Themes"), userFolder = Path.Combine(temp, "AppData", "Elite HUD Studio", "My Themes");

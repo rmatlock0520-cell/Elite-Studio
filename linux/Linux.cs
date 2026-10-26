@@ -41,22 +41,12 @@ namespace EliteStudio.App
             .Split(':', StringSplitOptions.RemoveEmptyEntries).Any(folder => File.Exists(Path.Combine(folder, program)));
     }
 
-    /// <summary>The player's own desktop, for when Studio has no window of its own: their web browser and their folder picker.</summary>
+    /// <summary>
+    /// The player's own desktop, for when Studio has no window of its own: their folder picker. (Their web browser is
+    /// opened by AppApi.OpenInBrowser, as for every link.)
+    /// </summary>
     internal static class Desktop
     {
-        /// <summary>Opens a web address in the player's browser (through xdg-open, which inside a Flatpak asks the desktop).</summary>
-        public static void Open(string url)
-        {
-            try
-            {
-                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
-            }
-            catch (Win32Exception problem)   // no browser set up
-            {
-                Log.Error($"Could not open {url} in the browser", problem);
-            }
-        }
-
         /// <summary>
         /// The desktop's own folder picker: KDE's (kdialog, as on a Steam Deck), else GNOME's (zenity). The folder chosen,
         /// or null when the player cancelled or the desktop has neither.

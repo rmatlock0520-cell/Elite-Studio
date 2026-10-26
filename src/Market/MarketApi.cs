@@ -134,10 +134,11 @@ public static class MarketApi
         web.Map("POST", "/api/market/show", request =>
         {
             TradeRow row = request.Read<TradeRow>();
-            // An accepted trade keeps the overlay: picking another listed row only says how to switch to it.
+            // An accepted trade keeps the overlay: picking another listed row only says how to switch to it. A copy of
+            // Studio without the overlay (Linux's) keeps the trade the same way, so there it is Studio that stays on it.
             bool stays = hauling.Look is null && hauling.Accepted is { } accepted && !row.IsSameTrade(accepted) && hauling.Trades.Any(row.IsSameTrade);
             hauling.Show(row);
-            return Answer(stays ? "The overlay stays on your accepted trade. Tick this row's box, or click Accept trade, to switch to it." : null);
+            return Answer(stays ? (Program.Features.Overlay ? "The overlay" : "Studio") + " stays on your accepted trade. Tick this row's box, or click Accept trade, to switch to it." : null);
         });
 
         web.Map("POST", "/api/market/accept", request =>
@@ -148,7 +149,7 @@ public static class MarketApi
             bool picked = !string.IsNullOrEmpty(row.CommodityId);
             if ((picked ? row : hauling.Shown) is not { } trade || !hauling.Accept(trade))
                 return Answer(picked ? "That trade is no longer on the list." : "No trade to accept yet.");
-            return Answer($"Accepted: {hauling.Accepted!.Commodity} to {hauling.Accepted.SellStation}. The overlay stays on it until you finish it or drop it.");
+            return Answer($"Accepted: {hauling.Accepted!.Commodity} to {hauling.Accepted.SellStation}. {(Program.Features.Overlay ? "The overlay" : "Studio")} stays on it until you finish it or drop it.");
         });
 
         web.Map("POST", "/api/market/drop", _ =>

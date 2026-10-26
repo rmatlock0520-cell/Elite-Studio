@@ -53,6 +53,7 @@ internal sealed class StudioUi(Settings settings, string dataDir, string? forced
     static readonly UTF8Encoding Utf8NoMark = new(false);
     static readonly JsonSerializerOptions OneLine = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     static readonly Regex NotForFileNames = new("[\\\\/:*?\"<>|]");
+    static readonly Regex DownloadLine = new("^\\s*XDG_DOWNLOAD_DIR=\"([^\"]+)\"");   // in ~/.config/user-dirs.dirs
 
     /// <summary>
     /// Theme and backup-info files are written byte for byte as Elite HUD Studio wrote them (one line,
@@ -84,11 +85,18 @@ internal sealed class StudioUi(Settings settings, string dataDir, string? forced
     internal Func<List<GameFolder>> FindGames { get; init; } = GameFolder.FindAll;
     internal Func<bool> GameRunning { get; init; } = GameFolder.IsRunning;
     internal Func<Reload> PressReloadKey { get; init; } = GameFolder.PressReloadKey;
-    // Explorer on Windows, as before; elsewhere the folder is opened as a document, which shows it in the desktop's file manager (xdg-open).
+    // Explorer on Windows, as before; elsewhere the folder is opened as a document, which shows it in the desktop's file manager
+    // (xdg-open), in a session of its own like a web link, so Ctrl+C in Studio's terminal does not close the file manager too.
     internal Action<string> ShowFolder { get; init; } = folder =>
-        (OperatingSystem.IsWindows() ? Process.Start("explorer.exe", $"\"{folder}\"") : Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true }))?.Dispose();
+    {
+        if (OperatingSystem.IsWindows()) { Process.Start("explorer.exe", $"\"{folder}\"")?.Dispose(); return; }
+        try { Process.Start(App.AppApi.Opener(folder, ownSession: true))?.Dispose(); }
+        catch (System.ComponentModel.Win32Exception) { Process.Start(App.AppApi.Opener(folder, ownSession: false))?.Dispose(); }   // no setsid
+    };
     internal Action<string> Recycle { get; init; } = RecycleBin.Send;
     internal Func<(string Version, byte[] Zip)> DownloadMod { get; init; } = () => ModInstall.Download(null);
+    /// <summary>The player's home folder, where an exported theme goes (into its Downloads folder).</summary>
+    internal string Home { get; init; } = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
     public void Map(WebServer web)
     {
@@ -103,6 +111,7 @@ internal sealed class StudioUi(Settings settings, string dataDir, string? forced
         web.Map("GET", "/api/ui/theme", request => Run(() => ReadTheme(request.Query.GetValueOrDefault("src"), request.Query.GetValueOrDefault("id") ?? "")));
         web.Map("POST", "/api/ui/mythemes", request => Run(() => SaveTheme(Body(request))));
         web.Map("POST", "/api/ui/mythemes/delete", request => Run(() => DeleteTheme(Loose.Text(Loose.Field(Body(request), "id")))));
+        web.Map("POST", "/api/ui/export", request => Run(() => Export(Body(request))));
         web.Map("POST", "/api/ui/open", request => Run(() => Open(Loose.Text(Loose.Field(Body(request), "what")))));
         web.Map("POST", "/api/ui/select-game", request => Run(() => SelectGame(Loose.Text(Loose.Field(Body(request), "path")))));
         web.Map("POST", "/api/ui/confirm-game", _ => Run(ConfirmGame));
@@ -372,8 +381,7 @@ internal sealed class StudioUi(Settings settings, string dataDir, string? forced
     object SaveTheme(JsonElement? body)
     {
         string name = Loose.Text(Loose.Field(body, "name")).Trim();
-        if (name.Length is 0 or > Paths.LongestFileName) throw Problem($"Please give the theme a name (up to {Paths.LongestFileName} characters).");
-        string id = Paths.FileNameFor(name) ?? throw Problem("That name cannot be used as a file name.");
+        string id = FileNameOf(name);
         var values = ColourFiles.Plan(Loose.Field(body, "values"));
         if (values.Count == 0) throw Problem("The theme has no values.");
         Directory.CreateDirectory(themesDir);
@@ -398,6 +406,68 @@ internal sealed class StudioUi(Settings settings, string dataDir, string? forced
         if (!SafeName(id) || !File.Exists(Path.Combine(themesDir, id + ".json"))) throw Problem("Theme not found.");
         Recycle(Path.Combine(themesDir, id + ".json"));
         return new { ok = true };
+    }
+
+    /// <summary>The file name for a theme's name as typed, or why it cannot have one.</summary>
+    static string FileNameOf(string name)
+    {
+        if (name.Length is 0 or > Paths.LongestFileName) throw Problem($"Please give the theme a name (up to {Paths.LongestFileName} characters).");
+        return Paths.FileNameFor(name) ?? throw Problem("That name cannot be used as a file name.");
+    }
+
+    /// <summary>
+    /// "Export to a file" in the Linux window, which saves a page's download into Downloads without a word to the player
+    /// (and not at all under a name already there): the theme file the page made goes into the player's Downloads folder
+    /// under a name not taken there, "My theme (2).hudtheme.json" after "My theme.hudtheme.json", and the page is told
+    /// where. On Windows the page still saves it itself.
+    /// </summary>
+    object Export(JsonElement? body)
+    {
+        string id = FileNameOf(Loose.Text(Loose.Field(body, "name")).Trim());
+        string json = Loose.Text(Loose.Field(body, "json"));
+        if (Loose.Object(json) is null) throw Problem("The theme could not be exported.");
+        string folder = DownloadsFolder(Home);
+        Directory.CreateDirectory(folder);
+        for (int copy = 1; ; copy++)
+        {
+            string file = Path.Combine(folder, (copy == 1 ? id : $"{id} ({copy})") + ".hudtheme.json");
+            if (File.Exists(file)) continue;
+            try
+            {
+                using (var writer = new StreamWriter(new FileStream(file, FileMode.CreateNew), Utf8NoMark)) writer.Write(json);
+            }
+            catch (IOException) when (File.Exists(file))
+            {
+                continue;   // another program took the name meanwhile
+            }
+            Log.Info($"Theme exported: {file}");
+            return new { ok = true, path = file };
+        }
+    }
+
+    /// <summary>
+    /// The player's Downloads folder, as the Linux desktops name it (in the desktop's own language) in
+    /// ~/.config/user-dirs.dirs: XDG_DOWNLOAD_DIR="$HOME/Downloads". ~/Downloads when that file does not say.
+    /// </summary>
+    internal static string DownloadsFolder(string home)
+    {
+        try
+        {
+            string list = Path.Combine(home, ".config", "user-dirs.dirs");
+            if (File.Exists(list))
+                foreach (string line in File.ReadLines(list))
+                    if (DownloadLine.Match(line) is { Success: true } said)
+                    {
+                        string folder = said.Groups[1].Value;
+                        if (folder.StartsWith("$HOME", StringComparison.Ordinal)) folder = home + folder[5..];
+                        if (Path.IsPathRooted(folder)) return Path.GetFullPath(folder);
+                    }
+        }
+        catch (Exception unreadable) when (unreadable is IOException or UnauthorizedAccessException)
+        {
+            // as when the file is not there
+        }
+        return Path.Combine(home, "Downloads");
     }
 
     /// <summary>
@@ -497,15 +567,26 @@ internal static class RecycleBin
     {
         if (!OperatingSystem.IsWindows())
         {
-            string data = Environment.GetEnvironmentVariable("XDG_DATA_HOME") is { Length: > 0 } set ? set
-                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share");
-            ToTrash(file, Path.Combine(data, "Trash"), DateTime.Now);
+            ToTrash(file, TrashFolder(Environment.GetEnvironmentVariable, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)), DateTime.Now);
             return;
         }
         // Windows wants a list of paths ending in an empty one, hence the extra '\0'.
         var operation = new FileOperation { Function = Delete, From = file + '\0', Flags = Silent | NoQuestions | ToRecycleBin | NoErrorBox };
         int result = SHFileOperation(ref operation);
         if (result != 0 || operation.Aborted) throw new IOException($"Windows could not move the file to the Recycle Bin (code {result}).");
+    }
+
+    /// <summary>
+    /// The desktop's Trash: in XDG_DATA_HOME, else in ~/.local/share. Inside a Flatpak, XDG_DATA_HOME is the app's own
+    /// hidden folder, whose Trash no file manager shows, so there it is the player's own: HOST_XDG_DATA_HOME (what
+    /// XDG_DATA_HOME is outside, when the player set it), else ~/.local/share.
+    /// </summary>
+    /// <param name="env">Reads one of the environment's variables.</param>
+    /// <param name="home">The home folder, "~".</param>
+    internal static string TrashFolder(Func<string, string?> env, string home)
+    {
+        string? data = env(env("FLATPAK_ID") is { Length: > 0 } ? "HOST_XDG_DATA_HOME" : "XDG_DATA_HOME");
+        return Path.Combine(data is { Length: > 0 } ? data : Path.Combine(home, ".local", "share"), "Trash");
     }
 
     /// <summary>

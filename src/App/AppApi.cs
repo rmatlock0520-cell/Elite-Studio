@@ -172,7 +172,14 @@ public static class AppApi
         if (!uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && !uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) return false;
         try
         {
-            Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true })?.Dispose();
+            try
+            {
+                Process.Start(Opener(uri, ownSession: !OperatingSystem.IsWindows()))?.Dispose();
+            }
+            catch (Win32Exception) when (!OperatingSystem.IsWindows())   // a system without setsid: the plain way
+            {
+                Process.Start(Opener(uri, ownSession: false))?.Dispose();
+            }
         }
         catch (Win32Exception problem)   // no default browser set up
         {
@@ -180,6 +187,14 @@ public static class AppApi
         }
         return true;
     }
+
+    /// <summary>
+    /// How a link is handed to the browser: through the system's shell (Windows), or, in a session of its own, through
+    /// xdg-open (setsid -f). Started the plain way off Windows, a browser that was not open yet would belong to the
+    /// terminal Studio was started from, and Ctrl+C there, or closing it, would close the player's browser with Studio.
+    /// </summary>
+    internal static ProcessStartInfo Opener(string uri, bool ownSession) =>
+        ownSession ? new ProcessStartInfo("setsid", ["-f", "xdg-open", uri]) : new ProcessStartInfo(uri) { UseShellExecute = true };
 
     static string LogTail(int lines)
     {
