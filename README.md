@@ -1,6 +1,6 @@
 # Elite Studio
 
-A companion app for **Elite Dangerous** on Windows. One window, five studios, and overlays you can call up inside the game.
+A companion app for **Elite Dangerous** on Windows. One window, five studios, and overlays you can call up inside the game. There is a Linux version too, with four of the studios (see [On Linux](#on-linux)).
 
 Elite Studio reads the files the game itself writes (the journal, your ship, your cargo, your key bindings). It does not change the game and does not touch its memory.
 
@@ -49,6 +49,16 @@ Closing the window only hides Studio. To exit, right-click its icon near the clo
 
 Studio keeps its settings, saved builds, themes and logs in `%LOCALAPPDATA%\Elite Studio`, never in the program's folder. Deleting that folder puts everything back to a first start.
 
+### On Linux
+
+**Elite Studio for Linux** has its own release on the **Releases** page, for Elite Dangerous played through Steam (Proton) on a Linux PC or a Steam Deck in Desktop Mode. It has Studio UI, Studio Market, Studio Nav and Studio Loadouts; Studio Flight, the overlays in the game and Nav scan are Windows only for now.
+
+1. Download **elite-studio-linux-x64.tar.gz** and unpack it.
+2. In the **elite-studio** folder it makes, run `./install.sh` (no password needed). It says whether your PC has what Studio's own window needs, and if not, the command that adds it.
+3. Start **Elite Studio** from your desktop's menu.
+
+Studio's own window needs Ubuntu 24.04, Mint 22, Debian 13, Fedora 39 or newer, with WebKitGTK 4.1. Elsewhere, and on the Steam Deck, Studio opens in your web browser instead and works the same there; on an older Linux the **elite-studio.flatpak** download gives the window too. The README.txt in the download has the rest: finding the game, HUD colours on Linux (press F11 in the game after saving a theme; the HUD mod needs Proton 10, not 11) and where Studio keeps its files.
+
 ## Where the data comes from
 
 Market prices come from [Ardent Insight](https://ardent-insight.com/); stations, modules, ships and routes from [Spansh](https://spansh.co.uk/); exploration coverage from [EDAstro](https://edastro.com/). All three are free services that volunteers run for the whole community, fed by what players' tools report. An answer is as fresh as the last visit by one of those players. Studio asks them only when you search (and once an hour for a search you saved in the Sniffer), keeps answers for a few minutes instead of asking twice, and says who it is with every request.
@@ -74,6 +84,8 @@ powershell -ExecutionPolicy Bypass -File installer\Make-Installer.ps1
 This runs the checks, builds Studio with .NET inside it, and makes `Elite Studio Setup <version>.exe` in a folder `Installers` beside the project's folder. The installer's recipe is `installer\EliteStudio.iss`; `-Test` makes a copy of it, "Elite Studio (test)", to try the installer with beside the real one.
 
 To run the checks alone: `dotnet test EliteStudio.slnx`.
+
+The Linux version is `linux/EliteStudio.Linux.csproj` (`dotnet publish linux/EliteStudio.Linux.csproj -c Release -r linux-x64 --self-contained true`), with its checks in `linux/tests`. GitHub builds it, runs its checks and packs both downloads on every push to the `linux` branch (`.github/workflows/linux.yml`).
 
 ## Credits
 
