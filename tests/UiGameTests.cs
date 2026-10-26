@@ -418,6 +418,7 @@ public sealed partial class UiTests
     public async Task Folders_deeper_than_the_old_260_character_limit_work()
     {
         string deep = Path.Combine(temp, new string('a', 120), new string('b', 120));
+        if (deep.Length < 280) deep = Path.Combine(deep, new string('c', 280 - deep.Length));   // a short temporary folder, as Linux's /tmp
         Rig rig = new(deep);
         StageGame(rig.Game);
         rig.Start(rig.Game);
