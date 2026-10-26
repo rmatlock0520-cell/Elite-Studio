@@ -92,10 +92,16 @@ jobs:
           name: elite-studio-linux-x64
       # The web engine the window needs, a screen with no monitor, and what clicks in it and pictures it.
       # No window manager: the window opens where Studio puts it, and clicks reach it all the same.
+      # Where the window cannot start (22.04) only the screen is needed: the web engine there is a large download
+      # that once took the mirror long enough to cancel the run.
       - name: Install the window's web engine and the test screen
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-0 libnotify4 xvfb xdotool imagemagick
+          if [ "${{ matrix.window }}" = true ]; then
+            sudo apt-get install -y -o Acquire::Retries=3 libwebkit2gtk-4.1-0 libnotify4 xvfb xdotool imagemagick
+          else
+            sudo apt-get install -y -o Acquire::Retries=3 xvfb
+          fi
       - name: Unpack the player's copy
         run: tar -xzf elite-studio-linux-x64.tar.gz -C "$RUNNER_TEMP"
       - name: List libraries this Ubuntu lacks

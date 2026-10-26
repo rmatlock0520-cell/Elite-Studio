@@ -67,7 +67,8 @@
 html:not(.no-glow) .hex[aria-expanded="true"] .glyph{filter:none}
 .hex:focus-visible{outline-offset:-3px}
 .hex .glyph{width:28px;height:28px;stroke-width:1.5}
-.hex small{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 10.5px var(--hud);letter-spacing:.08em;color:var(--frost)}
+/* flex:none: never made shorter to fit, which cut its letters in half in a font that sits taller than Bahnschrift (Linux's look-alike) */
+.hex small{flex:none;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 10.5px var(--hud);letter-spacing:.08em;color:var(--frost)}
 html:not(.no-glow) .hex .glyph,html:not(.no-glow) .notch svg{filter:drop-shadow(0 0 6px color-mix(in srgb,var(--cyan) 50%,transparent))}
 .strip{display:flex;align-items:center;justify-content:space-evenly;gap:18px;min-width:0;padding:0 14px;overflow:hidden}
 .strip.l{grid-area:sl}.strip.r{grid-area:sr}
