@@ -75,6 +75,8 @@ This runs the checks, builds Studio with .NET inside it, and makes `Elite Studio
 
 To run the checks alone: `dotnet test EliteStudio.slnx`.
 
+Discord [Discord](https://discord.gg/kbm3Bz2g3)
+
 ## Credits
 
 - **EDHM** (Elite Dangerous HUD Mod) by psychicEgg and Fred89210 does the recolouring in the game. It is not part of Elite Studio and is not in this repository or its downloads: its licence does not allow passing it on. Studio downloads it from its makers for each player.
